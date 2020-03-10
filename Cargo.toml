@@ -1,0 +1,14 @@
+[package]
+name = "iro"
+version = "0.1.0"
+authors = ["ffwff <mogamiriver@tuta.io>"]
+edition = "2018"
+build = "build.rs"
+
+[dependencies]
+lalrpop-util = "0.18.1"
+regex = "1"
+unicode-xid = "0.1.0"
+
+[build-dependencies]
+lalrpop = "0.18.1"

@@ -1,0 +1,98 @@
+use std::str::FromStr;
+use iro::ast::*;
+use iro::lexer;
+
+grammar;
+
+pub Top : Program = {
+    <Expr*> => Program{ exprs: <> },
+};
+
+// Expressions
+Expr = <BinExpr> NL*;
+
+// Binary expressions
+BinOpTier<Op,NextTier>: NodeBox = {
+    <left:BinOpTier<Op,NextTier>> <op:Op> <right:NextTier> => NodeBox::new(BinExpr{ left, right, op }),
+    NextTier
+};
+
+BinExpr = AsgExpr;
+AsgExpr = BinOpTier<AsgOp, AndExpr>;
+AndExpr = BinOpTier<AndOp, OrzExpr>;
+OrzExpr = BinOpTier<OrzOp, CmpExpr>;
+CmpExpr = BinOpTier<CmpOp, AddExpr>;
+AddExpr = BinOpTier<AddOp, FacExpr>;
+FacExpr = BinOpTier<FacOp, Term>;
+
+AsgOp: BinOp = {
+    "=" => BinOp::Asg,
+    "+=" => BinOp::Adds,
+    "-=" => BinOp::Subs,
+    "*=" => BinOp::Muls,
+    "/=" => BinOp::Divs,
+};
+
+AndOp: BinOp = {
+    "and" => BinOp::And,
+};
+
+OrzOp: BinOp = {
+    "or" => BinOp::Or,
+};
+
+CmpOp: BinOp = {
+    "==" => BinOp::Equ,
+    "!=" => BinOp::Neq,
+};
+
+AddOp: BinOp = {
+    "+" => BinOp::Add,
+    "-" => BinOp::Sub,
+};
+
+FacOp: BinOp = {
+    "*" => BinOp::Mul,
+    "/" => BinOp::Div,
+};
+
+// Literals / terms
+Term: NodeBox = {
+    <Literal> => NodeBox::new(<>),
+    "(" <Expr> ")" => <>,
+};
+
+Literal: Value = {
+    <Int> => Value::Integer(<>),
+    <String> => Value::String(<>),
+    <Identifier> => Value::Identifier(<>),
+};
+
+
+// Hook external lexer:
+extern {
+    type Location = usize;
+    type Error = lexer::LexError;
+
+    enum lexer::Tok {
+        "and" => lexer::Tok::And,
+        "or" => lexer::Tok::Or,
+        "==" => lexer::Tok::Equ,
+        "!=" => lexer::Tok::Neq,
+        "+" => lexer::Tok::Add,
+        "-" => lexer::Tok::Sub,
+        "*" => lexer::Tok::Mul,
+        "/" => lexer::Tok::Div,
+        "=" => lexer::Tok::Asg,
+        "+=" => lexer::Tok::Adds,
+        "-=" => lexer::Tok::Subs,
+        "*=" => lexer::Tok::Muls,
+        "/=" => lexer::Tok::Divs,
+        "(" => lexer::Tok::LeftParen,
+        ")" => lexer::Tok::RightParen,
+        NL => lexer::Tok::Newline,
+        Int => lexer::Tok::Int { value : <i64> },
+        Identifier => lexer::Tok::Identifier { value : <String> },
+        String => lexer::Tok::String { value : <String> },
+    }
+}
