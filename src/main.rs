@@ -7,11 +7,13 @@ use iro::ast::Visitor;
 use iro::types::visitor::TypeVisitor;
 
 fn main() {
-    let input = "1 + x";
+    let input = "x = 10
+    x + 1
+    x=\"y\"
+    x + \"y\"";
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer).unwrap();
     println!("{:#?}", ast.exprs);
-    let mut visitor = TypeVisitor::new();
-    visitor.visit_program(&ast).unwrap();
+    TypeVisitor::new().visit_program(&ast).unwrap();
     println!("{:#?}", ast.exprs);
 }

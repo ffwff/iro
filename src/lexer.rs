@@ -29,7 +29,8 @@ pub type Spanned<T> = (usize, T, usize);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LexError {
-    UnexpectedCharacter((usize, char))
+    UnexpectedCharacter((usize, char)),
+    UnexpectedEof
 }
 
 pub struct Lexer<'input> {
@@ -124,6 +125,28 @@ impl<'input> Iterator for Lexer<'input> {
                         _ => Tok::Identifier { value: string },
                     };
                     return Some(Ok((idx0, value, idx1)))
+                }
+
+                Some((idx0, '"')) => {
+                    let mut idx1 = idx0;
+                    let mut string = String::new();
+                    let mut escape = false;
+                    loop {
+                        match self.chars.next() {
+                            Some((m_idx1, ch @ '"')) => {
+                                idx1 = m_idx1;
+                                break;
+                            }
+                            Some((m_idx1, ch)) => {
+                                idx1 = m_idx1;
+                                string.push(ch);
+                            },
+                            None => {
+                                return Some(Err(LexError::UnexpectedEof))
+                            }
+                        }
+                    }
+                    return Some(Ok((idx0, Tok::String { value: string }, idx1)))
                 }
 
                 None => return None,

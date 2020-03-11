@@ -1,6 +1,7 @@
 use std::fmt;
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::any::Any;
 use crate::types::types::TypeInfo;
 
 pub type VisitorResult = Result<(), ()>;
@@ -17,6 +18,7 @@ pub trait Node {
     }
 
     fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult;
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl std::fmt::Display for Node {
@@ -39,10 +41,18 @@ macro_rules! debuggable {
     };
 }
 
+macro_rules! as_any {
+    () => {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    };
+}
+
 #[derive(Debug)]
 pub struct NodeBox {
     node: Box<Node>,
-    type_info: RefCell<Option<TypeInfo>>,
+    type_info: RefCell<TypeInfo>,
 }
 
 impl<'a> NodeBox {
@@ -50,7 +60,7 @@ impl<'a> NodeBox {
     pub fn new<T: 'static>(node : T) -> Self where T : Node {
         NodeBox {
             node: Box::new(node),
-            type_info: RefCell::new(None),
+            type_info: RefCell::new(TypeInfo::new()),
         }
     }
 
@@ -58,11 +68,15 @@ impl<'a> NodeBox {
         self.node.borrow()
     }
 
+    pub fn downcast_ref<T: 'static>(&'a self) -> Option<&'a T> where T : Node {
+        self.node.as_any().downcast_ref::<T>()
+    }
+
     pub fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         self.node.visit(self, visitor)
     }
 
-    pub fn type_info(&self) -> &RefCell<Option<TypeInfo>> {
+    pub fn type_info(&self) -> &RefCell<TypeInfo> {
         &self.type_info
     }
 
@@ -75,6 +89,7 @@ pub struct Program {
 
 impl Node for Program {
     debuggable!();
+    as_any!();
     
     fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         Err(())
@@ -91,6 +106,7 @@ pub enum Value {
 
 impl Node for Value {
     debuggable!();
+    as_any!();
 
     fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_value(b, self)
@@ -123,6 +139,7 @@ pub struct BinExpr {
 
 impl Node for BinExpr {
     debuggable!();
+    as_any!();
 
     fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_binexpr(b, self)
