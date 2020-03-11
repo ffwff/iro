@@ -1,5 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct TypeInfo {
@@ -29,24 +31,29 @@ impl TypeInfo {
             Type::Untyped => {
                 std::mem::replace(&mut self.typed, typed);
             }
-            Type::Union(mut vec) => {
+            Type::Union(mut set) => {
                 match typed {
                     Type::Union(other) => {
-                        vec.extend(other);
+                        set.extend(other);
                     }
-                    _ => vec.push(typed),
+                    _ => {
+                        set.insert(typed);
+                    }
                 }
-                vec.dedup();
-                std::mem::replace(&mut self.typed, Type::Union(vec));
+                std::mem::replace(&mut self.typed, Type::Union(set));
             }
             this_type => {
                 let union = match typed {
                     Type::Union(mut other) => {
-                        other.push(this_type);
-                        other.dedup();
+                        other.insert(this_type);
                         other
                     }
-                    _ => vec![this_type, typed],
+                    _ => {
+                        let mut set = HashSet::new();
+                        set.insert(this_type);
+                        set.insert(typed);
+                        set
+                    }
                 };
                 std::mem::replace(&mut self.typed, Type::Union(union));
             }
@@ -90,5 +97,26 @@ pub enum Type {
     Integer,
     Float,
     Identifier(Variable),
-    Union(Vec<Type>)
+    Union(HashSet<Type>)
+}
+
+impl Hash for Type {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match &self {
+            Type::Untyped => 0.hash(state),
+            Type::Nil     => 1.hash(state),
+            Type::String  => 2.hash(state),
+            Type::Integer => 3.hash(state),
+            Type::Float   => 4.hash(state),
+            &Type::Identifier(var) => {
+                let addr = var.as_ptr() as usize;
+                addr.hash(state);
+            }
+            &Type::Union(set) => {
+                for typed in set {
+                    typed.hash(state);
+                }
+            }
+        }
+    }
 }
