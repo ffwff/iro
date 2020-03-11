@@ -7,10 +7,14 @@ use iro::ast::Visitor;
 use iro::types::visitor::TypeVisitor;
 
 fn main() {
-    let input = "x = 10
-    x + 1
-    x=\"y\"
-    x + \"y\"";
+    let input = "if 10 == 10
+      a = 1
+    else
+      if 10 == 10
+        a = \"1\"
+      end
+      b = 1
+    end";
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer).unwrap();
     println!("{:#?}", ast.exprs);

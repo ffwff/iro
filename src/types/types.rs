@@ -10,7 +10,7 @@ impl TypeInfo {
 
     pub fn new() -> Self {
         TypeInfo {
-            typed: Type::None
+            typed: Type::Untyped
         }
     }
 
@@ -20,17 +20,35 @@ impl TypeInfo {
         }
     }
 
+    pub fn typed(&self) -> &Type {
+        &self.typed
+    }
+
     pub fn add_type(&mut self, typed : Type) {
-        match std::mem::replace(&mut self.typed, Type::None) {
-            Type::None => {
+        match std::mem::replace(&mut self.typed, Type::Untyped) {
+            Type::Untyped => {
                 std::mem::replace(&mut self.typed, typed);
             }
             Type::Union(mut vec) => {
-                vec.push(typed);
+                match typed {
+                    Type::Union(other) => {
+                        vec.extend(other);
+                    }
+                    _ => vec.push(typed),
+                }
+                vec.dedup();
                 std::mem::replace(&mut self.typed, Type::Union(vec));
             }
-            other => {
-                std::mem::replace(&mut self.typed, Type::Union(vec![ other, typed ]));
+            this_type => {
+                let union = match typed {
+                    Type::Union(mut other) => {
+                        other.push(this_type);
+                        other.dedup();
+                        other
+                    }
+                    _ => vec![this_type, typed],
+                };
+                std::mem::replace(&mut self.typed, Type::Union(union));
             }
         }
     }
@@ -43,11 +61,31 @@ impl std::fmt::Debug for TypeInfo {
     }
 }
 
-pub type Variable = Rc<RefCell<TypeInfo>>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariableData {
+    pub type_info: TypeInfo,
+}
+
+impl VariableData {
+    pub fn new() -> Self {
+        VariableData {
+            type_info: TypeInfo::new(),
+        }
+    }
+
+    pub fn new_with_type(type_info: TypeInfo) -> Self {
+        VariableData {
+            type_info,
+        }
+    }
+}
+
+pub type Variable = Rc<RefCell<VariableData>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
-    None,
+    Untyped,
+    Nil,
     String,
     Integer,
     Float,

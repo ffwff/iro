@@ -9,7 +9,19 @@ pub Top : Program = {
 };
 
 // Expressions
-Expr = <BinExpr> NL*;
+Expr = <StandaloneExpr> NL*;
+StandaloneExpr = IfExpr;
+
+// If expression
+IfExpr: NodeBox = {
+    "if" <cond:StandaloneExpr> NL* <exprs:Expr*> "else" NL* <elses:Expr*> "end" => {
+        NodeBox::new(IfExpr { cond, exprs, elses })
+    },
+    "if" <cond:StandaloneExpr> NL* <exprs:Expr*> "end" => {
+        NodeBox::new(IfExpr { cond, exprs, elses: vec![] })
+    },
+    <BinExpr> => <>,
+};
 
 // Binary expressions
 BinOpTier<Op,NextTier>: NodeBox = {
@@ -75,6 +87,9 @@ extern {
     type Error = lexer::LexError;
 
     enum lexer::Tok {
+        "if" => lexer::Tok::If,
+        "else" => lexer::Tok::Else,
+        "end" => lexer::Tok::End,
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
         "==" => lexer::Tok::Equ,

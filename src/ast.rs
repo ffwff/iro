@@ -8,6 +8,7 @@ pub type VisitorResult = Result<(), ()>;
 
 pub trait Visitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult;
+    fn visit_ifexpr(&mut self, b: &NodeBox, n: &IfExpr) -> VisitorResult;
     fn visit_binexpr(&mut self, b: &NodeBox, n: &BinExpr) -> VisitorResult;
     fn visit_value(&mut self,   b: &NodeBox, n: &Value) -> VisitorResult;
 }
@@ -143,5 +144,21 @@ impl Node for BinExpr {
 
     fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_binexpr(b, self)
+    }
+}
+
+#[derive(Debug)]
+pub struct IfExpr {
+    pub cond:  NodeBox,
+    pub exprs: Vec<NodeBox>,
+    pub elses: Vec<NodeBox>,
+}
+
+impl Node for IfExpr {
+    debuggable!();
+    as_any!();
+
+    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+        visitor.visit_ifexpr(b, self)
     }
 }

@@ -3,6 +3,9 @@ use unicode_xid::UnicodeXID;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tok {
+    If,
+    Else,
+    End,
     And,
     Or,
     Equ,
@@ -120,6 +123,9 @@ impl<'input> Iterator for Lexer<'input> {
                         }
                     }
                     let value = match string.as_str() {
+                        "if" => Tok::If,
+                        "else" => Tok::Else,
+                        "end" => Tok::End,
                         "and" => Tok::And,
                         "or" => Tok::Or,
                         _ => Tok::Identifier { value: string },
