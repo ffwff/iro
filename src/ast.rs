@@ -2,13 +2,25 @@ use std::fmt;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::any::Any;
+use std::collections::HashMap;
 use crate::types::types::TypeInfo;
 
-pub type VisitorResult = Result<(), ()>;
+#[derive(Debug)]
+pub enum Error {
+    InternalError,
+    InvalidLHS,
+    IncompatibleType,
+    UnknownIdentifier,
+}
+
+pub type VisitorResult = Result<(), Error>;
 
 pub trait Visitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult;
+    fn visit_defstmt(&mut self, b: &NodeBox, n: &DefStatement) -> VisitorResult;
+    fn visit_return(&mut self, b: &NodeBox, n: &ReturnExpr) -> VisitorResult;
     fn visit_ifexpr(&mut self, b: &NodeBox, n: &IfExpr) -> VisitorResult;
+    fn visit_callexpr(&mut self, b: &NodeBox, n: &CallExpr) -> VisitorResult;
     fn visit_binexpr(&mut self, b: &NodeBox, n: &BinExpr) -> VisitorResult;
     fn visit_value(&mut self,   b: &NodeBox, n: &Value) -> VisitorResult;
 }
@@ -93,7 +105,7 @@ impl Node for Program {
     as_any!();
     
     fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        Err(())
+        unimplemented!()
     }
 }
 
@@ -103,6 +115,7 @@ pub enum Value {
     Float(f64),
     String(String),
     Identifier(String),
+    Any,
 }
 
 impl Node for Value {
@@ -160,5 +173,50 @@ impl Node for IfExpr {
 
     fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_ifexpr(b, self)
+    }
+}
+
+#[derive(Debug)]
+pub struct CallExpr {
+    pub callee: NodeBox,
+    pub args: Vec<NodeBox>,
+}
+
+impl Node for CallExpr {
+    debuggable!();
+    as_any!();
+
+    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+        visitor.visit_callexpr(b, self)
+    }
+}
+
+#[derive(Debug)]
+pub struct DefStatement {
+    pub id: String,
+    pub args: HashMap<String, NodeBox>,
+    pub exprs: Vec<NodeBox>,
+}
+
+impl Node for DefStatement {
+    debuggable!();
+    as_any!();
+
+    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+        visitor.visit_defstmt(b, self)
+    }
+}
+
+#[derive(Debug)]
+pub struct ReturnExpr {
+    pub expr: NodeBox,
+}
+
+impl Node for ReturnExpr {
+    debuggable!();
+    as_any!();
+
+    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+        visitor.visit_return(b, self)
     }
 }

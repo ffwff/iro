@@ -1,29 +1,54 @@
 use std::rc::Rc;
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Eq)]
 pub struct TypeInfo {
-    typed: Type
+    typed: Type,
+    identity: Option<Variable>,
 }
 
 impl TypeInfo {
 
     pub fn new() -> Self {
         TypeInfo {
-            typed: Type::Untyped
+            typed: Type::Untyped,
+            identity: None,
         }
     }
 
     pub fn new_with_type(typed : Type) -> Self {
         TypeInfo {
-            typed: typed
+            typed: typed,
+            identity: None,
+        }
+    }
+
+    pub fn from_identity(identity: Variable) -> Self {
+        TypeInfo {
+            identity: Some(identity.clone()),
+            typed: {
+                let varinfo : &RefCell<VariableData> = identity.borrow();
+                varinfo.borrow().type_info.typed.clone()
+            },
+        }
+    }
+
+    pub fn derived(&self) -> Self {
+        TypeInfo {
+            identity: None,
+            typed: self.typed.clone()
         }
     }
 
     pub fn typed(&self) -> &Type {
         &self.typed
+    }
+
+    pub fn identity(&self) -> &Option<Variable> {
+        &self.identity
     }
 
     pub fn add_type(&mut self, typed : Type) {
@@ -64,7 +89,17 @@ impl TypeInfo {
 
 impl std::fmt::Debug for TypeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.typed)
+        if let Some(id) = self.identity() {
+            write!(f, "{:?} ({:p})", self.typed, id.as_ptr())
+        } else {
+            write!(f, "{:?}", self.typed)
+        }
+    }
+}
+
+impl std::cmp::PartialEq for TypeInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.typed == other.typed
     }
 }
 
@@ -108,10 +143,7 @@ impl Hash for Type {
             Type::String  => 2.hash(state),
             Type::Integer => 3.hash(state),
             Type::Float   => 4.hash(state),
-            &Type::Identifier(var) => {
-                let addr = var.as_ptr() as usize;
-                addr.hash(state);
-            }
+            &Type::Identifier(var) => var.as_ptr().hash(state),
             &Type::Union(set) => {
                 for typed in set {
                     typed.hash(state);

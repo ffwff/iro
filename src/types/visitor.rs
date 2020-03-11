@@ -1,6 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
 use crate::ast::*;
+use crate::ast;
 use crate::types::types::*;
 use crate::env::env::Env;
 
@@ -47,6 +48,16 @@ impl Visitor for TypeVisitor {
         Ok(())
     }
 
+    fn visit_defstmt(&mut self, b: &NodeBox, n: &DefStatement) -> VisitorResult {
+        // TODO
+        Ok(())
+    }
+
+    fn visit_return(&mut self, b: &NodeBox, n: &ReturnExpr) -> VisitorResult {
+        // TODO
+        Ok(())
+    }
+
     fn visit_ifexpr(&mut self, b: &NodeBox, n: &IfExpr) -> VisitorResult {
         // If-true branch
         self.enter_scope();
@@ -54,7 +65,7 @@ impl Visitor for TypeVisitor {
         for node in &n.exprs {
             node.visit(&node, self)?;
         }
-        let mut tscope = self.leave_scope().unwrap();
+        let tscope = self.leave_scope().unwrap();
 
         // If-false branch
         self.enter_scope();
@@ -96,9 +107,13 @@ impl Visitor for TypeVisitor {
             }
         }
 
-        println!("tscope: {:#?}", tscope);
-        println!("fscope: {:#?}", fscope);
+        Ok(())
+    }
 
+    fn visit_callexpr(&mut self, b: &NodeBox, n: &CallExpr) -> VisitorResult {
+        for node in &n.args {
+            node.visit(&node, self)?;
+        }
         Ok(())
     }
 
@@ -108,7 +123,6 @@ impl Visitor for TypeVisitor {
                 let node = n.left.downcast_ref::<Value>();
                 match &node {
                     Some(Value::Identifier(var)) => {
-                        println!("print: {}", var);
                         n.right.visit(&n.right, self)?;
                         let right_type = n.right.type_info().clone().into_inner();
                         match self.getvar(var) {
@@ -123,18 +137,18 @@ impl Visitor for TypeVisitor {
                                 n.left.type_info().replace(TypeInfo::new_with_type(Type::Identifier(curvar)));
                             }
                         }
-                        b.type_info().replace(n.right.type_info().borrow().clone());
+                        b.type_info().replace(n.right.type_info().borrow().derived());
                     }
-                    _ => return Err(())
+                    _ => return Err(ast::Error::InvalidLHS),
                 }
             }
             _ => {
                 n.left.visit(&n.left, self)?;
                 n.right.visit(&n.right, self)?;
                 if n.left.type_info() != n.right.type_info() {
-                    return Err(())
+                    return Err(ast::Error::IncompatibleType)
                 }
-                b.type_info().replace(n.left.type_info().borrow().clone());
+                b.type_info().replace(n.left.type_info().borrow().derived());
             }
         }
         Ok(())
@@ -154,13 +168,12 @@ impl Visitor for TypeVisitor {
             }
             Value::Identifier(var) => {
                 if let Some(curvar) = self.getvar(var) {
-                    let varinfo : &RefCell<VariableData> = curvar.borrow();
-                    info.replace(varinfo.borrow().type_info.clone());
+                    info.replace(TypeInfo::from_identity(curvar.clone()));
                 } else {
-                    return Err(())
+                    return Err(ast::Error::UnknownIdentifier)
                 }
             }
-            _ => return Err(())
+            _ => return Err(ast::Error::InternalError),
         }
         Ok(())
     }

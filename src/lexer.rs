@@ -3,6 +3,8 @@ use unicode_xid::UnicodeXID;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tok {
+    Def,
+    Return,
     If,
     Else,
     End,
@@ -22,6 +24,8 @@ pub enum Tok {
     Divs,
     LeftParen,
     RightParen,
+    Comma,
+    Colon,
     Newline,
     Int { value : i64 },
     Identifier { value : String },
@@ -63,7 +67,7 @@ macro_rules! mod_op {
                 $self.last_char = peek;
             }
         }
-        return Some(Ok(($idx0, $x, $idx0+1)))
+        return Some(Ok(($idx0, $x, $idx0)))
     }};
 }
 
@@ -104,8 +108,10 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, '-')) => mod_op!(self, idx0, Tok::Sub, Tok::Subs),
                 Some((idx0, '*')) => mod_op!(self, idx0, Tok::Mul, Tok::Muls),
                 Some((idx0, '/')) => mod_op!(self, idx0, Tok::Div, Tok::Divs),
-                Some((idx0, '(')) => return Some(Ok((idx0, Tok::LeftParen, idx0+1))),
-                Some((idx0, ')')) => return Some(Ok((idx0, Tok::RightParen, idx0+1))),
+                Some((idx0, '(')) => return Some(Ok((idx0, Tok::LeftParen, idx0))),
+                Some((idx0, ')')) => return Some(Ok((idx0, Tok::RightParen, idx0))),
+                Some((idx0, ',')) => return Some(Ok((idx0, Tok::Comma, idx0))),
+                Some((idx0, ':')) => return Some(Ok((idx0, Tok::Colon, idx0))),
 
                 Some((idx0, ch)) if UnicodeXID::is_xid_start(ch) => {
                     let mut idx1 = idx0;
@@ -123,6 +129,8 @@ impl<'input> Iterator for Lexer<'input> {
                         }
                     }
                     let value = match string.as_str() {
+                        "def" => Tok::Def,
+                        "return" => Tok::Return,
                         "if" => Tok::If,
                         "else" => Tok::Else,
                         "end" => Tok::End,

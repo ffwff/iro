@@ -1,26 +1,77 @@
 use std::str::FromStr;
+use std::collections::HashMap;
 use iro::ast::*;
 use iro::lexer;
+use iro::types::types::TypeInfo;
 
 grammar;
 
 pub Top : Program = {
-    <Expr*> => Program{ exprs: <> },
+    NL* <TopLevelExpr*> => Program{ exprs: <> },
+};
+
+#[inline]
+Comma<T>: Vec<T> = {
+    <items: (<T> ",")*> <last: T?> => {
+        let mut items = items;
+        items.extend(last);
+        items
+    }
 };
 
 // Expressions
-Expr = <StandaloneExpr> NL*;
-StandaloneExpr = IfExpr;
+Expr = <StandaloneExpr> NL+;
+TopLevelExpr = {
+    <DefStatement> NL+,
+    <Expr>,
+};
+StandaloneExpr = ReturnExpr;
+
+// Function definitions
+DefStatement: NodeBox = {
+    "def" <id:Identifier> "(" <aargs:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" => {
+        let mut args = HashMap::new();
+        for (id, ty) in aargs {
+            args.insert(id, ty);
+        }
+        NodeBox::new(DefStatement { id, args, exprs })
+    },
+};
+
+DefArgument: (String, NodeBox) = {
+    <id:Identifier> => {
+        (id, NodeBox::new(Value::Any))
+    },
+    <id:Identifier> ":" <ty:Type> => {
+        (id, ty)
+    },
+};
+
+// Return expression
+ReturnExpr: NodeBox = {
+    "return" <expr:StandaloneExpr> => {
+        NodeBox::new(ReturnExpr { expr })
+    },
+    IfExpr,
+};
 
 // If expression
 IfExpr: NodeBox = {
-    "if" <cond:StandaloneExpr> NL* <exprs:Expr*> "else" NL* <elses:Expr*> "end" => {
+    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "else" NL+ <elses:Expr*> "end" => {
         NodeBox::new(IfExpr { cond, exprs, elses })
     },
-    "if" <cond:StandaloneExpr> NL* <exprs:Expr*> "end" => {
+    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
         NodeBox::new(IfExpr { cond, exprs, elses: vec![] })
     },
-    <BinExpr> => <>,
+    CallExpr,
+};
+
+// Call expression
+CallExpr: NodeBox = {
+    <callee:BinExpr> "(" <args:Comma<StandaloneExpr>> ")" => {
+        NodeBox::new(CallExpr { callee, args })
+    },
+    BinExpr,
 };
 
 // Binary expressions
@@ -80,6 +131,11 @@ Literal: Value = {
     <Identifier> => Value::Identifier(<>),
 };
 
+// Types
+Type: NodeBox = {
+    <Identifier> => NodeBox::new(Value::Identifier(<>)),
+};
+
 
 // Hook external lexer:
 extern {
@@ -87,6 +143,8 @@ extern {
     type Error = lexer::LexError;
 
     enum lexer::Tok {
+        "def" => lexer::Tok::Def,
+        "return" => lexer::Tok::Return,
         "if" => lexer::Tok::If,
         "else" => lexer::Tok::Else,
         "end" => lexer::Tok::End,
@@ -105,6 +163,8 @@ extern {
         "/=" => lexer::Tok::Divs,
         "(" => lexer::Tok::LeftParen,
         ")" => lexer::Tok::RightParen,
+        "," => lexer::Tok::Comma,
+        ":" => lexer::Tok::Colon,
         NL => lexer::Tok::Newline,
         Int => lexer::Tok::Int { value : <i64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
