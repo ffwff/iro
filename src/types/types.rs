@@ -53,6 +53,10 @@ impl TypeInfo {
                 std::mem::replace(&mut self.typed, Type::Union(set));
             }
             this_type => {
+                if this_type == typed {
+                    std::mem::replace(&mut self.typed, typed);
+                    return;
+                }
                 let union = match typed {
                     Type::Union(mut other) => {
                         other.insert(this_type);

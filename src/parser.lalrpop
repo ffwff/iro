@@ -134,12 +134,12 @@ Term: NodeBox = {
 Literal: Value = {
     <Int> => Value::Integer(<>),
     <String> => Value::String(<>),
-    <Identifier> => Value::Identifier(<>),
+    <Identifier> => Value::Identifier(Identifier::new(<>)),
 };
 
 // Types
 Type: NodeBox = {
-    <Identifier> => NodeBox::new(Value::Identifier(<>)),
+    <Identifier> => NodeBox::new(Value::Identifier(Identifier::new(<>))),
 };
 
 

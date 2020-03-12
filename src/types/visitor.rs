@@ -179,13 +179,13 @@ impl<'a> Visitor for TypeVisitor {
                     Some(Value::Identifier(var)) => {
                         n.right.visit(&n.right, self)?;
                         let right_type = n.right.type_info().clone().into_inner();
-                        match self.getvar(var) {
+                        match self.getvar(&var.id) {
                             Some(mut curvar) => {
                                 curvar.borrow_mut().replace(VariableData::new_with_type(right_type));
                                 n.left.type_info().replace(TypeInfo::new_with_type(Type::Identifier(curvar)));
                             }
                             None => {
-                                let mut curvar = self.scope().defvar(var.to_string());
+                                let mut curvar = self.scope().defvar(var.id.clone());
                                 curvar.borrow_mut().replace(VariableData::new_with_type(right_type));
                                 n.left.type_info().replace(TypeInfo::new_with_type(Type::Identifier(curvar)));
                             }
@@ -246,7 +246,8 @@ impl<'a> Visitor for TypeVisitor {
                 info.replace(TypeInfo::new_with_type(Type::String));
             }
             Value::Identifier(var) => {
-                if let Some(curvar) = self.getvar(var) {
+                if let Some(curvar) = self.getvar(&var.id) {
+                    var.var.replace(Some(curvar.clone()));
                     info.replace(TypeInfo::from_variable(&curvar));
                 } else {
                     return Err(ast::Error::UnknownIdentifier)

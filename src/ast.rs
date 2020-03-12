@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::any::Any;
 use std::collections::HashMap;
-use crate::types::types::TypeInfo;
+use crate::types::types::{Variable, TypeInfo};
 
 #[derive(Debug)]
 pub enum Error {
@@ -110,12 +110,36 @@ impl Node for Program {
     }
 }
 
+pub struct Identifier {
+    pub id : String,
+    pub var : RefCell<Option<Variable>>,
+}
+
+impl Identifier {
+    pub fn new(id : String) -> Self {
+        Identifier {
+            id,
+            var: RefCell::new(None),
+        }
+    }
+}
+
+impl std::fmt::Debug for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let var : &Option<Variable> = &self.var.borrow();
+        match var {
+            Some(var) => write!(f, "(Identifier {:?}, {:p})", self.id, var),
+            None => write!(f, "(Identifier {:?})", self.id),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Value {
     Integer(i64),
     Float(f64),
     String(String),
-    Identifier(String),
+    Identifier(Identifier),
     Any,
 }
 
