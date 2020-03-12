@@ -1,5 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
+use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use crate::ast::*;
 use crate::ast;
 use crate::types::types::*;
@@ -7,12 +9,14 @@ use crate::env::env::Env;
 
 pub struct TypeVisitor {
     envs: Vec<Env>,
+    funcs: HashMap<String, Function>,
 }
 
-impl<'a> TypeVisitor {
+impl TypeVisitor {
     pub fn new() -> Self {
         TypeVisitor {
             envs: vec![],
+            funcs: HashMap::new(),
         }
     }
 
@@ -24,11 +28,11 @@ impl<'a> TypeVisitor {
         self.envs.pop()
     }
     
-    fn scope(&'a mut self) -> &'a mut Env {
+    fn scope(&mut self) -> &mut Env {
         self.envs.last_mut().unwrap()
     }
 
-    fn getvar(&mut self, s : &str) -> Option<Variable> {
+    fn getvar(&self, s : &str) -> Option<Variable> {
         for scope in self.envs.iter().rev() {
             if let Some(var) = scope.getvar(s) {
                 return Some(var)
@@ -36,25 +40,75 @@ impl<'a> TypeVisitor {
         }
         None
     }
+
+    fn cur_function(&self) -> Option<Function> {
+        if let Some(scope) = self.envs.first() {
+            if let Some(function) = &scope.function {
+                return Some(function.clone())
+            }
+        }
+        None
+    }
+
+    fn copy_unresolved(dest : &Unresolved, src : TypeInfo) {
+        let urd_rc : &RefCell<UnresolveData> = dest.borrow();
+        let urd : &UnresolveData = &urd_rc.borrow();
+        let var_rcc : Variable = urd.id.clone().unwrap();
+        let var_rc : &RefCell<VariableData> = var_rcc.borrow();
+        let var : &mut VariableData = &mut var_rc.borrow_mut();
+        var.type_info = src.clone();
+    }
 }
 
-impl Visitor for TypeVisitor {
+impl<'a> Visitor for TypeVisitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult {
+        for node in &n.exprs {
+            if let Some(def) = node.downcast_ref::<DefStatement>() {
+                self.enter_scope();
+                let mut args = HashMap::new(); 
+                {
+                    let scope = self.scope();
+                    for (id, _) in &def.args {
+                        let var = scope.defvar_unresolved(id.to_string());
+                        args.insert(id.to_string(), var);
+                    }
+                }
+                let function = Rc::new(RefCell::new(FunctionData::new(args)));
+                self.scope().function = Some(function.clone());
+                node.visit(&node, self)?;
+                self.leave_scope();
+                node.type_info().replace(TypeInfo::new_with_type(Type::Function(function.clone())));
+                self.funcs.insert(def.id.to_string(), function.clone());
+            }
+        }
+        
         self.enter_scope();
         for node in &n.exprs {
-            node.visit(&node, self)?;
+            if let None = node.downcast_ref::<DefStatement>() {
+                node.visit(&node, self)?;
+            }
         }
         self.leave_scope();
         Ok(())
     }
 
     fn visit_defstmt(&mut self, b: &NodeBox, n: &DefStatement) -> VisitorResult {
-        // TODO
+        for node in &n.exprs {
+            node.visit(&node, self)?;
+        }
         Ok(())
     }
 
     fn visit_return(&mut self, b: &NodeBox, n: &ReturnExpr) -> VisitorResult {
-        // TODO
+        n.expr.visit(&n.expr, self)?;
+        let type_info = n.expr.type_info().borrow();
+        b.type_info().replace(type_info.clone());
+        {
+            let cur_function = self.cur_function().unwrap();
+            let fdata_rc : &RefCell<FunctionData> = cur_function.borrow();
+            let fdata : &mut FunctionData = &mut fdata_rc.borrow_mut();
+            fdata.returntype.add_type(type_info.typed().clone());
+        }
         Ok(())
     }
 
@@ -114,7 +168,7 @@ impl Visitor for TypeVisitor {
         for node in &n.args {
             node.visit(&node, self)?;
         }
-        Ok(())
+        unimplemented!()
     }
 
     fn visit_binexpr(&mut self, b : &NodeBox, n: &BinExpr) -> VisitorResult {
@@ -127,7 +181,6 @@ impl Visitor for TypeVisitor {
                         let right_type = n.right.type_info().clone().into_inner();
                         match self.getvar(var) {
                             Some(mut curvar) => {
-                                // TODO unionize if this variable is "virtual"
                                 curvar.borrow_mut().replace(VariableData::new_with_type(right_type));
                                 n.left.type_info().replace(TypeInfo::new_with_type(Type::Identifier(curvar)));
                             }
@@ -137,7 +190,7 @@ impl Visitor for TypeVisitor {
                                 n.left.type_info().replace(TypeInfo::new_with_type(Type::Identifier(curvar)));
                             }
                         }
-                        b.type_info().replace(n.right.type_info().borrow().derived());
+                        b.type_info().replace(n.right.type_info().borrow().clone());
                     }
                     _ => return Err(ast::Error::InvalidLHS),
                 }
@@ -145,10 +198,36 @@ impl Visitor for TypeVisitor {
             _ => {
                 n.left.visit(&n.left, self)?;
                 n.right.visit(&n.right, self)?;
-                if n.left.type_info() != n.right.type_info() {
-                    return Err(ast::Error::IncompatibleType)
+                let left = n.left.type_info().borrow().typed().clone();
+                let right = n.right.type_info().borrow().typed().clone();
+                // Two branches of a binaryexpr must be the same
+                // If they are both undefined, prefer the leftmost branch
+                match (&left, &right) {
+                    (Type::Unresolved(_), Type::Unresolved(rightv)) => {
+                        let leftmost = n.left.type_info().borrow();
+                        n.right.type_info().replace(leftmost.clone());
+                        TypeVisitor::copy_unresolved(&rightv, leftmost.clone());
+                        b.type_info().replace(leftmost.clone());
+                    },
+                    (Type::Unresolved(leftv), _) => {
+                        let typeinfo = n.right.type_info().borrow();
+                        n.left.type_info().replace(typeinfo.clone());
+                        TypeVisitor::copy_unresolved(&leftv, typeinfo.clone());
+                        b.type_info().replace(typeinfo.clone());
+                    },
+                    (_, Type::Unresolved(rightv)) => {
+                        let typeinfo = n.left.type_info().borrow();
+                        n.right.type_info().replace(typeinfo.clone());
+                        TypeVisitor::copy_unresolved(&rightv, typeinfo.clone());
+                        b.type_info().replace(typeinfo.clone());
+                    },
+                    (ta, tb) => {
+                        if ta != tb {
+                            return Err(ast::Error::IncompatibleType)
+                        }
+                        b.type_info().replace(TypeInfo::new_with_type(left));
+                    }
                 }
-                b.type_info().replace(n.left.type_info().borrow().derived());
             }
         }
         Ok(())
@@ -168,7 +247,7 @@ impl Visitor for TypeVisitor {
             }
             Value::Identifier(var) => {
                 if let Some(curvar) = self.getvar(var) {
-                    info.replace(TypeInfo::from_identity(curvar.clone()));
+                    info.replace(TypeInfo::from_variable(&curvar));
                 } else {
                     return Err(ast::Error::UnknownIdentifier)
                 }

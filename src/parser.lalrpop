@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::collections::HashMap;
+use lalrpop_util::ParseError;
 use iro::ast::*;
 use iro::lexer;
 use iro::types::types::TypeInfo;
@@ -29,21 +30,26 @@ StandaloneExpr = ReturnExpr;
 
 // Function definitions
 DefStatement: NodeBox = {
-    "def" <id:Identifier> "(" <aargs:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" => {
+    "def" <id:Identifier> "(" <aargs:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" =>? {
         let mut args = HashMap::new();
-        for (id, ty) in aargs {
-            args.insert(id, ty);
+        for (id, val) in aargs {
+            if let Some(_) = args.insert(id, val) {
+                return Err(ParseError::User { error: lexer::Error::DuplicateArguments });
+            }
         }
-        NodeBox::new(DefStatement { id, args, exprs })
+        Ok(NodeBox::new(DefStatement { id, args, exprs }))
+    },
+    "def" <id:Identifier> NL+ <exprs:Expr*> "end" => {
+        NodeBox::new(DefStatement { id, args : HashMap::new(), exprs })
     },
 };
 
-DefArgument: (String, NodeBox) = {
+DefArgument: (String, Option<NodeBox>) = {
     <id:Identifier> => {
-        (id, NodeBox::new(Value::Any))
+        (id, None)
     },
     <id:Identifier> ":" <ty:Type> => {
-        (id, ty)
+        (id, Some(ty))
     },
 };
 
@@ -140,7 +146,7 @@ Type: NodeBox = {
 // Hook external lexer:
 extern {
     type Location = usize;
-    type Error = lexer::LexError;
+    type Error = lexer::Error;
 
     enum lexer::Tok {
         "def" => lexer::Tok::Def,

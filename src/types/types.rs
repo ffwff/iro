@@ -1,13 +1,12 @@
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Eq)]
 pub struct TypeInfo {
     typed: Type,
-    identity: Option<Variable>,
 }
 
 impl TypeInfo {
@@ -15,40 +14,26 @@ impl TypeInfo {
     pub fn new() -> Self {
         TypeInfo {
             typed: Type::Untyped,
-            identity: None,
         }
     }
 
     pub fn new_with_type(typed : Type) -> Self {
         TypeInfo {
             typed: typed,
-            identity: None,
         }
     }
 
-    pub fn from_identity(identity: Variable) -> Self {
+    pub fn from_variable(var: &Variable) -> Self {
         TypeInfo {
-            identity: Some(identity.clone()),
             typed: {
-                let varinfo : &RefCell<VariableData> = identity.borrow();
+                let varinfo : &RefCell<VariableData> = var.borrow();
                 varinfo.borrow().type_info.typed.clone()
             },
         }
     }
 
-    pub fn derived(&self) -> Self {
-        TypeInfo {
-            identity: None,
-            typed: self.typed.clone()
-        }
-    }
-
     pub fn typed(&self) -> &Type {
         &self.typed
-    }
-
-    pub fn identity(&self) -> &Option<Variable> {
-        &self.identity
     }
 
     pub fn add_type(&mut self, typed : Type) {
@@ -89,10 +74,10 @@ impl TypeInfo {
 
 impl std::fmt::Debug for TypeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(id) = self.identity() {
-            write!(f, "{:?} ({:p})", self.typed, id.as_ptr())
-        } else {
-            write!(f, "{:?}", self.typed)
+        match &self.typed {
+            Type::Identifier(var) => write!(f, "Identifier ({:p}) {:?}", var.as_ptr(), var),
+            Type::Unresolved(var) => write!(f, "Unresolved ({:p}) {:?}", var.as_ptr(), var),
+            _ => write!(f, "{:#?}", self.typed)
         }
     }
 }
@@ -125,6 +110,39 @@ impl VariableData {
 pub type Variable = Rc<RefCell<VariableData>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionData {
+    pub args: HashMap<String, Variable>,
+    pub returntype: TypeInfo,
+}
+
+impl FunctionData {
+    pub fn new(args: HashMap<String, Variable>) -> Self {
+        FunctionData {
+            args,
+            returntype: TypeInfo::new(),
+        }
+    }
+}
+
+pub type Function = Rc<RefCell<FunctionData>>;
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct UnresolveData {
+    pub id: Option<Variable>,
+}
+
+impl std::fmt::Debug for UnresolveData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.id {
+            Some(var) => write!(f, "Unresolved ({:p})", var),
+            None => write!(f, "Unresolved"),
+        }
+    }
+}
+
+pub type Unresolved = Rc<RefCell<UnresolveData>>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Untyped,
     Nil,
@@ -132,7 +150,9 @@ pub enum Type {
     Integer,
     Float,
     Identifier(Variable),
-    Union(HashSet<Type>)
+    Unresolved(Unresolved),
+    Union(HashSet<Type>),
+    Function(Function),
 }
 
 impl Hash for Type {
@@ -144,6 +164,8 @@ impl Hash for Type {
             Type::Integer => 3.hash(state),
             Type::Float   => 4.hash(state),
             &Type::Identifier(var) => var.as_ptr().hash(state),
+            &Type::Unresolved(var) => var.as_ptr().hash(state),
+            &Type::Function(var) => var.as_ptr().hash(state),
             &Type::Union(set) => {
                 for typed in set {
                     typed.hash(state);

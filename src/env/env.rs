@@ -5,7 +5,8 @@ use crate::types::types::*;
 
 #[derive(Debug)]
 pub struct Env {
-    vars: HashMap<String, Variable>
+    vars: HashMap<String, Variable>,
+    pub function: Option<Function>,
 }
 
 impl Env {
@@ -13,11 +14,23 @@ impl Env {
     pub fn new() -> Self {
         Env {
             vars: HashMap::new(),
+            function: None,
         }
     }
 
     pub fn defvar(&mut self, s : String) -> Variable {
         let var = Rc::new(RefCell::new(VariableData::new()));
+        self.vars.insert(s, var.clone());
+        var
+    }
+
+    pub fn defvar_unresolved(&mut self, s : String) -> Variable {
+        let unresolved = Rc::new(RefCell::new(UnresolveData { id: None }));
+        let var = Rc::new(RefCell::new(VariableData::new_with_type(TypeInfo::new_with_type(Type::Unresolved(unresolved.clone())))));
+        {
+            let unresolved : &mut UnresolveData = &mut unresolved.borrow_mut();
+            unresolved.id = Some(var.clone());
+        }
         self.vars.insert(s, var.clone());
         var
     }

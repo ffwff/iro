@@ -1,5 +1,6 @@
 use std::fmt;
 use std::borrow::Borrow;
+use std::rc::Rc;
 use std::cell::RefCell;
 use std::any::Any;
 use std::collections::HashMap;
@@ -11,18 +12,19 @@ pub enum Error {
     InvalidLHS,
     IncompatibleType,
     UnknownIdentifier,
+    InvalidArguments,
 }
 
 pub type VisitorResult = Result<(), Error>;
 
 pub trait Visitor {
-    fn visit_program(&mut self, n: &Program) -> VisitorResult;
-    fn visit_defstmt(&mut self, b: &NodeBox, n: &DefStatement) -> VisitorResult;
-    fn visit_return(&mut self, b: &NodeBox, n: &ReturnExpr) -> VisitorResult;
-    fn visit_ifexpr(&mut self, b: &NodeBox, n: &IfExpr) -> VisitorResult;
+    fn visit_program(&mut self,  n: &Program) -> VisitorResult;
+    fn visit_defstmt(&mut self,  b: &NodeBox, n: &DefStatement) -> VisitorResult;
+    fn visit_return(&mut self,   b: &NodeBox, n: &ReturnExpr) -> VisitorResult;
+    fn visit_ifexpr(&mut self,   b: &NodeBox, n: &IfExpr) -> VisitorResult;
     fn visit_callexpr(&mut self, b: &NodeBox, n: &CallExpr) -> VisitorResult;
-    fn visit_binexpr(&mut self, b: &NodeBox, n: &BinExpr) -> VisitorResult;
-    fn visit_value(&mut self,   b: &NodeBox, n: &Value) -> VisitorResult;
+    fn visit_binexpr(&mut self,  b: &NodeBox, n: &BinExpr) -> VisitorResult;
+    fn visit_value(&mut self,    b: &NodeBox, n: &Value) -> VisitorResult;
 }
 
 pub trait Node {
@@ -69,7 +71,6 @@ pub struct NodeBox {
 }
 
 impl<'a> NodeBox {
-
     pub fn new<T: 'static>(node : T) -> Self where T : Node {
         NodeBox {
             node: Box::new(node),
@@ -122,7 +123,7 @@ impl Node for Value {
     debuggable!();
     as_any!();
 
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_value(b, self)
     }
 }
@@ -155,7 +156,7 @@ impl Node for BinExpr {
     debuggable!();
     as_any!();
 
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_binexpr(b, self)
     }
 }
@@ -171,7 +172,7 @@ impl Node for IfExpr {
     debuggable!();
     as_any!();
 
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_ifexpr(b, self)
     }
 }
@@ -186,7 +187,7 @@ impl Node for CallExpr {
     debuggable!();
     as_any!();
 
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_callexpr(b, self)
     }
 }
@@ -194,7 +195,7 @@ impl Node for CallExpr {
 #[derive(Debug)]
 pub struct DefStatement {
     pub id: String,
-    pub args: HashMap<String, NodeBox>,
+    pub args: HashMap<String, Option<NodeBox>>,
     pub exprs: Vec<NodeBox>,
 }
 
@@ -202,7 +203,7 @@ impl Node for DefStatement {
     debuggable!();
     as_any!();
 
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         visitor.visit_defstmt(b, self)
     }
 }

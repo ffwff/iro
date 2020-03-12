@@ -35,9 +35,10 @@ pub enum Tok {
 pub type Spanned<T> = (usize, T, usize);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LexError {
+pub enum Error {
     UnexpectedCharacter((usize, char)),
-    UnexpectedEof
+    UnexpectedEof,
+    DuplicateArguments,
 }
 
 pub struct Lexer<'input> {
@@ -72,7 +73,7 @@ macro_rules! mod_op {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Result<Spanned<Tok>, LexError>;
+    type Item = Result<Spanned<Tok>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -156,7 +157,7 @@ impl<'input> Iterator for Lexer<'input> {
                                 string.push(ch);
                             },
                             None => {
-                                return Some(Err(LexError::UnexpectedEof))
+                                return Some(Err(Error::UnexpectedEof))
                             }
                         }
                     }
@@ -179,7 +180,7 @@ impl<'input> Iterator for Lexer<'input> {
                     return Some(Ok((idx0, Tok::Newline, idx1)))
                 },
                 Some((_, ch)) if ch.is_whitespace() => continue,
-                Some(other) => return Some(Err(LexError::UnexpectedCharacter(other))),
+                Some(other) => return Some(Err(Error::UnexpectedCharacter(other))),
             }
         }
     }
