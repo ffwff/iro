@@ -53,7 +53,7 @@ impl TypeVisitor {
     fn copy_unresolved(dest : &Unresolved, src : TypeInfo) {
         let urd_rc : &RefCell<UnresolveData> = dest.borrow();
         let urd : &UnresolveData = &urd_rc.borrow();
-        let var_rcc : Variable = urd.id.clone().unwrap();
+        let var_rcc : Variable = urd.id.clone().unwrap().upgrade().unwrap();
         let var_rc : &RefCell<VariableData> = var_rcc.borrow();
         let var : &mut VariableData = &mut var_rc.borrow_mut();
         var.type_info = src.clone();

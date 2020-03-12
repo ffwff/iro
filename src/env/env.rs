@@ -29,7 +29,7 @@ impl Env {
         let var = Rc::new(RefCell::new(VariableData::new_with_type(TypeInfo::new_with_type(Type::Unresolved(unresolved.clone())))));
         {
             let unresolved : &mut UnresolveData = &mut unresolved.borrow_mut();
-            unresolved.id = Some(var.clone());
+            unresolved.id = Some(Rc::downgrade(&var));
         }
         self.vars.insert(s, var.clone());
         var

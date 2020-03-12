@@ -130,10 +130,22 @@ impl FunctionData {
 
 pub type Function = Rc<RefCell<FunctionData>>;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct UnresolveData {
-    pub id: Option<Variable>,
+    pub id: Option<Weak<RefCell<VariableData>>>,
 }
+
+impl std::cmp::PartialEq for UnresolveData {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.id, &other.id) {
+            (Some(a), Some(b)) => Weak::<_>::ptr_eq(a, b),
+            (None, None) => true,
+            (_, _) => false,
+        }
+    }
+}
+
+impl std::cmp::Eq for UnresolveData {}
 
 impl std::fmt::Debug for UnresolveData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

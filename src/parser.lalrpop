@@ -1,9 +1,9 @@
 use std::str::FromStr;
 use std::collections::HashMap;
 use lalrpop_util::ParseError;
-use iro::ast::*;
-use iro::lexer;
-use iro::types::types::TypeInfo;
+use crate::ast::*;
+use crate::lexer;
+use crate::types::types::TypeInfo;
 
 grammar;
 
