@@ -113,7 +113,7 @@ impl<'a> Visitor for TypeVisitor {
     }
 
     fn visit_ifexpr(&mut self, b: &NodeBox, n: &IfExpr) -> VisitorResult {
-        // If-true branch
+        // cond + If-true branch
         self.enter_scope();
         n.cond.visit(&n.cond, self)?;
         for node in &n.exprs {
@@ -148,6 +148,12 @@ impl<'a> Visitor for TypeVisitor {
             }
         }
 
+        // Skip type inference if the statement only has a condition
+        if n.exprs.is_empty() && n.elses.is_empty() {
+            b.type_info().replace(TypeInfo::new_with_type(Type::Nil));
+            return Ok(());
+        }
+
         for (id, var) in fscope.vars() {
             curscope.setvar(id.to_string(), var.clone());
             let var_b : &RefCell<VariableData> = var.borrow();
@@ -160,6 +166,18 @@ impl<'a> Visitor for TypeVisitor {
                 var_t.add_type(Type::Nil);
             }
         }
+
+        // Combine return values for 2 branches
+        let mut retval = TypeInfo::new();
+        if let Some(last) = n.exprs.last() {
+            let type_info : &TypeInfo = &last.type_info().borrow();
+            retval.add_type(type_info.typed().clone());
+        }
+        if let Some(last) = n.elses.last() {
+            let type_info : &TypeInfo = &last.type_info().borrow();
+            retval.add_type(type_info.typed().clone());
+        }
+        b.type_info().replace(retval);
 
         Ok(())
     }

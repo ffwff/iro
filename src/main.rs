@@ -52,10 +52,11 @@ mod tests {
         b
         ");
         assert!(type_visitor(&ast).is_ok());
-        assert_eq!(ast.exprs[1].type_info().borrow().typed(),
-                &Type::Union(hashset![Type::Integer, Type::String, Type::Nil]));
-        assert_eq!(ast.exprs[2].type_info().borrow().typed(),
-                &Type::Union(hashset![Type::Integer, Type::Nil]));
+        let a = Type::Union(hashset![Type::Integer, Type::String, Type::Nil]);
+        let b = Type::Union(hashset![Type::Integer, Type::Nil]);
+        assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Integer);
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &a);
+        assert_eq!(ast.exprs[2].type_info().borrow().typed(), &b);
     }
     
     #[test]
