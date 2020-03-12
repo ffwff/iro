@@ -74,6 +74,13 @@ impl TypeInfo {
         }
     }
 
+    pub fn as_function(&self) -> Option<Function> {
+        match &self.typed {
+            Type::Function(function) => Some(function.clone()),
+            _ => None
+        }
+    }
+
 }
 
 impl std::fmt::Debug for TypeInfo {

@@ -11,7 +11,7 @@ pub enum Error {
     InternalError,
     InvalidLHS,
     IncompatibleType,
-    UnknownIdentifier,
+    UnknownIdentifier(String),
     InvalidArguments,
 }
 

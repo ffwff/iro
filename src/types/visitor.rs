@@ -250,7 +250,7 @@ impl<'a> Visitor for TypeVisitor {
                     var.var.replace(Some(curvar.clone()));
                     info.replace(TypeInfo::from_variable(&curvar));
                 } else {
-                    return Err(ast::Error::UnknownIdentifier)
+                    return Err(ast::Error::UnknownIdentifier(var.id.clone()))
                 }
             }
             _ => return Err(ast::Error::InternalError),

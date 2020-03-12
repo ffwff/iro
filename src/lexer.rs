@@ -78,7 +78,7 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let curr_char = self.bump();
-            println!("char: {:?}", curr_char);
+            // println!("char: {:?}", curr_char);
             match curr_char {
                 Some((idx0, ch @ '0'..='9')) | Some((idx0, ch @ '-'))  => {
                     let negative = ch == '-';

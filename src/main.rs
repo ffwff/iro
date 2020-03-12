@@ -5,52 +5,96 @@ use iro::ast::Visitor;
 use iro::types::visitor::TypeVisitor;
 
 fn main() {
-    /* let input = "
-    def x(y)
-        z = y + 1
-        return z
-    end
-    "; */
-    /* let input = "
-    def x(y,z)
-        return y + z
-    end
-    ";  */
-    /* let input = "
-    def x(y)
-        return 1 + y
-    end
-    "; */
-    let input = "
-    def x(y,z)
-        if 10
-            return y
-        else
-            x = y + z
-            return x
-        end
-    end
-    ";
-    /* let input = "
-    if 10 == 10
-        a = 1
-        a + 2
-    else
-        a
-        if 10 == 10
-            a = \"a\"
-            a + \"a\"
-        end
-        b = 1
-    end
-    x
-    "; */
-    let tokenizer = lexer::Lexer::new(input);
-    let ast = parser::TopParser::new().parse(tokenizer).unwrap();
-    println!("{:#?}", ast.exprs);
-    let mut visitor = TypeVisitor::new();
-    if let Err(err) = visitor.visit_program(&ast) {
-        println!("error: {:#?}", err);
+}
+
+#[cfg(test)]
+#[macro_use] extern crate maplit;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::borrow::Borrow;
+    use iro::types::types::*;
+
+    fn parse_input(input: &str) -> ast::Program {
+        let tokenizer = lexer::Lexer::new(input);
+        parser::TopParser::new().parse(tokenizer).unwrap()
     }
-    println!("{:#?}", ast.exprs);
+
+    fn check_function_data<T>(boxed : &iro::ast::NodeBox, callback : T) where T : Fn(&FunctionData) {
+        let type_info : &TypeInfo = &boxed.type_info().borrow();
+        let function = type_info.as_function().unwrap();
+        let data_rc : &RefCell<FunctionData> = function.borrow();
+        let data : &FunctionData = &data_rc.borrow();
+        callback(data);
+    }
+
+    fn type_visitor(ast : &ast::Program) -> ast::VisitorResult {
+        let mut visitor = TypeVisitor::new();
+        visitor.visit_program(&ast)
+    }
+
+    #[test]
+    fn simple_ifs() {
+        let ast = parse_input("
+        if 10 == 10
+            a = 1
+            a + 2
+        else
+            if 10 == 10
+                a = \"a\"
+                a + \"a\"
+            end
+            b = 1
+        end
+        a
+        b
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(),
+                &Type::Union(hashset![Type::Integer, Type::String, Type::Nil]));
+        assert_eq!(ast.exprs[2].type_info().borrow().typed(),
+                &Type::Union(hashset![Type::Integer, Type::Nil]));
+    }
+    
+    #[test]
+    fn simple_def() {
+        let ast = parse_input("
+        def x(y)
+            return 1 + y
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| {
+            assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+    }
+    
+    #[test]
+    fn simple_binexpr_infer() {
+        let ast = parse_input("
+        def x(y)
+            return 1 + y
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| {
+            assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+    }
+    
+    #[test]
+    fn ident_infer() {
+        let ast = parse_input("
+        def x(y)
+            z = y + 1
+            return z
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| {
+            assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+    }
 }
