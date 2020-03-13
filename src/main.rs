@@ -87,7 +87,7 @@ mod tests {
     }
     
     #[test]
-    fn simple_def_if() {
+    fn simple_def_return_one_branch() {
         let ast = parse_input("
         def x(y)
             if 1 == 2
@@ -96,9 +96,44 @@ mod tests {
         end
         ");
         assert!(type_visitor(&ast).is_ok());
-        println!("{:#?}", ast);
+        check_function_data(&ast.exprs[0], |data| {
+            assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Integer, Type::Nil]));
+        });
+    }
+    
+    #[test]
+    fn simple_def_return_both_branch() {
+        let ast = parse_input("
+        def x(y)
+            if 1 == 2
+                return 1 + y
+            else
+                return 10
+            end
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+    }
+    
+    #[test]
+    fn simple_def_return_one_branch_nested() {
+        let ast = parse_input("
+        def x(y)
+            if 1 == 2
+                if 1 == 2
+                    return 1 + y
+                end
+            else
+                return 10
+            end
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| {
+            assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Integer, Type::Nil]));
         });
     }
     

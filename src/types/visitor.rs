@@ -10,6 +10,18 @@ use crate::env::env::Env;
 pub struct TypeVisitor {
     envs: Vec<Env>,
     funcs: HashMap<String, Function>,
+    has_unbranched_return: bool,
+}
+
+macro_rules! check_unbranched_return {
+    ($self:expr, $x:block) => {{
+        let _has_unbranched_return = $self.has_unbranched_return;
+        $self.has_unbranched_return = false;
+        $x
+        let _retval = $self.has_unbranched_return;
+        $self.has_unbranched_return = _has_unbranched_return;
+        _retval
+    }};
 }
 
 impl TypeVisitor {
@@ -17,6 +29,7 @@ impl TypeVisitor {
         TypeVisitor {
             envs: vec![],
             funcs: HashMap::new(),
+            has_unbranched_return: false,
         }
     }
 
@@ -136,6 +149,7 @@ impl<'a> Visitor for TypeVisitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult {
         for node in &n.exprs {
             if let Some(def) = node.downcast_ref::<DefStatement>() {
+                // Populate environment with arguments
                 self.enter_scope();
                 let mut args = Vec::new(); 
                 {
@@ -147,12 +161,31 @@ impl<'a> Visitor for TypeVisitor {
                 }
                 let function = Rc::new(RefCell::new(FunctionData::new(args)));
                 self.scope().function = Some(function.clone());
-                node.visit(&node, self)?;
+                
+                // Visit inner function statements
+                let mut has_direct_return = false;
+                for child in &def.exprs {
+                    child.visit(&child, self)?;
+                    if let Some(ifexpr) = child.downcast_ref::<IfExpr>() {
+                        if ifexpr.returntype.get() == IfReturnType::BothBranch {
+                            has_direct_return = true;
+                            break;
+                        }
+                    } else if let Some(_) = child.downcast_ref::<ReturnExpr>() {
+                        has_direct_return = true;
+                        break;
+                    }
+                }
+
+                // Leave the function!
                 self.leave_scope();
                 node.type_info().replace(TypeInfo::new_with_type(Type::Function(function.clone())));
                 {
                     let fdata_rc : &RefCell<FunctionData> = function.borrow();
                     let fdata : &mut FunctionData = &mut fdata_rc.borrow_mut();
+                    if !has_direct_return {
+                        fdata.returntype.add_type(Type::Nil);
+                    }
                     fdata.check_overloads();
                 }
                 self.funcs.insert(def.id.to_string(), function.clone());
@@ -170,13 +203,11 @@ impl<'a> Visitor for TypeVisitor {
     }
 
     fn visit_defstmt(&mut self, b: &NodeBox, n: &DefStatement) -> VisitorResult {
-        for node in &n.exprs {
-            node.visit(&node, self)?;
-        }
-        Ok(())
+        Err(Error::InternalError)
     }
 
     fn visit_return(&mut self, b: &NodeBox, n: &ReturnExpr) -> VisitorResult {
+        self.has_unbranched_return = true;
         n.expr.visit(&n.expr, self)?;
         let type_info = n.expr.type_info().borrow();
         b.type_info().replace(type_info.clone());
@@ -192,17 +223,21 @@ impl<'a> Visitor for TypeVisitor {
     fn visit_ifexpr(&mut self, b: &NodeBox, n: &IfExpr) -> VisitorResult {
         // cond + If-true branch
         self.enter_scope();
-        n.cond.visit(&n.cond, self)?;
-        for node in &n.exprs {
-            node.visit(&node, self)?;
-        }
+        let treturn = check_unbranched_return!(self, {
+            n.cond.visit(&n.cond, self)?;
+            for node in &n.exprs {
+                node.visit(&node, self)?;
+            }
+        });
         let tscope = self.leave_scope().unwrap();
 
         // If-false branch
         self.enter_scope();
-        for node in &n.elses {
-            node.visit(&node, self)?;
-        }
+        let freturn = check_unbranched_return!(self, {
+            for node in &n.elses {
+                node.visit(&node, self)?;
+            }
+        });
         let mut fscope = self.leave_scope().unwrap();
 
         // Combine two scopes and put it in the current one
@@ -228,33 +263,41 @@ impl<'a> Visitor for TypeVisitor {
         // Skip type inference if the statement only has a condition
         if n.exprs.is_empty() && n.elses.is_empty() {
             b.type_info().replace(TypeInfo::new_with_type(Type::Nil));
-            return Ok(());
+        } else {
+            for (id, var) in fscope.vars() {
+                curscope.setvar(id.to_string(), var.clone());
+                let var_b : &RefCell<VariableData> = var.borrow();
+                let var_t : &mut TypeInfo = &mut var_b.borrow_mut().type_info;
+                if let Some(altvar) = tscope.vars().get(id) {
+                    let altvar_b : &RefCell<VariableData> = altvar.borrow();
+                    let altvar_t : &TypeInfo = &altvar_b.borrow().type_info;
+                    var_t.add_type(altvar_t.typed().clone());
+                } else {
+                    var_t.add_type(Type::Nil);
+                }
+            }
+
+            // Combine return values for 2 branches
+            let mut retval = TypeInfo::new();
+            if let Some(last) = n.exprs.last() {
+                let type_info : &TypeInfo = &last.type_info().borrow();
+                retval.add_type(type_info.typed().clone());
+            }
+            if let Some(last) = n.elses.last() {
+                let type_info : &TypeInfo = &last.type_info().borrow();
+                retval.add_type(type_info.typed().clone());
+            }
+            b.type_info().replace(retval);
         }
 
-        for (id, var) in fscope.vars() {
-            curscope.setvar(id.to_string(), var.clone());
-            let var_b : &RefCell<VariableData> = var.borrow();
-            let var_t : &mut TypeInfo = &mut var_b.borrow_mut().type_info;
-            if let Some(altvar) = tscope.vars().get(id) {
-                let altvar_b : &RefCell<VariableData> = altvar.borrow();
-                let altvar_t : &TypeInfo = &altvar_b.borrow().type_info;
-                var_t.add_type(altvar_t.typed().clone());
+        if treturn || freturn {
+            if treturn != freturn {
+                n.returntype.replace(IfReturnType::OneBranch);
             } else {
-                var_t.add_type(Type::Nil);
+                n.returntype.replace(IfReturnType::BothBranch);
+                self.has_unbranched_return = true;
             }
         }
-
-        // Combine return values for 2 branches
-        let mut retval = TypeInfo::new();
-        if let Some(last) = n.exprs.last() {
-            let type_info : &TypeInfo = &last.type_info().borrow();
-            retval.add_type(type_info.typed().clone());
-        }
-        if let Some(last) = n.elses.last() {
-            let type_info : &TypeInfo = &last.type_info().borrow();
-            retval.add_type(type_info.typed().clone());
-        }
-        b.type_info().replace(retval);
 
         Ok(())
     }

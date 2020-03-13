@@ -58,10 +58,10 @@ ReturnExpr: NodeBox = {
 // If expression
 IfExpr: NodeBox = {
     "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "else" NL+ <elses:Expr*> "end" => {
-        NodeBox::new(IfExpr { cond, exprs, elses })
+        NodeBox::new(IfExpr::new( cond, exprs, elses ))
     },
     "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(IfExpr { cond, exprs, elses: vec![] })
+        NodeBox::new(IfExpr::new( cond, exprs, vec![] ))
     },
     CallExpr,
 };

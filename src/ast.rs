@@ -1,9 +1,7 @@
 use std::fmt;
 use std::borrow::Borrow;
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::cell::{RefCell, Cell};
 use std::any::Any;
-use std::collections::HashMap;
 use crate::types::types::{Variable, TypeInfo};
 
 #[derive(Debug)]
@@ -187,11 +185,30 @@ impl Node for BinExpr {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum IfReturnType {
+    None,
+    OneBranch,
+    BothBranch,
+}
+
 #[derive(Debug)]
 pub struct IfExpr {
     pub cond:  NodeBox,
     pub exprs: Vec<NodeBox>,
     pub elses: Vec<NodeBox>,
+    pub returntype: Cell<IfReturnType>,
+}
+
+impl IfExpr {
+    pub fn new(cond : NodeBox, exprs: Vec<NodeBox>, elses: Vec<NodeBox>) -> Self {
+        IfExpr {
+            cond,
+            exprs,
+            elses,
+            returntype: Cell::new(IfReturnType::None)
+        }
+    }
 }
 
 impl Node for IfExpr {
