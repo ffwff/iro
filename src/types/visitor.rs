@@ -32,7 +32,7 @@ impl TypeVisitor {
             funcs: HashMap::new(),
             types: hashmap!{
                 "String".into() => TypeInfo::new_with_type(Type::String),
-                "Integer".into() => TypeInfo::new_with_type(Type::Integer),
+                "Int".into() => TypeInfo::new_with_type(Type::Int),
             },
             has_unbranched_return: false,
         }
@@ -405,8 +405,8 @@ impl<'a> Visitor for TypeVisitor {
     fn visit_value(&mut self, b : &NodeBox, n: &Value) -> VisitorResult {
         let info = b.type_info();
         match n {
-            Value::Integer(_) => {
-                info.replace(TypeInfo::new_with_type(Type::Integer));
+            Value::Int(_) => {
+                info.replace(TypeInfo::new_with_type(Type::Int));
             }
             Value::Float(_) => {
                 info.replace(TypeInfo::new_with_type(Type::Float));

@@ -11,7 +11,7 @@ fn main() {
             end
         end
     end
-    ");
+    ").unwrap();
     utils::type_visitor(&ast).unwrap();
     println!("{}", ast.exprs[0].type_info().borrow());
 }
@@ -22,26 +22,30 @@ mod utils {
     use iro::parser;
     use iro::ast::Visitor;
     use iro::types::visitor::TypeVisitor;
-    use std::cell::RefCell;
-    use std::borrow::Borrow;
-    use iro::types::types::*;
+    use iro::types::types::{TypeInfo, FunctionData};
 
-    pub fn parse_input(input: &str) -> ast::Program {
+    pub type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, lexer::Error>;
+    pub type ParseResult = Result<ast::Program, ParseError>;
+
+    pub fn parse_input(input: &str) -> ParseResult {
         let tokenizer = lexer::Lexer::new(input);
-        parser::TopParser::new().parse(tokenizer).unwrap()
-    }
-
-    pub fn check_function_data<T>(boxed : &iro::ast::NodeBox, callback : T) where T : Fn(&FunctionData) {
-        let type_info : &TypeInfo = &boxed.type_info().borrow();
-        let function = type_info.as_function().unwrap();
-        let data_rc : &RefCell<FunctionData> = function.borrow();
-        let data : &FunctionData = &data_rc.borrow();
-        callback(data);
+        parser::TopParser::new().parse(tokenizer)
     }
 
     pub fn type_visitor(ast : &ast::Program) -> ast::VisitorResult {
         let mut visitor = TypeVisitor::new();
         visitor.visit_program(&ast)
+    }
+
+    #[cfg(test)]
+    pub fn check_function_data<T>(boxed : &iro::ast::NodeBox, callback : T) where T : Fn(&FunctionData) {
+        use std::cell::RefCell;
+        use std::borrow::Borrow;
+        let type_info : &TypeInfo = &boxed.type_info().borrow();
+        let function = type_info.as_function().unwrap();
+        let data_rc : &RefCell<FunctionData> = function.borrow();
+        let data : &FunctionData = &data_rc.borrow();
+        callback(data);
     }
 }
 
@@ -67,11 +71,11 @@ mod type_tests {
         end
         a
         b
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
-        let a = Type::Union(hashset![Type::Integer, Type::String, Type::Nil]);
-        let b = Type::Union(hashset![Type::Integer, Type::Nil]);
-        assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Integer);
+        let a = Type::Union(hashset![Type::Int, Type::String, Type::Nil]);
+        let b = Type::Union(hashset![Type::Int, Type::Nil]);
+        assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Int);
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &a);
         assert_eq!(ast.exprs[2].type_info().borrow().typed(), &b);
     }
@@ -84,7 +88,7 @@ mod type_tests {
         end
         if 10 == 10
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Nil);
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Nil);
@@ -101,9 +105,9 @@ mod type_tests {
         else
             10
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
-        let typed = Type::Union(hashset![Type::Integer, Type::Nil]);
+        let typed = Type::Union(hashset![Type::Int, Type::Nil]);
         assert_eq!(ast.exprs[0].type_info().borrow().typed(), &typed);
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &typed);
     }
@@ -114,10 +118,10 @@ mod type_tests {
         def x(y)
             return 1 + y
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
-            assert_eq!(data.returntype.typed(), &Type::Integer);
+            assert_eq!(data.returntype.typed(), &Type::Int);
         });
     }
     
@@ -129,10 +133,10 @@ mod type_tests {
                 return 1 + y
             end
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
-            assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Integer, Type::Nil]));
+            assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Int, Type::Nil]));
         });
     }
     
@@ -146,10 +150,10 @@ mod type_tests {
                 return 10
             end
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
-            assert_eq!(data.returntype.typed(), &Type::Integer);
+            assert_eq!(data.returntype.typed(), &Type::Int);
         });
     }
     
@@ -165,25 +169,25 @@ mod type_tests {
                 return 10
             end
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
-            assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Integer, Type::Nil]));
+            assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Int, Type::Nil]));
         });
     }
     
     #[test]
     fn simple_def_typed_arguments() {
         let ast = parse_input("
-        def x(y : Integer)
+        def x(y : Int)
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
             {
                 let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
                 let vdata = &vdata_rc.borrow();
-                assert_eq!(vdata.type_info.typed(), &Type::Integer);
+                assert_eq!(vdata.type_info.typed(), &Type::Int);
             }
         });
     }
@@ -194,7 +198,7 @@ mod type_tests {
         def x(y : Integer)
             y + \"A\"
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_err());
     }
     
@@ -204,10 +208,10 @@ mod type_tests {
         def x(y)
             return 1 + y
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
-            assert_eq!(data.returntype.typed(), &Type::Integer);
+            assert_eq!(data.returntype.typed(), &Type::Int);
         });
     }
     
@@ -218,10 +222,10 @@ mod type_tests {
             z = y + 1
             return z
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
-            assert_eq!(data.returntype.typed(), &Type::Integer);
+            assert_eq!(data.returntype.typed(), &Type::Int);
         });
     }
     
@@ -232,9 +236,9 @@ mod type_tests {
             return y + 1
         end
         x(10)
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
-        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Integer);
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Int);
     }
     
     #[test]
@@ -246,23 +250,23 @@ mod type_tests {
         def g(y)
             return f(y)
         end
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| { 
             {
                 let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
                 let vdata = &vdata_rc.borrow();
-                assert_eq!(vdata.type_info.typed(), &Type::Integer);
+                assert_eq!(vdata.type_info.typed(), &Type::Int);
             }
-            assert_eq!(data.returntype.typed(), &Type::Integer);
+            assert_eq!(data.returntype.typed(), &Type::Int);
         });
         check_function_data(&ast.exprs[1], |data| { 
             {
                 let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
                 let vdata = &vdata_rc.borrow();
-                assert_eq!(vdata.type_info.typed(), &Type::Integer);
+                assert_eq!(vdata.type_info.typed(), &Type::Int);
             }
-            assert_eq!(data.returntype.typed(), &Type::Integer);
+            assert_eq!(data.returntype.typed(), &Type::Int);
         });
     }
     
@@ -273,17 +277,17 @@ mod type_tests {
             return x+y
         end
         f(10,10)
-        ");
+        ").unwrap();
         assert!(type_visitor(&ast).is_ok());
         check_function_data(&ast.exprs[0], |data| {
             assert!(data.overloads.is_some());
             let overloads = data.overloads.as_ref().unwrap();
             assert!(!overloads.is_empty());
             let overload = overloads.iter().next().unwrap();
-            assert_eq!(overload.args[0].typed(), &Type::Integer);
-            assert_eq!(overload.args[1].typed(), &Type::Integer);
-            assert_eq!(overload.returntype.typed(), &Type::Integer);
+            assert_eq!(overload.args[0].typed(), &Type::Int);
+            assert_eq!(overload.args[1].typed(), &Type::Int);
+            assert_eq!(overload.returntype.typed(), &Type::Int);
         });
-        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Integer);
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Int);
     }
 }

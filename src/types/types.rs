@@ -215,7 +215,7 @@ pub enum Type {
     Untyped,
     Nil,
     String,
-    Integer,
+    Int,
     Float,
     Identifier(Variable),
     Unresolved(Unresolved),
@@ -247,7 +247,7 @@ impl std::fmt::Display for Type {
             Type::Untyped => write!(f, "Untyped"),
             Type::Nil => write!(f, "Nil"),
             Type::String => write!(f, "String"),
-            Type::Integer => write!(f, "Integer"),
+            Type::Int => write!(f, "Integer"),
             Type::Float => write!(f, "Float"),
             Type::Identifier(var) => write!(f, "Identifier ({:p})", var.as_ptr()),
             Type::Unresolved(var) => write!(f, "Unresolved ({:p})", var.as_ptr()),
@@ -307,7 +307,6 @@ impl std::fmt::Display for Type {
                             std::char::from_u32(template_idx + 'T' as u32).unwrap())
                     }
                 } else {
-                    let mut output = String::new();
                     write!(f, "{}", func.returntype.typed())
                 }
             }
@@ -322,7 +321,7 @@ impl Hash for Type {
             Type::Untyped => 0.hash(state),
             Type::Nil     => 1.hash(state),
             Type::String  => 2.hash(state),
-            Type::Integer => 3.hash(state),
+            Type::Int     => 3.hash(state),
             Type::Float   => 4.hash(state),
             &Type::Identifier(var) => var.as_ptr().hash(state),
             &Type::Unresolved(var) => var.as_ptr().hash(state),

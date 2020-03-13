@@ -138,7 +138,7 @@ impl std::fmt::Debug for Identifier {
 
 #[derive(Debug)]
 pub enum Value {
-    Integer(i64),
+    Int(i32),
     Float(f64),
     String(String),
     Identifier(Identifier),

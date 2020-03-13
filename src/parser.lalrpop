@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::rc::Rc;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use lalrpop_util::ParseError;
 use crate::ast::*;
 use crate::lexer;
@@ -127,7 +128,7 @@ Term: NodeBox = {
 };
 
 Literal: Value = {
-    <Int> => Value::Integer(<>),
+    <Int> => Value::Int(<>.try_into().unwrap()),
     <String> => Value::String(<>),
     <Identifier> => Value::Identifier(Identifier::new(Rc::from(<>))),
 };
