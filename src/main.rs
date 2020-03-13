@@ -1,27 +1,25 @@
-use iro::ast;
-use iro::lexer;
-use iro::parser;
-use iro::ast::Visitor;
-use iro::types::visitor::TypeVisitor;
 
 #[macro_use] extern crate maplit;
 
 fn main() {
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod utils {
+    use iro::ast;
+    use iro::lexer;
+    use iro::parser;
+    use iro::ast::Visitor;
+    use iro::types::visitor::TypeVisitor;
     use std::cell::RefCell;
     use std::borrow::Borrow;
     use iro::types::types::*;
 
-    fn parse_input(input: &str) -> ast::Program {
+    pub fn parse_input(input: &str) -> ast::Program {
         let tokenizer = lexer::Lexer::new(input);
         parser::TopParser::new().parse(tokenizer).unwrap()
     }
 
-    fn check_function_data<T>(boxed : &iro::ast::NodeBox, callback : T) where T : Fn(&FunctionData) {
+    pub fn check_function_data<T>(boxed : &iro::ast::NodeBox, callback : T) where T : Fn(&FunctionData) {
         let type_info : &TypeInfo = &boxed.type_info().borrow();
         let function = type_info.as_function().unwrap();
         let data_rc : &RefCell<FunctionData> = function.borrow();
@@ -29,10 +27,22 @@ mod tests {
         callback(data);
     }
 
-    fn type_visitor(ast : &ast::Program) -> ast::VisitorResult {
+    pub fn type_visitor(ast : &ast::Program) -> ast::VisitorResult {
         let mut visitor = TypeVisitor::new();
         visitor.visit_program(&ast)
     }
+}
+
+#[cfg(test)]
+mod type_tests {
+    use crate::utils::*;
+    
+    
+    
+    
+    use std::cell::RefCell;
+    use std::borrow::Borrow;
+    use iro::types::types::*;
 
     #[test]
     fn simple_ifs() {
