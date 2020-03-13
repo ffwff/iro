@@ -4,11 +4,10 @@ use iro::parser;
 use iro::ast::Visitor;
 use iro::types::visitor::TypeVisitor;
 
+#[macro_use] extern crate maplit;
+
 fn main() {
 }
-
-#[cfg(test)]
-#[macro_use] extern crate maplit;
 
 #[cfg(test)]
 mod tests {
@@ -60,7 +59,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_if() {
+    fn if_with_two_empty_branch() {
         let ast = parse_input("
         if 10 == 10
         else
@@ -71,6 +70,24 @@ mod tests {
         assert!(type_visitor(&ast).is_ok());
         assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Nil);
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Nil);
+    }
+
+    #[test]
+    fn if_with_one_empty_branch() {
+        let ast = parse_input("
+        if 10 == 10
+            10
+        else
+        end
+        if 10 == 10
+        else
+            10
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        let typed = Type::Union(hashset![Type::Integer, Type::Nil]);
+        assert_eq!(ast.exprs[0].type_info().borrow().typed(), &typed);
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &typed);
     }
     
     #[test]
@@ -135,6 +152,32 @@ mod tests {
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Integer, Type::Nil]));
         });
+    }
+    
+    #[test]
+    fn simple_def_typed_arguments() {
+        let ast = parse_input("
+        def x(y : Integer)
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| {
+            {
+                let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
+                let vdata = &vdata_rc.borrow();
+                assert_eq!(vdata.type_info.typed(), &Type::Integer);
+            }
+        });
+    }
+    
+    #[test]
+    fn simple_def_typed_arguments_check() {
+        let ast = parse_input("
+        def x(y : Integer)
+            y + \"A\"
+        end
+        ");
+        assert!(type_visitor(&ast).is_err());
     }
     
     #[test]

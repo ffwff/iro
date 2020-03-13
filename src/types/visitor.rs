@@ -10,6 +10,7 @@ use crate::env::env::Env;
 pub struct TypeVisitor {
     envs: Vec<Env>,
     funcs: HashMap<String, Function>,
+    types: HashMap<String, TypeInfo>,
     has_unbranched_return: bool,
 }
 
@@ -29,6 +30,10 @@ impl TypeVisitor {
         TypeVisitor {
             envs: vec![],
             funcs: HashMap::new(),
+            types: hashmap!{
+                "String".to_string() => TypeInfo::new_with_type(Type::String),
+                "Integer".to_string() => TypeInfo::new_with_type(Type::Integer),
+            },
             has_unbranched_return: false,
         }
     }
@@ -153,10 +158,16 @@ impl<'a> Visitor for TypeVisitor {
                 self.enter_scope();
                 let mut args = Vec::new(); 
                 {
-                    let scope = self.scope();
-                    for (id, _) in &def.args {
-                        let var = scope.defvar_unresolved(id.to_string());
-                        args.push((id.to_string(), var));
+                    for (id, type_id) in &def.args {
+                        if let Some(type_id) = type_id {
+                            type_id.node().visit(&type_id, self)?;
+                            let var = Rc::new(RefCell::new(VariableData::new_with_type(type_id.type_info().borrow().clone())));
+                            self.scope().setvar(id.to_string(), var.clone());
+                            args.push((id.to_string(), var));
+                        } else {
+                            let var = self.scope().defvar_unresolved(id.to_string());
+                            args.push((id.to_string(), var));
+                        }
                     }
                 }
                 let function = Rc::new(RefCell::new(FunctionData::new(args)));
@@ -282,10 +293,14 @@ impl<'a> Visitor for TypeVisitor {
             if let Some(last) = n.exprs.last() {
                 let type_info : &TypeInfo = &last.type_info().borrow();
                 retval.add_type(type_info.typed().clone());
+            } else {
+                retval.add_type(Type::Nil);
             }
             if let Some(last) = n.elses.last() {
                 let type_info : &TypeInfo = &last.type_info().borrow();
                 retval.add_type(type_info.typed().clone());
+            } else {
+                retval.add_type(Type::Nil);
             }
             b.type_info().replace(retval);
         }
@@ -408,6 +423,19 @@ impl<'a> Visitor for TypeVisitor {
                 }
             }
             _ => return Err(ast::Error::InternalError),
+        }
+        Ok(())
+    }
+
+    fn visit_typeid(&mut self, b: &NodeBox, n: &TypeId) -> VisitorResult {
+        match &n {
+            TypeId::Identifier(s) => {
+                if let Some(type_info) = self.types.get(s) {
+                    b.type_info().replace(type_info.clone());
+                } else {
+                    return Err(ast::Error::UnknownIdentifier(s.to_string()))
+                }
+            }
         }
         Ok(())
     }

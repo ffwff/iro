@@ -133,7 +133,7 @@ Literal: Value = {
 
 // Types
 Type: NodeBox = {
-    <Identifier> => NodeBox::new(Value::Identifier(Identifier::new(<>))),
+    <Identifier> => NodeBox::new(TypeId::Identifier(<>)),
 };
 
 

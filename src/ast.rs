@@ -25,6 +25,7 @@ pub trait Visitor {
     fn visit_callexpr(&mut self, b: &NodeBox, n: &CallExpr) -> VisitorResult;
     fn visit_binexpr(&mut self,  b: &NodeBox, n: &BinExpr) -> VisitorResult;
     fn visit_value(&mut self,    b: &NodeBox, n: &Value) -> VisitorResult;
+    fn visit_typeid(&mut self,   b: &NodeBox, n: &TypeId) -> VisitorResult;
 }
 
 pub trait Node {
@@ -153,6 +154,20 @@ impl Node for Value {
 }
 
 #[derive(Debug)]
+pub enum TypeId {
+    Identifier(String),
+}
+
+impl Node for TypeId {
+    debuggable!();
+    as_any!();
+
+    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+        visitor.visit_typeid(b, self)
+    }
+}
+
+#[derive(Debug)]
 pub enum BinOp {
     Add,
     Sub,
@@ -240,6 +255,7 @@ pub struct DefStatement {
     pub id: String,
     pub args: Vec<(String, Option<NodeBox>)>,
     pub exprs: Vec<NodeBox>,
+    // pub return_type: Option<NodeBox>,
 }
 
 impl Node for DefStatement {

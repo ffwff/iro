@@ -214,6 +214,7 @@ pub enum Type {
     Unresolved(Unresolved),
     Union(HashSet<Type>),
     Function(Function),
+    Type(Box<Type>),
 }
 
 impl Hash for Type {
@@ -227,6 +228,7 @@ impl Hash for Type {
             &Type::Identifier(var) => var.as_ptr().hash(state),
             &Type::Unresolved(var) => var.as_ptr().hash(state),
             &Type::Function(var) => var.as_ptr().hash(state),
+            &Type::Type(var) => var.hash(state),
             &Type::Union(set) => {
                 for typed in set {
                     typed.hash(state);

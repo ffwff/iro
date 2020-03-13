@@ -9,9 +9,7 @@ build = "build.rs"
 lalrpop-util = "0.18.1"
 regex = "1"
 unicode-xid = "0.1.0"
+maplit = "1.0.2"
 
 [build-dependencies]
 lalrpop = "0.18.1"
-
-[dev-dependencies]
-maplit = "1.0.2"
