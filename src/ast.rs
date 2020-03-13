@@ -1,6 +1,7 @@
 use std::fmt;
 use std::borrow::Borrow;
 use std::cell::{RefCell, Cell};
+use std::rc::Rc;
 use std::any::Any;
 use crate::types::types::{Variable, TypeInfo};
 
@@ -10,7 +11,7 @@ pub enum Error {
     InvalidLHS,
     IncompatibleType,
     CannotInfer,
-    UnknownIdentifier(String),
+    UnknownIdentifier(Rc<str>),
     NotEnoughArguments,
     InvalidArguments,
 }
@@ -112,12 +113,12 @@ impl Node for Program {
 }
 
 pub struct Identifier {
-    pub id : String,
+    pub id : Rc<str>,
     pub var : RefCell<Option<Variable>>,
 }
 
 impl Identifier {
-    pub fn new(id : String) -> Self {
+    pub fn new(id : Rc<str>) -> Self {
         Identifier {
             id,
             var: RefCell::new(None),
@@ -155,7 +156,7 @@ impl Node for Value {
 
 #[derive(Debug)]
 pub enum TypeId {
-    Identifier(String),
+    Identifier(Rc<str>),
 }
 
 impl Node for TypeId {
@@ -252,8 +253,8 @@ impl Node for CallExpr {
 
 #[derive(Debug)]
 pub struct DefStatement {
-    pub id: String,
-    pub args: Vec<(String, Option<NodeBox>)>,
+    pub id: Rc<str>,
+    pub args: Vec<(Rc<str>, Option<NodeBox>)>,
     pub exprs: Vec<NodeBox>,
     // pub return_type: Option<NodeBox>,
 }

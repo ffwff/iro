@@ -9,8 +9,8 @@ use crate::env::env::Env;
 
 pub struct TypeVisitor {
     envs: Vec<Env>,
-    funcs: HashMap<String, Function>,
-    types: HashMap<String, TypeInfo>,
+    funcs: HashMap<Rc<str>, Function>,
+    types: HashMap<Rc<str>, TypeInfo>,
     has_unbranched_return: bool,
 }
 
@@ -31,8 +31,8 @@ impl TypeVisitor {
             envs: vec![],
             funcs: HashMap::new(),
             types: hashmap!{
-                "String".to_string() => TypeInfo::new_with_type(Type::String),
-                "Integer".to_string() => TypeInfo::new_with_type(Type::Integer),
+                "String".into() => TypeInfo::new_with_type(Type::String),
+                "Integer".into() => TypeInfo::new_with_type(Type::Integer),
             },
             has_unbranched_return: false,
         }
@@ -162,10 +162,10 @@ impl<'a> Visitor for TypeVisitor {
                         if let Some(type_id) = type_id {
                             type_id.node().visit(&type_id, self)?;
                             let var = Rc::new(RefCell::new(VariableData::new_with_type(type_id.type_info().borrow().clone())));
-                            self.scope().setvar(id.to_string(), var.clone());
+                            self.scope().setvar(id.clone(), var.clone());
                             args.push((id.to_string(), var));
                         } else {
-                            let var = self.scope().defvar_unresolved(id.to_string());
+                            let var = self.scope().defvar_unresolved(id.clone());
                             args.push((id.to_string(), var));
                         }
                     }
@@ -199,7 +199,7 @@ impl<'a> Visitor for TypeVisitor {
                     }
                     fdata.check_overloads();
                 }
-                self.funcs.insert(def.id.to_string(), function.clone());
+                self.funcs.insert(def.id.clone(), function.clone());
             }
         }
         
@@ -254,7 +254,7 @@ impl<'a> Visitor for TypeVisitor {
         // Combine two scopes and put it in the current one
         let curscope = self.scope();
         for (id, var) in tscope.vars() {
-            curscope.setvar(id.to_string(), var.clone());
+            curscope.setvar(id.clone(), var.clone());
             let var_b : &RefCell<VariableData> = var.borrow();
             let var_t : &mut TypeInfo = &mut var_b.borrow_mut().type_info;
             let has_var = if let Some(altvar) = fscope.vars().get(id) {
@@ -276,7 +276,7 @@ impl<'a> Visitor for TypeVisitor {
             b.type_info().replace(TypeInfo::new_with_type(Type::Nil));
         } else {
             for (id, var) in fscope.vars() {
-                curscope.setvar(id.to_string(), var.clone());
+                curscope.setvar(id.clone(), var.clone());
                 let var_b : &RefCell<VariableData> = var.borrow();
                 let var_t : &mut TypeInfo = &mut var_b.borrow_mut().type_info;
                 if let Some(altvar) = tscope.vars().get(id) {
@@ -433,7 +433,7 @@ impl<'a> Visitor for TypeVisitor {
                 if let Some(type_info) = self.types.get(s) {
                     b.type_info().replace(type_info.clone());
                 } else {
-                    return Err(ast::Error::UnknownIdentifier(s.to_string()))
+                    return Err(ast::Error::UnknownIdentifier(s.clone()))
                 }
             }
         }

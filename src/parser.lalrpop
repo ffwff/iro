@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::rc::Rc;
 use std::collections::HashMap;
 use lalrpop_util::ParseError;
 use crate::ast::*;
@@ -31,19 +32,19 @@ StandaloneExpr = ReturnExpr;
 // Function definitions
 DefStatement: NodeBox = {
     "def" <id:Identifier> "(" <args:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(DefStatement { id, args, exprs })
+        NodeBox::new(DefStatement { id: Rc::from(id), args, exprs })
     },
     "def" <id:Identifier> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(DefStatement { id, args : vec![], exprs })
+        NodeBox::new(DefStatement { id: Rc::from(id), args : vec![], exprs })
     },
 };
 
-DefArgument: (String, Option<NodeBox>) = {
+DefArgument: (Rc<str>, Option<NodeBox>) = {
     <id:Identifier> => {
-        (id, None)
+        (Rc::from(id), None)
     },
     <id:Identifier> ":" <ty:Type> => {
-        (id, Some(ty))
+        (Rc::from(id), Some(ty))
     },
 };
 
@@ -128,12 +129,12 @@ Term: NodeBox = {
 Literal: Value = {
     <Int> => Value::Integer(<>),
     <String> => Value::String(<>),
-    <Identifier> => Value::Identifier(Identifier::new(<>)),
+    <Identifier> => Value::Identifier(Identifier::new(Rc::from(<>))),
 };
 
 // Types
 Type: NodeBox = {
-    <Identifier> => NodeBox::new(TypeId::Identifier(<>)),
+    <Identifier> => NodeBox::new(TypeId::Identifier(Rc::from(<>))),
 };
 
 

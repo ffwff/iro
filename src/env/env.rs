@@ -5,7 +5,7 @@ use crate::types::types::*;
 
 #[derive(Debug)]
 pub struct Env {
-    vars: HashMap<String, Variable>,
+    vars: HashMap<Rc<str>, Variable>,
     pub function: Option<Function>,
 }
 
@@ -18,13 +18,13 @@ impl Env {
         }
     }
 
-    pub fn defvar(&mut self, s : String) -> Variable {
+    pub fn defvar(&mut self, s : Rc<str>) -> Variable {
         let var = Rc::new(RefCell::new(VariableData::new()));
         self.vars.insert(s, var.clone());
         var
     }
 
-    pub fn defvar_unresolved(&mut self, s : String) -> Variable {
+    pub fn defvar_unresolved(&mut self, s : Rc<str>) -> Variable {
         let unresolved = Rc::new(RefCell::new(UnresolveData { id: None }));
         let var = Rc::new(RefCell::new(VariableData::new_with_type(TypeInfo::new_with_type(Type::Unresolved(unresolved.clone())))));
         {
@@ -35,7 +35,7 @@ impl Env {
         var
     }
 
-    pub fn setvar(&mut self, s : String, new: Variable) {
+    pub fn setvar(&mut self, s : Rc<str>, new: Variable) {
         self.vars.insert(s, new);
     }
 
@@ -43,11 +43,11 @@ impl Env {
         self.vars.get(s).cloned()
     }
 
-    pub fn vars(&self) -> &HashMap<String, Variable> {
+    pub fn vars(&self) -> &HashMap<Rc<str>, Variable> {
         &self.vars
     }
 
-    pub fn mut_vars(&mut self) -> &mut HashMap<String, Variable> {
+    pub fn mut_vars(&mut self) -> &mut HashMap<Rc<str>, Variable> {
         &mut self.vars
     }
 
