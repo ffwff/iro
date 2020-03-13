@@ -59,7 +59,13 @@ impl TypeVisitor {
         var.type_info = src.clone();
     }
 
-    fn derive_function(fdata: &mut FunctionData, args: &Vec<NodeBox>) -> Result<TypeInfo, Error> {
+    fn derive_overload(fdata: &mut FunctionData, args: &Vec<NodeBox>) -> Result<TypeInfo, Error> {
+        let mut overload =
+            if fdata.overloads.is_some() {
+                Some(FunctionOverload::new())
+            } else {
+                None
+            };
         for ((_, var), boxed) in fdata.args.iter().zip(args) {
             // println!("{:#?} {:#?}", var, boxed);
             let vdata_rc : &RefCell<VariableData> = var.borrow();
@@ -69,27 +75,30 @@ impl TypeVisitor {
                 } else {
                     false
                 };
+            let vdata : &VariableData = &vdata_rc.borrow();
             if derive_caller {
-                let vdata : &VariableData = &vdata_rc.borrow();
                 if let Type::Unresolved(_) = vdata.type_info.typed() {
                     // The two pairs are unresolved, can't do anything here!
                     return Err(Error::CannotInfer);
                 } else {
-                    // Infer call argument's type if the function already has a type
+                    // Infer caller argument's type if the function already has a type
                     if let Type::Unresolved(resolved) = &boxed.type_info().borrow().typed() {
                         TypeVisitor::copy_unresolved(resolved, vdata.type_info.clone())
                     }
                     boxed.type_info().replace(vdata.type_info.clone());
                 }
             } else  {
-                let vdata : &VariableData = &vdata_rc.borrow();
                 let type_info : &TypeInfo = &boxed.type_info().borrow();
                 if let Type::Unresolved(_) = &vdata.type_info.typed() {
-                    println!("{:#?} {:#?}", vdata.type_info, type_info);
-                    unimplemented!()
+                    let overload = overload.as_mut().unwrap();
+                    overload.args.push(type_info.clone());
+                    continue;
                 } else if &vdata.type_info != type_info {
                     return Err(Error::IncompatibleType);
                 }
+            }
+            if let Some(overload) = overload.as_mut() {
+                overload.args.push(vdata.type_info.clone());
             }
         }
         let returntype = if let Type::Unresolved(unresolved) = fdata.returntype.typed() {
@@ -106,6 +115,9 @@ impl TypeVisitor {
                 }
             }
             if let Some(returntype) = returntype {
+                if let Some(overload) = overload.as_mut() {
+                    overload.returntype = returntype.clone();
+                }
                 returntype
             } else {
                 return Err(Error::InvalidArguments);
@@ -113,6 +125,9 @@ impl TypeVisitor {
         } else {
             fdata.returntype.clone()
         };
+        if let Some(overload) = overload {
+            fdata.overloads.as_mut().unwrap().insert(overload);
+        }
         Ok(returntype)
     }
 }
@@ -135,6 +150,11 @@ impl<'a> Visitor for TypeVisitor {
                 node.visit(&node, self)?;
                 self.leave_scope();
                 node.type_info().replace(TypeInfo::new_with_type(Type::Function(function.clone())));
+                {
+                    let fdata_rc : &RefCell<FunctionData> = function.borrow();
+                    let fdata : &mut FunctionData = &mut fdata_rc.borrow_mut();
+                    fdata.check_overloads();
+                }
                 self.funcs.insert(def.id.to_string(), function.clone());
             }
         }
@@ -251,7 +271,7 @@ impl<'a> Visitor for TypeVisitor {
                     if n.args.len() != fdata.args.len() {
                         return Err(Error::NotEnoughArguments);
                     }
-                    let returntype = TypeVisitor::derive_function(fdata, &n.args)?;
+                    let returntype = TypeVisitor::derive_overload(fdata, &n.args)?;
                     b.type_info().replace(returntype);
                     return Ok(())
                 } else {

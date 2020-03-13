@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::{HashSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-#[derive(Clone, Eq)]
+#[derive(Clone, Hash, Eq)]
 pub struct TypeInfo {
     typed: Type,
 }
@@ -120,10 +120,26 @@ impl VariableData {
 
 pub type Variable = Rc<RefCell<VariableData>>;
 
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct FunctionOverload {
+    pub args: Vec<TypeInfo>,
+    pub returntype: TypeInfo,
+}
+
+impl FunctionOverload {
+    pub fn new() -> Self {
+        FunctionOverload {
+            args: vec![],
+            returntype: TypeInfo::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionData {
     pub args: Vec<(String, Variable)>,
     pub returntype: TypeInfo,
+    pub overloads: Option<HashSet<FunctionOverload>>,
 }
 
 impl FunctionData {
@@ -131,6 +147,28 @@ impl FunctionData {
         FunctionData {
             args,
             returntype: TypeInfo::new(),
+            overloads: None,
+        }
+    }
+
+    pub fn check_overloads(&mut self) {
+        self.overloads = None;
+        for (_, var) in &self.args {
+            let vdata_rc : &RefCell<VariableData> = var.borrow();
+            let vdata : &VariableData = &vdata_rc.borrow();
+            match &vdata.type_info.typed() {
+                Type::Unresolved(_) => {
+                    self.overloads = Some(HashSet::new());
+                    return;
+                },
+                _ => (),
+            }
+        }
+        match &self.returntype.typed()  {
+            Type::Unresolved(_) => {
+                self.overloads = Some(HashSet::new());
+            },
+            _ => (),
         }
     }
 }

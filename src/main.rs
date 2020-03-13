@@ -87,6 +87,22 @@ mod tests {
     }
     
     #[test]
+    fn simple_def_if() {
+        let ast = parse_input("
+        def x(y)
+            if 1 == 2
+                return 1 + y
+            end
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        println!("{:#?}", ast);
+        check_function_data(&ast.exprs[0], |data| {
+            assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+    }
+    
+    #[test]
     fn simple_binexpr_infer() {
         let ast = parse_input("
         def x(y)
@@ -162,7 +178,16 @@ mod tests {
         end
         f(10,10)
         ");
-        println!("{:#?}", type_visitor(&ast));
-        println!("{:#?}", ast);
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| {
+            assert!(data.overloads.is_some());
+            let overloads = data.overloads.as_ref().unwrap();
+            assert!(!overloads.is_empty());
+            let overload = overloads.iter().next().unwrap();
+            assert_eq!(overload.args[0].typed(), &Type::Integer);
+            assert_eq!(overload.args[1].typed(), &Type::Integer);
+            assert_eq!(overload.returntype.typed(), &Type::Integer);
+        });
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Integer);
     }
 }
