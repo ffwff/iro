@@ -1,7 +1,19 @@
-
 #[macro_use] extern crate maplit;
 
 fn main() {
+    let ast = utils::parse_input("
+    def f(x,y)
+        if 1 == 2
+            return x
+        else
+            if 2 == 3
+                return y
+            end
+        end
+    end
+    ");
+    utils::type_visitor(&ast).unwrap();
+    println!("{}", ast.exprs[0].type_info().borrow());
 }
 
 mod utils {
@@ -36,10 +48,6 @@ mod utils {
 #[cfg(test)]
 mod type_tests {
     use crate::utils::*;
-    
-    
-    
-    
     use std::cell::RefCell;
     use std::borrow::Borrow;
     use iro::types::types::*;

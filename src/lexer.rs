@@ -80,10 +80,8 @@ impl<'input> Iterator for Lexer<'input> {
             let curr_char = self.bump();
             // println!("char: {:?}", curr_char);
             match curr_char {
-                Some((idx0, ch @ '0'..='9')) | Some((idx0, ch @ '-'))  => {
-                    let negative = ch == '-';
-                    let mut value = if ch != '-' { ch.to_digit(10).unwrap() as i64 }
-                                    else { 0 };
+                Some((idx0, ch @ '0'..='9'))  => {
+                    let mut value = ch.to_digit(10).unwrap() as i64;
                     let mut idx1 = idx0;
                     loop {
                         match self.chars.next() {
@@ -96,9 +94,6 @@ impl<'input> Iterator for Lexer<'input> {
                                 break
                             },
                         }
-                    }
-                    if negative {
-                        value *= -1;
                     }
                     return Some(Ok((idx0, Tok::Int { value }, idx1)))
                 }
@@ -145,15 +140,15 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, '"')) => {
                     let mut idx1 = idx0;
                     let mut string = String::new();
-                    let _escape = false;
+                    // let mut escape = false;
                     loop {
                         match self.chars.next() {
-                            Some((m_idx1, '"')) => {
-                                idx1 = m_idx1;
+                            Some((_, '"')) => {
+                                idx1 += 1;
                                 break;
                             }
-                            Some((m_idx1, ch)) => {
-                                idx1 = m_idx1;
+                            Some((_, ch)) => {
+                                idx1 += 1;
                                 string.push(ch);
                             },
                             None => {
