@@ -1,7 +1,7 @@
 use std::rc::{Rc, Weak};
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet};
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Hash, Eq)]

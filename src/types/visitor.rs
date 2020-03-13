@@ -213,7 +213,7 @@ impl<'a> Visitor for TypeVisitor {
         Ok(())
     }
 
-    fn visit_defstmt(&mut self, b: &NodeBox, n: &DefStatement) -> VisitorResult {
+    fn visit_defstmt(&mut self, _b: &NodeBox, _n: &DefStatement) -> VisitorResult {
         Err(Error::InternalError)
     }
 

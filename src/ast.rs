@@ -30,7 +30,7 @@ pub trait Visitor {
 }
 
 pub trait Node {
-    fn print(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn print(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
     }
 
@@ -88,7 +88,7 @@ impl<'a> NodeBox {
         self.node.as_any().downcast_ref::<T>()
     }
 
-    pub fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    pub fn visit(&self, _b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
         self.node.visit(self, visitor)
     }
 
@@ -107,7 +107,7 @@ impl Node for Program {
     debuggable!();
     as_any!();
     
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, _b : &NodeBox, _visitor: &mut Visitor) -> VisitorResult {
         unimplemented!()
     }
 }

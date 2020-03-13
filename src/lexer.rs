@@ -145,10 +145,10 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, '"')) => {
                     let mut idx1 = idx0;
                     let mut string = String::new();
-                    let mut escape = false;
+                    let _escape = false;
                     loop {
                         match self.chars.next() {
-                            Some((m_idx1, ch @ '"')) => {
+                            Some((m_idx1, '"')) => {
                                 idx1 = m_idx1;
                                 break;
                             }
