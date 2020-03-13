@@ -11,7 +11,9 @@ pub enum Error {
     InternalError,
     InvalidLHS,
     IncompatibleType,
+    CannotInfer,
     UnknownIdentifier(String),
+    NotEnoughArguments,
     InvalidArguments,
 }
 
@@ -219,7 +221,7 @@ impl Node for CallExpr {
 #[derive(Debug)]
 pub struct DefStatement {
     pub id: String,
-    pub args: HashMap<String, Option<NodeBox>>,
+    pub args: Vec<(String, Option<NodeBox>)>,
     pub exprs: Vec<NodeBox>,
 }
 

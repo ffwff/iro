@@ -58,6 +58,20 @@ mod tests {
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &a);
         assert_eq!(ast.exprs[2].type_info().borrow().typed(), &b);
     }
+
+    #[test]
+    fn empty_if() {
+        let ast = parse_input("
+        if 10 == 10
+        else
+        end
+        if 10 == 10
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Nil);
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Nil);
+    }
     
     #[test]
     fn simple_def() {
@@ -97,5 +111,58 @@ mod tests {
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Integer);
         });
+    }
+    
+    #[test]
+    fn call_simple_args() {
+        let ast = parse_input("
+        def x(y)
+            return y + 1
+        end
+        x(10)
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Integer);
+    }
+    
+    #[test]
+    fn call_infer_caller_args() {
+        let ast = parse_input("
+        def f(y)
+            return y + 1
+        end
+        def g(y)
+            return f(y)
+        end
+        ");
+        assert!(type_visitor(&ast).is_ok());
+        check_function_data(&ast.exprs[0], |data| { 
+            {
+                let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
+                let vdata = &vdata_rc.borrow();
+                assert_eq!(vdata.type_info.typed(), &Type::Integer);
+            }
+            assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+        check_function_data(&ast.exprs[1], |data| { 
+            {
+                let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
+                let vdata = &vdata_rc.borrow();
+                assert_eq!(vdata.type_info.typed(), &Type::Integer);
+            }
+            assert_eq!(data.returntype.typed(), &Type::Integer);
+        });
+    }
+    
+    #[test]
+    fn call_infer_caller_args2() {
+        let ast = parse_input("
+        def f(x,y)
+            return x+y
+        end
+        f(10,10)
+        ");
+        println!("{:#?}", type_visitor(&ast));
+        println!("{:#?}", ast);
     }
 }

@@ -30,17 +30,11 @@ StandaloneExpr = ReturnExpr;
 
 // Function definitions
 DefStatement: NodeBox = {
-    "def" <id:Identifier> "(" <aargs:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" =>? {
-        let mut args = HashMap::new();
-        for (id, val) in aargs {
-            if let Some(_) = args.insert(id, val) {
-                return Err(ParseError::User { error: lexer::Error::DuplicateArguments });
-            }
-        }
-        Ok(NodeBox::new(DefStatement { id, args, exprs }))
+    "def" <id:Identifier> "(" <args:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" => {
+        NodeBox::new(DefStatement { id, args, exprs })
     },
     "def" <id:Identifier> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(DefStatement { id, args : HashMap::new(), exprs })
+        NodeBox::new(DefStatement { id, args : vec![], exprs })
     },
 };
 
@@ -74,7 +68,7 @@ IfExpr: NodeBox = {
 
 // Call expression
 CallExpr: NodeBox = {
-    <callee:BinExpr> "(" <args:Comma<StandaloneExpr>> ")" => {
+    <callee:Term> "(" <args:Comma<StandaloneExpr>> ")" => {
         NodeBox::new(CallExpr { callee, args })
     },
     BinExpr,

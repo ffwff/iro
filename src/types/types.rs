@@ -122,12 +122,12 @@ pub type Variable = Rc<RefCell<VariableData>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionData {
-    pub args: HashMap<String, Variable>,
+    pub args: Vec<(String, Variable)>,
     pub returntype: TypeInfo,
 }
 
 impl FunctionData {
-    pub fn new(args: HashMap<String, Variable>) -> Self {
+    pub fn new(args: Vec<(String, Variable)>) -> Self {
         FunctionData {
             args,
             returntype: TypeInfo::new(),

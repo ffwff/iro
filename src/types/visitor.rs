@@ -58,6 +58,63 @@ impl TypeVisitor {
         let var : &mut VariableData = &mut var_rc.borrow_mut();
         var.type_info = src.clone();
     }
+
+    fn derive_function(fdata: &mut FunctionData, args: &Vec<NodeBox>) -> Result<TypeInfo, Error> {
+        for ((_, var), boxed) in fdata.args.iter().zip(args) {
+            // println!("{:#?} {:#?}", var, boxed);
+            let vdata_rc : &RefCell<VariableData> = var.borrow();
+            let derive_caller =
+                if let Type::Unresolved(_) = &boxed.type_info().borrow().typed() {
+                    true
+                } else {
+                    false
+                };
+            if derive_caller {
+                let vdata : &VariableData = &vdata_rc.borrow();
+                if let Type::Unresolved(_) = vdata.type_info.typed() {
+                    // The two pairs are unresolved, can't do anything here!
+                    return Err(Error::CannotInfer);
+                } else {
+                    // Infer call argument's type if the function already has a type
+                    if let Type::Unresolved(resolved) = &boxed.type_info().borrow().typed() {
+                        TypeVisitor::copy_unresolved(resolved, vdata.type_info.clone())
+                    }
+                    boxed.type_info().replace(vdata.type_info.clone());
+                }
+            } else  {
+                let vdata : &VariableData = &vdata_rc.borrow();
+                let type_info : &TypeInfo = &boxed.type_info().borrow();
+                if let Type::Unresolved(_) = &vdata.type_info.typed() {
+                    println!("{:#?} {:#?}", vdata.type_info, type_info);
+                    unimplemented!()
+                } else if &vdata.type_info != type_info {
+                    return Err(Error::IncompatibleType);
+                }
+            }
+        }
+        let returntype = if let Type::Unresolved(unresolved) = fdata.returntype.typed() {
+            // Try to infer return type from function arguments
+            let mut returntype : Option<TypeInfo> = None;
+            for (idx, (_, var)) in fdata.args.iter().enumerate() {
+                let vdata_rc : &RefCell<VariableData> = var.borrow();
+                let vdata : &VariableData = &vdata_rc.borrow();
+                if let Type::Unresolved(other) = &vdata.type_info.typed() {
+                    if unresolved == other {
+                        returntype = Some(args[idx].type_info().borrow().clone());
+                        break;
+                    }
+                }
+            }
+            if let Some(returntype) = returntype {
+                returntype
+            } else {
+                return Err(Error::InvalidArguments);
+            }
+        } else {
+            fdata.returntype.clone()
+        };
+        Ok(returntype)
+    }
 }
 
 impl<'a> Visitor for TypeVisitor {
@@ -65,12 +122,12 @@ impl<'a> Visitor for TypeVisitor {
         for node in &n.exprs {
             if let Some(def) = node.downcast_ref::<DefStatement>() {
                 self.enter_scope();
-                let mut args = HashMap::new(); 
+                let mut args = Vec::new(); 
                 {
                     let scope = self.scope();
                     for (id, _) in &def.args {
                         let var = scope.defvar_unresolved(id.to_string());
-                        args.insert(id.to_string(), var);
+                        args.push((id.to_string(), var));
                     }
                 }
                 let function = Rc::new(RefCell::new(FunctionData::new(args)));
@@ -186,7 +243,23 @@ impl<'a> Visitor for TypeVisitor {
         for node in &n.args {
             node.visit(&node, self)?;
         }
-        unimplemented!()
+        if let Some(value) = n.callee.downcast_ref::<Value>() {
+            if let Value::Identifier(var) = &value {
+                if let Some(func) = self.funcs.get(&var.id) {
+                    let fdata_rc : &RefCell<FunctionData> = func.borrow();
+                    let fdata : &mut FunctionData = &mut fdata_rc.borrow_mut();
+                    if n.args.len() != fdata.args.len() {
+                        return Err(Error::NotEnoughArguments);
+                    }
+                    let returntype = TypeVisitor::derive_function(fdata, &n.args)?;
+                    b.type_info().replace(returntype);
+                    return Ok(())
+                } else {
+                    return Err(Error::UnknownIdentifier(var.id.clone()))
+                }
+            }
+        }
+        Err(Error::InvalidLHS)
     }
 
     fn visit_binexpr(&mut self, b : &NodeBox, n: &BinExpr) -> VisitorResult {
