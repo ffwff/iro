@@ -1,52 +1,48 @@
 #[macro_use] extern crate maplit;
+use iro::utils;
 
 fn main() {
+    /* let ast = utils::parse_input("
+    def f(a,b)
+        return g(a, b)
+    end
+    def g(x : Int, y)
+        return f(x, y)
+    end
+    ").unwrap(); */
+    /* let ast = utils::parse_input("
+    def f(a,b)
+        return g(a, 10)
+    end
+    def g(x, y)
+        return x + y
+    end
+    ").unwrap(); */
+    /* let ast = utils::parse_input("
+    x = 10
+    x
+    ").unwrap(); */
+    /* let ast = utils::parse_input("
+    def f(x, y)
+        return x + 10
+    end
+    ").unwrap(); */
     let ast = utils::parse_input("
     def f(x,y)
-        if 1 == 2
-            return x
-        else
-            if 2 == 3
-                return y
-            end
-        end
+        return x+y
     end
+    def g(x,y)
+        z = f(x, y) + 10
+        return z
+    end
+    g(1, 2)
     ").unwrap();
-    utils::type_visitor(&ast).unwrap();
-    println!("{}", ast.exprs[0].type_info().borrow());
-}
-
-mod utils {
-    use iro::ast;
-    use iro::lexer;
-    use iro::parser;
-    use iro::ast::Visitor;
-    use iro::types::visitor::TypeVisitor;
-    use iro::types::types::{TypeInfo, FunctionData};
-
-    pub type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, lexer::Error>;
-    pub type ParseResult = Result<ast::Program, ParseError>;
-
-    pub fn parse_input(input: &str) -> ParseResult {
-        let tokenizer = lexer::Lexer::new(input);
-        parser::TopParser::new().parse(tokenizer)
+    println!("{:#?}", ast);
+    if let Err(e) = utils::type_visitor(&ast) {
+        println!("error: {:#?}", e);
     }
-
-    pub fn type_visitor(ast : &ast::Program) -> ast::VisitorResult {
-        let mut visitor = TypeVisitor::new();
-        visitor.visit_program(&ast)
-    }
-
-    #[cfg(test)]
-    pub fn check_function_data<T>(boxed : &iro::ast::NodeBox, callback : T) where T : Fn(&FunctionData) {
-        use std::cell::RefCell;
-        use std::borrow::Borrow;
-        let type_info : &TypeInfo = &boxed.type_info().borrow();
-        let function = type_info.as_function().unwrap();
-        let data_rc : &RefCell<FunctionData> = function.borrow();
-        let data : &FunctionData = &data_rc.borrow();
-        callback(data);
-    }
+    println!("{:#?}", ast);
+    // utils::ssa_visitor(&ast).unwrap();
 }
 
 #[cfg(test)]
@@ -72,7 +68,7 @@ mod type_tests {
         a
         b
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         let a = Type::Union(hashset![Type::Int, Type::String, Type::Nil]);
         let b = Type::Union(hashset![Type::Int, Type::Nil]);
         assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Int);
@@ -89,7 +85,7 @@ mod type_tests {
         if 10 == 10
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         assert_eq!(ast.exprs[0].type_info().borrow().typed(), &Type::Nil);
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Nil);
     }
@@ -106,7 +102,7 @@ mod type_tests {
             10
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         let typed = Type::Union(hashset![Type::Int, Type::Nil]);
         assert_eq!(ast.exprs[0].type_info().borrow().typed(), &typed);
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &typed);
@@ -119,7 +115,7 @@ mod type_tests {
             return 1 + y
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Int);
         });
@@ -134,7 +130,7 @@ mod type_tests {
             end
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Int, Type::Nil]));
         });
@@ -151,7 +147,7 @@ mod type_tests {
             end
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Int);
         });
@@ -170,7 +166,7 @@ mod type_tests {
             end
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Union(hashset![Type::Int, Type::Nil]));
         });
@@ -182,7 +178,7 @@ mod type_tests {
         def x(y : Int)
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             {
                 let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
@@ -199,7 +195,7 @@ mod type_tests {
             y + \"A\"
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_err());
+        assert_eq!(type_visitor(&ast), Err(iro::ast::Error::IncompatibleType));
     }
     
     #[test]
@@ -209,7 +205,7 @@ mod type_tests {
             return 1 + y
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Int);
         });
@@ -223,7 +219,7 @@ mod type_tests {
             return z
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert_eq!(data.returntype.typed(), &Type::Int);
         });
@@ -237,7 +233,7 @@ mod type_tests {
         end
         x(10)
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Int);
     }
     
@@ -251,7 +247,7 @@ mod type_tests {
             return f(y)
         end
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| { 
             {
                 let vdata_rc : &RefCell<VariableData> = &data.args[0].1.borrow();
@@ -278,7 +274,7 @@ mod type_tests {
         end
         f(10,10)
         ").unwrap();
-        assert!(type_visitor(&ast).is_ok());
+        assert_eq!(type_visitor(&ast), Ok(()));
         check_function_data(&ast.exprs[0], |data| {
             assert!(data.overloads.is_some());
             let overloads = data.overloads.as_ref().unwrap();
@@ -289,5 +285,46 @@ mod type_tests {
             assert_eq!(overload.returntype.typed(), &Type::Int);
         });
         assert_eq!(ast.exprs[1].type_info().borrow().typed(), &Type::Int);
+    }
+    
+    #[test]
+    fn call_infer_indirect_arguments_both_const() {
+        let ast = parse_input("
+        def f(x,y)
+            return g(x, y)
+        end
+        def g(x, y)
+            return x + y
+        end
+        f(1,1)
+        ").unwrap();
+        assert_eq!(type_visitor(&ast), Ok(()));
+        println!("{:#?}", ast);
+        check_function_data(&ast.exprs[0], |data| {
+            assert!(data.overloads.is_some());
+            let overloads = data.overloads.as_ref().unwrap();
+            assert!(!overloads.is_empty());
+            let overload = overloads.iter().next().unwrap();
+            assert_eq!(overload.args[0].typed(), &Type::Int);
+            assert_eq!(overload.args[1].typed(), &Type::Int);
+            assert_eq!(overload.returntype.typed(), &Type::Int);
+        });
+        assert_eq!(ast.exprs[2].type_info().borrow().typed(), &Type::Int);
+    }
+    
+    #[test]
+    fn call_infer_indirect_arguments_one_const() {
+        let ast = parse_input("
+        def f(x,y)
+            return g(x, y)
+        end
+        def g(a, b)
+            return a + 10
+        end
+        f(1,1)
+        ").unwrap();
+        println!("{:#?}", type_visitor(&ast));
+        println!("{:#?}", ast);
+        //assert_eq!(type_visitor(&ast), Ok(()));
     }
 }

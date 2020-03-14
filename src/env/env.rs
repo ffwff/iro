@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::types::types::*;
+use crate::types;
+use crate::env::var::*;
 
 #[derive(Debug)]
 pub struct Env {
     vars: HashMap<Rc<str>, Variable>,
-    pub function: Option<Function>,
+    pub function: Option<types::Function>,
 }
 
 impl Env {
@@ -18,6 +19,7 @@ impl Env {
         }
     }
 
+    /*
     pub fn defvar(&mut self, s : Rc<str>) -> Variable {
         let var = Rc::new(RefCell::new(VariableData::new()));
         self.vars.insert(s, var.clone());
@@ -37,17 +39,13 @@ impl Env {
 
     pub fn setvar(&mut self, s : Rc<str>, new: Variable) {
         self.vars.insert(s, new);
-    }
-
-    pub fn getvar(&self, s : &str) -> Option<Variable> {
-        self.vars.get(s).cloned()
-    }
+    } */
 
     pub fn vars(&self) -> &HashMap<Rc<str>, Variable> {
         &self.vars
     }
 
-    pub fn mut_vars(&mut self) -> &mut HashMap<Rc<str>, Variable> {
+    pub fn vars_mut(&mut self) -> &mut HashMap<Rc<str>, Variable> {
         &mut self.vars
     }
 

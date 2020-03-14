@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use lalrpop_util::ParseError;
 use crate::ast::*;
 use crate::lexer;
-use crate::types::types::TypeInfo;
+use crate::types::TypeInfo;
 
 grammar;
 
@@ -65,14 +65,6 @@ IfExpr: NodeBox = {
     "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
         NodeBox::new(IfExpr::new( cond, exprs, vec![] ))
     },
-    CallExpr,
-};
-
-// Call expression
-CallExpr: NodeBox = {
-    <callee:Term> "(" <args:Comma<StandaloneExpr>> ")" => {
-        NodeBox::new(CallExpr { callee, args })
-    },
     BinExpr,
 };
 
@@ -88,7 +80,7 @@ AndExpr = BinOpTier<AndOp, OrzExpr>;
 OrzExpr = BinOpTier<OrzOp, CmpExpr>;
 CmpExpr = BinOpTier<CmpOp, AddExpr>;
 AddExpr = BinOpTier<AddOp, FacExpr>;
-FacExpr = BinOpTier<FacOp, Term>;
+FacExpr = BinOpTier<FacOp, CallExpr>;
 
 AsgOp: BinOp = {
     "=" => BinOp::Asg,
@@ -119,6 +111,14 @@ AddOp: BinOp = {
 FacOp: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
+};
+
+// Call expression
+CallExpr: NodeBox = {
+    <callee:Term> "(" <args:Comma<StandaloneExpr>> ")" => {
+        NodeBox::new(CallExpr::new(callee, args))
+    },
+    Term,
 };
 
 // Literals / terms

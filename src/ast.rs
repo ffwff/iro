@@ -3,9 +3,10 @@ use std::borrow::Borrow;
 use std::cell::{RefCell, Cell};
 use std::rc::Rc;
 use std::any::Any;
-use crate::types::types::{Variable, TypeInfo};
+use crate::env::var::Variable;
+use crate::types::{TypeInfo, Function};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     InternalError,
     InvalidLHS,
@@ -88,7 +89,7 @@ impl<'a> NodeBox {
         self.node.as_any().downcast_ref::<T>()
     }
 
-    pub fn visit(&self, _b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
+    pub fn visit(&self, visitor: &mut Visitor) -> VisitorResult {
         self.node.visit(self, visitor)
     }
 
@@ -128,11 +129,7 @@ impl Identifier {
 
 impl std::fmt::Debug for Identifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let var : &Option<Variable> = &self.var.borrow();
-        match var {
-            Some(var) => write!(f, "(Identifier {:?}, {:p})", self.id, var),
-            None => write!(f, "(Identifier {:?})", self.id),
-        }
+        write!(f, "Identifier({})", self.id)
     }
 }
 
@@ -239,7 +236,18 @@ impl Node for IfExpr {
 #[derive(Debug)]
 pub struct CallExpr {
     pub callee: NodeBox,
+    pub function : RefCell<Option<Function>>,
     pub args: Vec<NodeBox>,
+}
+
+impl CallExpr {
+    pub fn new(callee : NodeBox, args: Vec<NodeBox>) -> Self {
+        CallExpr {
+            callee,
+            function: RefCell::new(None),
+            args,
+        }
+    }
 }
 
 impl Node for CallExpr {

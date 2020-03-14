@@ -6,6 +6,7 @@ lalrpop_mod!(pub parser);
 
 #[macro_use] extern crate maplit;
 
+pub mod utils;
 pub mod types;
 pub mod lexer;
 pub mod ast;
