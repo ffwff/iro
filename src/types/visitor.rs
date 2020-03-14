@@ -95,13 +95,24 @@ impl TypeVisitor {
                 };
             let vdata : &VariableData = &vdata_rc.borrow();
             if derive_caller {
-                if let Type::Unresolved(_) = vdata.type_info.typed() {
-                    // The two pairs are unresolved, can't do anything here!
-                    return Err(Error::CannotInfer);
+                if let Type::Unresolved(unresolved_callee) = vdata.type_info.typed() {
+                    // The function argument and the call argument are both unresolved
+                    let equals =
+                        if let Type::Unresolved(unresolved_def) = &boxed.type_info().borrow().typed() {
+                            unresolved_callee == unresolved_def
+                        } else {
+                            unreachable!()
+                        };
+                    if !equals {
+                        // If the two are unresolved and are of the same identity,
+                        // then if one of the two is resolved later on, the other must also be too.
+                        // If not, we'll have to ask the user to resolve it.
+                        return Err(Error::CannotInfer);
+                    }
                 } else {
                     // Infer caller argument's type if the function already has a type
-                    if let Type::Unresolved(resolved) = &boxed.type_info().borrow().typed() {
-                        TypeVisitor::copy_unresolved(resolved, vdata.type_info.clone())
+                    if let Type::Unresolved(uresolved) = &boxed.type_info().borrow().typed() {
+                        TypeVisitor::copy_unresolved(uresolved, vdata.type_info.clone())
                     }
                     boxed.type_info().replace(vdata.type_info.clone());
                 }
@@ -138,7 +149,7 @@ impl TypeVisitor {
                 }
                 returntype
             } else {
-                return Err(Error::InvalidArguments);
+                return Err(Error::CannotInfer);
             }
         } else {
             fdata.returntype.clone()
@@ -156,21 +167,71 @@ impl<'a> Visitor for TypeVisitor {
             if let Some(def) = node.downcast_ref::<DefStatement>() {
                 // Populate environment with arguments
                 self.enter_scope();
-                let mut args = Vec::new(); 
-                {
-                    for (id, type_id) in &def.args {
-                        if let Some(type_id) = type_id {
-                            type_id.node().visit(&type_id, self)?;
-                            let var = Rc::new(RefCell::new(VariableData::new_with_type(type_id.type_info().borrow().clone())));
-                            self.scope().setvar(id.clone(), var.clone());
-                            args.push((id.to_string(), var));
-                        } else {
-                            let var = self.scope().defvar_unresolved(id.clone());
-                            args.push((id.to_string(), var));
+                let function =
+                    if let Some(predef) = self.funcs.get(&def.id).cloned() {
+                        {
+                            for (_, type_id) in &def.args {
+                                if let Some(type_id) = type_id {
+                                    type_id.node().visit(&type_id, self)?;
+                                }
+                            }
+                            let fdata_rc : &RefCell<FunctionData> = predef.borrow();
+                            let fdata : &mut FunctionData = &mut fdata_rc.borrow_mut();
+                            if fdata.args.len() != def.args.len() {
+                                return Err(Error::NotEnoughArguments);
+                            }
+                            for (idx, (defname, type_id)) in def.args.iter().enumerate() {
+                                std::mem::replace(&mut fdata.args[idx].0, defname.to_string());
+                                self.scope().setvar(defname.clone(), fdata.args[idx].1.clone());
+                                let vdata_rc : &RefCell<VariableData> = &fdata.args[idx].1;
+                                let vdata : &mut VariableData = &mut vdata_rc.borrow_mut();
+                                if let Some(type_id) = type_id {
+                                    // Type specified for def argument
+                                    let def_type_info : &TypeInfo = &type_id.type_info().borrow();
+                                    match &vdata.type_info.typed() {
+                                        Type::Unresolved(unresolved) => {
+                                            TypeVisitor::copy_unresolved(unresolved, def_type_info.clone());
+                                            vdata.type_info = def_type_info.clone();
+                                        },
+                                        other => {
+                                            // Def'd type isn't equivalent to inferred type
+                                            if other != &def_type_info.typed() {
+                                                return Err(Error::IncompatibleType);
+                                            }
+                                        },
+                                    }
+                                } else {
+                                    // No type specified for def argument
+                                    match &vdata.type_info.typed() {
+                                        Type::Unresolved(unresolved) => {
+                                            // Must be the same unresolved type
+                                            vdata.type_info = TypeInfo::new_with_type(Type::Unresolved(unresolved.clone()));
+                                        },
+                                        _ => {
+                                            return Err(Error::IncompatibleType);
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    }
-                }
-                let function = Rc::new(RefCell::new(FunctionData::new(args)));
+                        predef
+                    } else {
+                        let mut args = Vec::new();
+                        for (id, type_id) in &def.args {
+                            if let Some(type_id) = type_id {
+                                type_id.node().visit(&type_id, self)?;
+                                let var = Rc::new(RefCell::new(VariableData::new_with_type(type_id.type_info().borrow().clone())));
+                                self.scope().setvar(id.clone(), var.clone());
+                                args.push((id.to_string(), var));
+                            } else {
+                                let var = self.scope().defvar_unresolved(id.clone());
+                                args.push((id.to_string(), var));
+                            }
+                        }
+                        let function = Rc::new(RefCell::new(FunctionData::new(args)));
+                        self.funcs.insert(def.id.clone(), function.clone());
+                        function
+                    };
                 self.scope().function = Some(function.clone());
                 
                 // Visit inner function statements
@@ -199,7 +260,6 @@ impl<'a> Visitor for TypeVisitor {
                     }
                     fdata.check_overloads();
                 }
-                self.funcs.insert(def.id.clone(), function.clone());
             }
         }
         
@@ -226,7 +286,41 @@ impl<'a> Visitor for TypeVisitor {
             let cur_function = self.cur_function().unwrap();
             let fdata_rc : &RefCell<FunctionData> = cur_function.borrow();
             let fdata : &mut FunctionData = &mut fdata_rc.borrow_mut();
-            fdata.returntype.add_type(type_info.typed().clone());
+            if fdata.declared {
+                println!("{:#?} {:#?} {:#?}", n, fdata.returntype, type_info);
+                fdata.returntype.add_type(type_info.typed().clone());
+            } else {
+                println!("{:#?} => {:#?}", fdata.returntype, type_info);
+                let unionize = match &fdata.returntype.typed() {
+                    Type::Unresolved(unresolved) => {
+                        match &type_info.typed() {
+                            Type::Unresolved(return_unresolved) => {
+                                // If we're returning an unresolved type, and the inferred function has an unresolved return type
+                                // We'll make those two unresolved types the same
+                                let u_rc : &RefCell<UnresolveData> = unresolved.borrow();
+                                let u : &mut UnresolveData = &mut u_rc.borrow_mut();
+                                let ru_rc : &RefCell<UnresolveData> = return_unresolved.borrow();
+                                let ru : &UnresolveData = &ru_rc.borrow();
+                                u.id = ru.id.clone();
+                            },
+                            _ => {
+                                // If we're returning an exact type, and the inferred function has an unresolved return type
+                                // We'll use the exact type
+                                // FIXME: replace every instance of the function's unresolved type with the new type_info
+                                fdata.returntype = type_info.clone();
+                            },
+                        }
+                        false
+                    }
+                    _ => {
+                        true
+                    }
+                };
+                if unionize {
+                    fdata.returntype.add_type(type_info.typed().clone());
+                }
+                println!("{:#?}", fdata);
+            }
         }
         Ok(())
     }
@@ -333,7 +427,16 @@ impl<'a> Visitor for TypeVisitor {
                     b.type_info().replace(returntype);
                     return Ok(())
                 } else {
-                    return Err(Error::UnknownIdentifier(var.id.clone()))
+                    // Forward declare the function
+                    let args = n.args.iter().map(|arg| {
+                        let vdata = VariableData::new_with_type(arg.type_info().borrow().clone());
+                        (String::new(), Rc::new(RefCell::new(vdata)))
+                    }).collect::<Vec<(String, Variable)>>();
+                    let mut fdata = FunctionData::new_undeclared(args);
+                    b.type_info().replace(fdata.returntype.clone());
+                    let fdata_rc = Rc::new(RefCell::new(fdata));
+                    self.funcs.insert(var.id.clone(), fdata_rc);
+                    return Ok(())
                 }
             }
         }
@@ -392,6 +495,7 @@ impl<'a> Visitor for TypeVisitor {
                     },
                     (ta, tb) => {
                         if ta != tb {
+                            println!("3");
                             return Err(ast::Error::IncompatibleType)
                         }
                         b.type_info().replace(TypeInfo::new_with_type(left));

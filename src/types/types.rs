@@ -147,6 +147,7 @@ pub struct FunctionData {
     pub args: Vec<(String, Variable)>,
     pub returntype: TypeInfo,
     pub overloads: Option<HashSet<FunctionOverload>>,
+    pub declared: bool,
 }
 
 impl FunctionData {
@@ -155,6 +156,17 @@ impl FunctionData {
             args,
             returntype: TypeInfo::new(),
             overloads: None,
+            declared: true,
+        }
+    }
+
+    pub fn new_undeclared(args: Vec<(String, Variable)>) -> Self {
+        let unresolved = Rc::new(RefCell::new(UnresolveData { id: None }));
+        FunctionData {
+            args,
+            returntype: TypeInfo::new_with_type(Type::Unresolved(unresolved)),
+            overloads: None,
+            declared: false,
         }
     }
 
