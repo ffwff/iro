@@ -3,8 +3,7 @@ use std::borrow::Borrow;
 use std::cell::{RefCell, Cell};
 use std::rc::Rc;
 use std::any::Any;
-use crate::env::var::Variable;
-use crate::types::{TypeInfo, Function};
+use downcast_rs::Downcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -21,23 +20,24 @@ pub type VisitorResult = Result<(), Error>;
 
 pub trait Visitor {
     fn visit_program(&mut self,  n: &Program) -> VisitorResult;
-    fn visit_defstmt(&mut self,  b: &NodeBox, n: &DefStatement) -> VisitorResult;
-    fn visit_return(&mut self,   b: &NodeBox, n: &ReturnExpr) -> VisitorResult;
-    fn visit_ifexpr(&mut self,   b: &NodeBox, n: &IfExpr) -> VisitorResult;
-    fn visit_callexpr(&mut self, b: &NodeBox, n: &CallExpr) -> VisitorResult;
-    fn visit_binexpr(&mut self,  b: &NodeBox, n: &BinExpr) -> VisitorResult;
-    fn visit_value(&mut self,    b: &NodeBox, n: &Value) -> VisitorResult;
-    fn visit_typeid(&mut self,   b: &NodeBox, n: &TypeId) -> VisitorResult;
+    fn visit_defstmt(&mut self,  n: &DefStatement) -> VisitorResult;
+    fn visit_return(&mut self,   n: &ReturnExpr) -> VisitorResult;
+    fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult;
+    fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult;
+    fn visit_letexpr(&mut self,  n: &LetExpr) -> VisitorResult;
+    fn visit_binexpr(&mut self,  n: &BinExpr) -> VisitorResult;
+    fn visit_value(&mut self,    n: &Value) -> VisitorResult;
+    fn visit_typeid(&mut self,   n: &TypeId) -> VisitorResult;
 }
 
-pub trait Node {
+pub trait Node: Downcast {
     fn print(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
     }
 
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult;
-    fn as_any(&self) -> &dyn Any;
+    fn visit(&self, visitor: &mut Visitor) -> VisitorResult;
 }
+impl_downcast!(Node);
 
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -51,6 +51,31 @@ impl std::fmt::Debug for Node {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct NodeBox {
+    data: Rc<Node>,
+}
+
+impl NodeBox {
+    pub fn new<T: 'static>(node: T) -> Self where T: Node {
+        NodeBox {
+            data: Rc::new(node)
+        }
+    }
+
+    pub fn rc(&self) -> Rc<Node> {
+        self.data.clone()
+    }
+
+    pub fn borrow(&self) -> &Node {
+        self.data.borrow()
+    }
+
+    pub fn visit(&self, visitor: &mut Visitor) -> VisitorResult {
+        self.borrow().visit(visitor)
+    }
+}
+
 macro_rules! debuggable {
     () => {
         fn print(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -59,44 +84,12 @@ macro_rules! debuggable {
     };
 }
 
-macro_rules! as_any {
-    () => {
-        fn as_any(&self) -> &dyn Any {
-            self
+macro_rules! visitable {
+    ($x:tt) => {
+        fn visit(&self, visitor: &mut Visitor) -> VisitorResult {
+            visitor.$x(self)
         }
     };
-}
-
-#[derive(Debug)]
-pub struct NodeBox {
-    node: Box<Node>,
-    type_info: RefCell<TypeInfo>,
-}
-
-impl<'a> NodeBox {
-    pub fn new<T: 'static>(node : T) -> Self where T : Node {
-        NodeBox {
-            node: Box::new(node),
-            type_info: RefCell::new(TypeInfo::new()),
-        }
-    }
-
-    pub fn node(&'a self) -> &'a Node {
-        self.node.borrow()
-    }
-
-    pub fn downcast_ref<T: 'static>(&'a self) -> Option<&'a T> where T : Node {
-        self.node.as_any().downcast_ref::<T>()
-    }
-
-    pub fn visit(&self, visitor: &mut Visitor) -> VisitorResult {
-        self.node.visit(self, visitor)
-    }
-
-    pub fn type_info(&self) -> &RefCell<TypeInfo> {
-        &self.type_info
-    }
-
 }
 
 #[derive(Debug)]
@@ -106,30 +99,22 @@ pub struct Program {
 
 impl Node for Program {
     debuggable!();
-    as_any!();
     
-    fn visit(&self, _b : &NodeBox, _visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, _visitor: &mut Visitor) -> VisitorResult {
         unimplemented!()
     }
 }
 
+#[derive(Debug)]
 pub struct Identifier {
     pub id : Rc<str>,
-    pub var : RefCell<Option<Variable>>,
 }
 
 impl Identifier {
     pub fn new(id : Rc<str>) -> Self {
         Identifier {
             id,
-            var: RefCell::new(None),
         }
-    }
-}
-
-impl std::fmt::Debug for Identifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Identifier({})", self.id)
     }
 }
 
@@ -144,11 +129,7 @@ pub enum Value {
 
 impl Node for Value {
     debuggable!();
-    as_any!();
-
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_value(b, self)
-    }
+    visitable!(visit_value);
 }
 
 #[derive(Debug)]
@@ -158,11 +139,18 @@ pub enum TypeId {
 
 impl Node for TypeId {
     debuggable!();
-    as_any!();
+    visitable!(visit_typeid);
+}
 
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_typeid(b, self)
-    }
+#[derive(Debug)]
+pub struct LetExpr {
+    pub left: Rc<str>,
+    pub right: NodeBox,
+}
+
+impl Node for LetExpr {
+    debuggable!();
+    visitable!(visit_letexpr);
 }
 
 #[derive(Debug)]
@@ -191,11 +179,7 @@ pub struct BinExpr {
 
 impl Node for BinExpr {
     debuggable!();
-    as_any!();
-
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_binexpr(b, self)
-    }
+    visitable!(visit_binexpr);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -226,17 +210,12 @@ impl IfExpr {
 
 impl Node for IfExpr {
     debuggable!();
-    as_any!();
-
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_ifexpr(b, self)
-    }
+    visitable!(visit_ifexpr);
 }
 
 #[derive(Debug)]
 pub struct CallExpr {
     pub callee: NodeBox,
-    pub function : RefCell<Option<Function>>,
     pub args: Vec<NodeBox>,
 }
 
@@ -244,7 +223,6 @@ impl CallExpr {
     pub fn new(callee : NodeBox, args: Vec<NodeBox>) -> Self {
         CallExpr {
             callee,
-            function: RefCell::new(None),
             args,
         }
     }
@@ -252,11 +230,7 @@ impl CallExpr {
 
 impl Node for CallExpr {
     debuggable!();
-    as_any!();
-
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_callexpr(b, self)
-    }
+    visitable!(visit_callexpr);
 }
 
 #[derive(Debug)]
@@ -264,16 +238,11 @@ pub struct DefStatement {
     pub id: Rc<str>,
     pub args: Vec<(Rc<str>, Option<NodeBox>)>,
     pub exprs: Vec<NodeBox>,
-    // pub return_type: Option<NodeBox>,
 }
 
 impl Node for DefStatement {
     debuggable!();
-    as_any!();
-
-    fn visit(&self, b: &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_defstmt(b, self)
-    }
+    visitable!(visit_defstmt);
 }
 
 #[derive(Debug)]
@@ -283,9 +252,5 @@ pub struct ReturnExpr {
 
 impl Node for ReturnExpr {
     debuggable!();
-    as_any!();
-
-    fn visit(&self, b : &NodeBox, visitor: &mut Visitor) -> VisitorResult {
-        visitor.visit_return(b, self)
-    }
+    visitable!(visit_return);
 }

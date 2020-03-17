@@ -5,7 +5,6 @@ use std::convert::TryInto;
 use lalrpop_util::ParseError;
 use crate::ast::*;
 use crate::lexer;
-use crate::types::TypeInfo;
 
 grammar;
 
@@ -53,6 +52,14 @@ DefArgument: (Rc<str>, Option<NodeBox>) = {
 ReturnExpr: NodeBox = {
     "return" <expr:StandaloneExpr> => {
         NodeBox::new(ReturnExpr { expr })
+    },
+    LetExpr,
+};
+
+// Let expression
+LetExpr: NodeBox = {
+    "let" <left:Identifier> "=" <right:StandaloneExpr> => {
+        NodeBox::new(LetExpr{ left: Rc::from(left), right })
     },
     IfExpr,
 };
@@ -147,6 +154,7 @@ extern {
     enum lexer::Tok {
         "def" => lexer::Tok::Def,
         "return" => lexer::Tok::Return,
+        "let" => lexer::Tok::Let,
         "if" => lexer::Tok::If,
         "else" => lexer::Tok::Else,
         "end" => lexer::Tok::End,

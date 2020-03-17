@@ -5,10 +5,9 @@
 lalrpop_mod!(pub parser);
 
 #[macro_use] extern crate maplit;
+#[macro_use] extern crate downcast_rs;
 
 pub mod utils;
-pub mod types;
 pub mod lexer;
 pub mod ast;
-pub mod env;
 pub mod ssa;
