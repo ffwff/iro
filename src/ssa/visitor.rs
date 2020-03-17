@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::borrow::Borrow;
+use crate::ast;
 use crate::ast::*;
 use crate::ssa::isa::*;
 use crate::ssa::env::Env;
@@ -28,6 +29,17 @@ pub struct SSAVisitor {
     envs: Vec<Env>,
     top_level: RcWrapper<TopLevelInfo>,
     has_direct_return: bool,
+}
+
+macro_rules! check_direct_return {
+    ($self:expr, $x:block) => {{
+        let _has_direct_return = $self.has_direct_return;
+        $self.has_direct_return = false;
+        $x
+        let _retval = $self.has_direct_return;
+        $self.has_direct_return = _has_direct_return;
+        _retval
+    }};
 }
 
 impl SSAVisitor {
@@ -92,6 +104,7 @@ impl Visitor for SSAVisitor {
         }
 
         self.context.new_block();
+        self.envs.push(Env::new());
         for node in &outerstmts {
             node.visit(self)?;
         }
@@ -133,7 +146,63 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult {
-        unimplemented!()
+        let mut cond = self.context.blocks.len() - 1;
+        let mut condvar = 0usize;
+        let mut iftrue =  None;
+        let mut iffalse = None;
+
+        // If-true branch
+        self.envs.push(Env::new());
+        let treturn = check_direct_return!(self, {
+            n.cond.visit(self)?;
+            condvar = self.last_retvar();
+            if !n.exprs.is_empty() {
+                iftrue = Some(self.context.new_block());
+                for node in &n.exprs {
+                    node.visit(self)?;
+                }
+            }
+        });
+        self.envs.pop();
+
+        // If-false branch
+        self.envs.push(Env::new());
+        let freturn = check_direct_return!(self, {
+            if !n.elses.is_empty() {
+                iffalse = Some(self.context.new_block());
+                for node in &n.elses {
+                    node.visit(self)?;
+                }
+            }
+        });
+        self.envs.pop();
+
+        // Insert jumps
+        if iftrue.is_some() || iffalse.is_some() {
+            self.context.new_block();
+            let curblock = self.context.blocks.len() - 1;
+            let block = &mut self.context.blocks[cond];
+            block.ins.push(Ins { retvar: 0, typed: InsType::IfJmp((condvar,
+                iftrue.unwrap_or(curblock),
+                iffalse.unwrap_or(curblock))) });
+            if iffalse.is_some() {
+                if let Some(iftrue) = iftrue {
+                    let block = &mut self.context.blocks[iftrue];
+                    block.ins.push(Ins { retvar: 0, typed: InsType::Jmp(curblock) });
+                }
+            }
+        }
+
+        if treturn || freturn {
+            if treturn != freturn {
+                n.returntype.replace(IfReturnType::OneBranch);
+            } else {
+                n.returntype.replace(IfReturnType::BothBranch);
+                self.has_direct_return = true;
+            }
+        }
+
+        Ok(())
     }
     
     fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult {
@@ -205,13 +274,36 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_letexpr(&mut self,  n: &LetExpr) -> VisitorResult {
-        unimplemented!()
+        n.right.visit(self)?;
+        let right = self.last_retvar();
+        if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
+            if let Value::Identifier(id) = &id {
+                let env = self.envs.last_mut().unwrap();
+                env.vars_mut().insert(id.clone(), right);
+                return Ok(())
+            }
+        }
+        Err(Error::InvalidLHS)
     }
 
     fn visit_binexpr(&mut self,  n: &BinExpr) -> VisitorResult {
         match &n.op {
             BinOp::Asg => {
-                unimplemented!()
+                if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
+                    if let Value::Identifier(id) = &id {
+                        if let Some(var) = self.non_local(&id) {
+                            let retvar = self.context.insert_var(self.context.variables[var].clone());
+                            self.with_block_mut(|block| {
+                                block.ins.push(Ins { retvar, typed: {
+                                    InsType::LoadVar(var)
+                                } });
+                            });
+                        } else {
+                            return Err(Error::UnknownIdentifier(id.clone()));
+                        }
+                    }
+                }
+                Err(Error::InvalidLHS)
             },
             op => {
                 n.left.visit(self)?;
@@ -226,6 +318,9 @@ impl Visitor for SSAVisitor {
                     block.ins.push(Ins { retvar, typed: {
                         match op {
                             BinOp::Add => InsType::Add((left, right)),
+                            BinOp::Sub => InsType::Sub((left, right)),
+                            BinOp::Mul => InsType::Mul((left, right)),
+                            BinOp::Div => InsType::Div((left, right)),
                             _ => unimplemented!(),
                         }
                     } });

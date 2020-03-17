@@ -58,8 +58,8 @@ ReturnExpr: NodeBox = {
 
 // Let expression
 LetExpr: NodeBox = {
-    "let" <left:Identifier> "=" <right:StandaloneExpr> => {
-        NodeBox::new(LetExpr{ left: Rc::from(left), right })
+    "let" <left:Term> "=" <right:StandaloneExpr> => {
+        NodeBox::new(LetExpr{ left, right })
     },
     IfExpr,
 };

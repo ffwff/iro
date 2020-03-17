@@ -131,7 +131,7 @@ impl Node for TypeId {
 
 #[derive(Debug)]
 pub struct LetExpr {
-    pub left: Rc<str>,
+    pub left: NodeBox,
     pub right: NodeBox,
 }
 
