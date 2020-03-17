@@ -4,18 +4,16 @@ use iro::ast::Visitor;
 
 fn main() {
     let ast = utils::parse_input("
-    def f(x,y)
-        return x+y
-    end
     def g(x,y)
-        let z = f(x, y) + 10
-        return z
+        return x + y
     end
     g(1, 2)
+    g(\"a\", \"a\")
+    g(3, 4)
     ").unwrap();
     println!("{:#?}", ast);
     let mut visitor = SSAVisitor::new();
-    visitor.visit_program(&ast);
+    visitor.visit_program(&ast).unwrap();
     println!("{:#?}", visitor);
     // utils::ssa_visitor(&ast).unwrap();
 }

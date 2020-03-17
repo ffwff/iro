@@ -20,6 +20,22 @@ impl Context {
         }
     }
 
+    pub fn with_args(name: Rc<str>, args: Vec<Type>) -> Self {
+        Context {
+            variables: args.clone(),
+            blocks: vec![
+                Block {
+                    ins: args.iter().enumerate().map(|(idx, _)| {
+                        Ins { retvar: idx, typed: InsType::LoadArg(idx) }
+                    }).collect(),
+                }
+            ],
+            name,
+            args,
+            rettype: Type::NoReturn,
+        }
+    }
+
     pub fn insert_var(&mut self, typed: Type) -> usize {
         self.variables.push(typed);
         self.variables.len() - 1
@@ -27,6 +43,10 @@ impl Context {
 
     pub fn new_block(&mut self) {
         self.blocks.push(Block { ins: vec![] });
+    }
+
+    pub fn block(&self) -> &Block {
+        self.blocks.last().unwrap()
     }
 
     pub fn block_mut(&mut self) -> &mut Block {
@@ -53,8 +73,13 @@ impl std::fmt::Debug for Ins {
 
 #[derive(Debug, Clone)]
 pub enum InsType {
+    Nop,
+    LoadArg(usize),
     LoadI32(i32),
+    LoadString(Rc<str>),
     Call((Rc<FunctionName>, Vec<usize>)),
+    Return(usize),
+    Add((usize, usize)),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

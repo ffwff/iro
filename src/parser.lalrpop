@@ -136,8 +136,8 @@ Term: NodeBox = {
 
 Literal: Value = {
     <Int> => Value::Int(<>.try_into().unwrap()),
-    <String> => Value::String(<>),
-    <Identifier> => Value::Identifier(Identifier::new(Rc::from(<>))),
+    <String> => Value::String(Rc::from(<>)),
+    <Identifier> => Value::Identifier(Rc::from(<>)),
 };
 
 // Types

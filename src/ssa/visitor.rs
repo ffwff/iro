@@ -10,7 +10,7 @@ use crate::utils::RcWrapper;
 #[derive(Debug, Clone)]
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Rc<DefStatement>>,
-    pub func_contexts: HashMap<Rc<FunctionName>, Context>,
+    pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
 }
 
 impl TopLevelInfo {
@@ -27,6 +27,7 @@ pub struct SSAVisitor {
     context: Context,
     envs: Vec<Env>,
     top_level: RcWrapper<TopLevelInfo>,
+    has_direct_return: bool,
 }
 
 impl SSAVisitor {
@@ -35,6 +36,7 @@ impl SSAVisitor {
             context: Context::new(Rc::from("main")),
             envs: vec![],
             top_level: RcWrapper::new(TopLevelInfo::new()),
+            has_direct_return: false,
         }
     }
 
@@ -43,6 +45,7 @@ impl SSAVisitor {
             context,
             envs: vec![],
             top_level,
+            has_direct_return: false,
         }
     }
 
@@ -50,9 +53,27 @@ impl SSAVisitor {
         self.context
     }
 
+    fn with_block<T, U>(&self, mut callback: T) -> U where T: FnMut(&Block) -> U {
+        let block = self.context.block();
+        callback(block)
+    }
+
     fn with_block_mut<T, U>(&mut self, mut callback: T) -> U where T: FnMut(&mut Block) -> U {
         let block = self.context.block_mut();
         callback(block)
+    }
+
+    fn non_local(&self, var: &Rc<str>) -> Option<usize> {
+        for env in self.envs.iter().rev() {
+            if let Some(var) = env.vars().get(var) {
+                return Some(*var);
+            }
+        }
+        None
+    }
+
+    fn last_retvar(&self) -> usize {
+        self.with_block(|block| block.ins.last().unwrap().retvar)
     }
 }
 
@@ -78,11 +99,37 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_defstmt(&mut self,  n: &DefStatement) -> VisitorResult {
-        unimplemented!()
+        {
+            let mut env = Env::new();
+            for (idx, (name, _)) in n.args.iter().enumerate() {
+                env.vars_mut().insert(name.clone(), idx);
+            }
+            self.envs.push(env);
+        }
+        for expr in &n.exprs {
+            expr.visit(self)?;
+            if self.has_direct_return {
+                break;
+            }
+        }
+        if self.has_direct_return {
+            let retvar = self.last_retvar();
+            let rettype = self.context.variables[retvar].clone();
+            self.context.rettype = rettype;
+        } else {
+            unimplemented!()
+        }
+        Ok(())
     }
 
     fn visit_return(&mut self,   n: &ReturnExpr) -> VisitorResult {
-        unimplemented!()
+        n.expr.visit(self)?;
+        let retvar = self.last_retvar();
+        self.with_block_mut(|block| {
+            block.ins.push(Ins { retvar, typed: InsType::Return(retvar) });
+        });
+        self.has_direct_return = true;
+        Ok(())
     }
 
     fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult {
@@ -92,23 +139,27 @@ impl Visitor for SSAVisitor {
     fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult {
         if let Some(id) = n.callee.borrow().downcast_ref::<Value>() {
             if let Value::Identifier(id) = &id {
-                let id = &id.id;
-                let start_var = self.context.variables.len();
+                let mut args = vec![];
                 let mut arg_types = vec![];
                 for arg in &n.args {
                     arg.visit(self)?;
-                    arg_types.push(self.context.variables.last().unwrap().clone());
+                    let retvar = self.last_retvar();
+                    args.push(retvar);
+                    arg_types.push(self.context.variables[retvar].clone());
                 }
                 let func_name = Rc::new(FunctionName {
                     name: id.clone(),
-                    arg_types
+                    arg_types: arg_types.clone(),
                 });
-                let end_var = self.context.variables.len();
 
                 let rettype = self.top_level.with_mut(|top_level| {
-                    if let Some(context) = top_level.func_contexts.get(&func_name) {
-                        Ok(Some(context.rettype.clone()))
-                    } else if let Some(defstmt) = top_level.defstmts.get(id) {
+                    if let Some(maybe_context) = top_level.func_contexts.get(&func_name) {
+                        if let Some(context) = maybe_context {
+                            Ok(Some(context.rettype.clone()))
+                        } else {
+                            Ok(Some(Type::NoReturn))
+                        }
+                    } else if let Some(_) = top_level.defstmts.get(id) {
                         Ok(None)
                     } else {
                         Err(Error::UnknownIdentifier(id.clone()))
@@ -120,31 +171,36 @@ impl Visitor for SSAVisitor {
                         rettype
                     } else {
                         let visitor = RefCell::new(Some({
-                            let func_context = Context::new(id.clone());
+                            let func_context = Context::with_args(id.clone(), arg_types);
                             let mut visitor = SSAVisitor::with_context(func_context, self.top_level.clone());
-                            let defstmt = self.top_level.with(|top_level| {
+                            let defstmt = self.top_level.with_mut(|top_level| {
+                                top_level.func_contexts.insert(func_name.clone(), None);
                                 top_level.defstmts.get(id).cloned().unwrap()
                             });
-                            visitor.visit_defstmt(defstmt.borrow());
+                            visitor.visit_defstmt(defstmt.borrow())?;
                             (func_name.clone(), visitor)
                         }));
                         self.top_level.with_mut(move |top_level| {
                             let (func_name, visitor) = visitor.replace(None).unwrap();
                             let context = visitor.into_context();
                             let rettype = context.rettype.clone();
-                            top_level.func_contexts.insert(func_name, context);
+                            top_level.func_contexts.insert(func_name, Some(context));
                             rettype
                         })
                     }
                 );
-                self.with_block_mut(|block| {
-                    block.ins.push(Ins { retvar, typed: InsType::Call((
-                            func_name.clone(),
-                            (start_var..end_var).collect())) });
-                });
+                {
+                    let args = RefCell::new(Some(args));
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins { retvar, typed: InsType::Call((
+                                func_name.clone(),
+                                args.replace(None).unwrap())) });
+                    });
+                }
+                return Ok(())
             }
         }
-        unimplemented!()
+        Err(Error::InvalidLHS)
         // if let Some(context) = self.func_contexts.get()
     }
 
@@ -153,7 +209,30 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_binexpr(&mut self,  n: &BinExpr) -> VisitorResult {
-        unimplemented!()
+        match &n.op {
+            BinOp::Asg => {
+                unimplemented!()
+            },
+            op => {
+                n.left.visit(self)?;
+                let left = self.last_retvar();
+                n.right.visit(self)?;
+                let right = self.last_retvar();
+                if self.context.variables[left] != self.context.variables[right] {
+                    return Err(Error::IncompatibleType);
+                }
+                let retvar = self.context.insert_var(self.context.variables[left].clone());
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins { retvar, typed: {
+                        match op {
+                            BinOp::Add => InsType::Add((left, right)),
+                            _ => unimplemented!(),
+                        }
+                    } });
+                });
+                Ok(())
+            }
+        }
     }
 
     fn visit_value(&mut self,    n: &Value) -> VisitorResult {
@@ -164,6 +243,23 @@ impl Visitor for SSAVisitor {
                     block.ins.push(Ins { retvar, typed: InsType::LoadI32(*x) });
                 });
                 Ok(())
+            }
+            Value::String(x) => {
+                let retvar = self.context.insert_var(Type::String);
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins { retvar, typed: InsType::LoadString(x.clone()) });
+                });
+                Ok(())
+            }
+            Value::Identifier(id) => {
+                if let Some(var) = self.non_local(&id) {
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins { retvar: var, typed: InsType::Nop });
+                    });
+                    Ok(())
+                } else {
+                    Err(Error::UnknownIdentifier(id.clone()))
+                }
             }
             _ => unimplemented!()
         }

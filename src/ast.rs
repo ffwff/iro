@@ -106,24 +106,11 @@ impl Node for Program {
 }
 
 #[derive(Debug)]
-pub struct Identifier {
-    pub id : Rc<str>,
-}
-
-impl Identifier {
-    pub fn new(id : Rc<str>) -> Self {
-        Identifier {
-            id,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub enum Value {
     Int(i32),
     Float(f64),
-    String(String),
-    Identifier(Identifier),
+    String(Rc<str>),
+    Identifier(Rc<str>),
     Any,
 }
 
