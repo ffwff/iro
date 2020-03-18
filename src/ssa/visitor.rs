@@ -181,7 +181,8 @@ impl Visitor for SSAVisitor {
         let mut condvar = 0usize;
         let mut iftrue  = None;
         let mut iffalse = None;
-        let mut possible_retvars = vec![];
+        let mut iftrue_retvar = None;
+        let mut iffalse_retvar = None;
 
         // If-true branch
         self.envs.push(Env::new());
@@ -194,7 +195,7 @@ impl Visitor for SSAVisitor {
                     node.visit(self)?;
                 }
                 if let Some(last_retvar) = self.last_retvar() {
-                    possible_retvars.push(last_retvar);
+                    iftrue_retvar = Some(last_retvar);
                 }
             }
         });
@@ -218,7 +219,7 @@ impl Visitor for SSAVisitor {
                     node.visit(self)?;
                 }
                 if let Some(last_retvar) = self.last_retvar() {
-                    possible_retvars.push(last_retvar);
+                    iffalse_retvar = Some(last_retvar);
                 }
             }
         });
@@ -234,47 +235,60 @@ impl Visitor for SSAVisitor {
         }
 
         let retvar_type = {
-            if let Some(first) = possible_retvars.get(0).cloned() {
-                if let Some(last) = possible_retvars.get(1).cloned() {
+            match (iftrue_retvar, iffalse_retvar) {
+                (Some(first), Some(last)) => {
                     Some(self.context.variables[first].unify(&self.context.variables[last]))
-                } else {
-                    Some(self.context.variables[first].unify(&Type::Nil))
                 }
-            } else if let Some(last) = possible_retvars.get(0).cloned() {
-                Some(self.context.variables[last].unify(&Type::Nil))
-            } else {
-                None
+                (Some(first), None) => {
+                    Some(self.context.variables[first].clone())
+                }
+                (None, Some(last)) => {
+                    Some(self.context.variables[last].clone())
+                }
+                (None, None) => None
             }
         };
         let retvar = retvar_type.map(|typed| self.context.insert_var(typed));
 
+        let outer_block = self.context.new_block();
+
         // Insert retvars
         if let Some(retvar) = retvar {
-            if let Some(iftrue) = iftrue {
-                let block = &mut self.context.blocks[iftrue];
-                if let Some(last) = block.ins.last() {
-                    if let Some(lastvar) = block.ins.last().unwrap().retvar() {
-                        block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
+            let phi = RefCell::new(
+                match (iftrue_retvar, iffalse_retvar) {
+                    (Some(first), Some(last)) => {
+                        InsType::Phi {
+                            branch_to_var: vec![
+                                (iftrue.unwrap(),  Some(first)),
+                                (iffalse.unwrap(), Some(last))
+                            ],
+                        }
                     }
-                }
-            }
-            if let Some(iffalse) = iffalse {
-                let block = &mut self.context.blocks[iffalse];
-                if let Some(last) = block.ins.last() {
-                    if let Some(lastvar) = last.retvar() {
-                        block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
+                    (Some(first), None) => {
+                        InsType::Phi {
+                            branch_to_var: vec![
+                                (cond, None),
+                                (iftrue.unwrap(), Some(first)),
+                            ],
+                        }
                     }
+                    (None, Some(last)) => {
+                        InsType::Phi {
+                            branch_to_var: vec![
+                                (cond, None),
+                                (iffalse.unwrap(), Some(last)),
+                            ],
+                        }
+                    }
+                    (None, None) => unreachable!()
                 }
-            }
+            );
+            self.with_block_mut(|block| {
+                block.ins.push(Ins::new(retvar, phi.replace(InsType::Nop)));
+            });
         }
 
         // Insert jumps
-        let outer_block = self.context.new_block();
-        if let Some(retvar) = retvar {
-            self.with_block_mut(|block| {
-                block.ins.push(Ins::new(retvar, InsType::Nop));
-            });
-        }
         {
             let block = &mut self.context.blocks[cond];
             block.ins.push(Ins::new(0, InsType::IfJmp {
@@ -380,13 +394,11 @@ impl Visitor for SSAVisitor {
                 if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
                     if let Value::Identifier(id) = &id {
                         if let Some(var) = self.non_local(&id) {
-                            let retvar = self.context.insert_var(self.context.variables[var].clone());
+                            n.right.visit(self)?;
+                            let right = self.last_retvar().unwrap();
                             self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(retvar, {
-                                    InsType::LoadVar(var)
-                                }));
+                                block.ins.push(Ins::new(var, InsType::LoadVar(right)));
                             });
-                            self.set_non_local(id, retvar);
                             return Ok(())
                         } else {
                             return Err(Error::UnknownIdentifier(id.clone()));

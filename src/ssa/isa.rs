@@ -104,6 +104,7 @@ pub enum InsType {
     LoadArg(usize),
     LoadI32(i32),
     LoadString(Rc<str>),
+    Phi { branch_to_var: Vec<(usize, Option<usize>)> },
     Call { name: Rc<FunctionName>, args: Vec<usize> },
     Return(usize),
     Add((usize, usize)),

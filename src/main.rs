@@ -4,10 +4,8 @@ use iro::ast::Visitor;
 
 fn main() {
     let ast = utils::parse_input("
-    let x = if 1
-        12
-    else
-    end
+    let a = 1 + 2
+    a = 2 + 3
     ").unwrap();
     println!("{:#?}", ast);
     let mut visitor = SSAVisitor::new();
