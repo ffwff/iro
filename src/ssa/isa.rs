@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, BTreeMap, HashMap};
 use std::ops::BitAnd;
 
 #[derive(Debug, Clone)]
@@ -27,11 +27,11 @@ impl Context {
         Context {
             variables: args.clone(),
             blocks: vec![
-                Block {
-                    ins: args.iter().enumerate().map(|(idx, _)| {
+                Block::new(
+                    args.iter().enumerate().map(|(idx, _)| {
                         Ins { retvar: idx, typed: InsType::LoadArg(idx) }
                     }).collect(),
-                }
+                )
             ],
             name,
             args,
@@ -45,7 +45,7 @@ impl Context {
     }
 
     pub fn new_block(&mut self) -> usize {
-        self.blocks.push(Block { ins: vec![] });
+        self.blocks.push(Block::new(vec![]));
         self.blocks.len() - 1
     }
 
@@ -61,6 +61,14 @@ impl Context {
 #[derive(Debug, Clone)]
 pub struct Block {
     pub ins: Vec<Ins>,
+}
+
+impl Block {
+    pub fn new(ins: Vec<Ins>) -> Self {
+        Block {
+            ins,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -104,7 +112,7 @@ pub enum InsType {
     LoadArg(usize),
     LoadI32(i32),
     LoadString(Rc<str>),
-    Phi { branch_to_var: Vec<(usize, Option<usize>)> },
+    Phi { vars: Vec<usize> },
     Call { name: Rc<FunctionName>, args: Vec<usize> },
     Return(usize),
     Add((usize, usize)),

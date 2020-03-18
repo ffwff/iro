@@ -254,35 +254,13 @@ impl Visitor for SSAVisitor {
 
         // Insert retvars
         if let Some(retvar) = retvar {
-            let phi = RefCell::new(
-                match (iftrue_retvar, iffalse_retvar) {
-                    (Some(first), Some(last)) => {
-                        InsType::Phi {
-                            branch_to_var: vec![
-                                (iftrue.unwrap(),  Some(first)),
-                                (iffalse.unwrap(), Some(last))
-                            ],
-                        }
-                    }
-                    (Some(first), None) => {
-                        InsType::Phi {
-                            branch_to_var: vec![
-                                (cond, None),
-                                (iftrue.unwrap(), Some(first)),
-                            ],
-                        }
-                    }
-                    (None, Some(last)) => {
-                        InsType::Phi {
-                            branch_to_var: vec![
-                                (cond, None),
-                                (iffalse.unwrap(), Some(last)),
-                            ],
-                        }
-                    }
-                    (None, None) => unreachable!()
-                }
-            );
+            let phi = RefCell::new(InsType::Phi { vars: vec![
+                iftrue_retvar.unwrap_or(retvar),
+                iffalse_retvar.unwrap_or(retvar) ] });
+            if iftrue_retvar.is_none() || iffalse_retvar.is_none() {
+                let block = &mut self.context.blocks[cond];
+                block.ins.push(Ins::new(retvar, InsType::LoadNil));
+            }
             self.with_block_mut(|block| {
                 block.ins.push(Ins::new(retvar, phi.replace(InsType::Nop)));
             });
@@ -299,6 +277,10 @@ impl Visitor for SSAVisitor {
         }
         if let Some(iftrue) = iftrue {
             let block = &mut self.context.blocks[iftrue];
+            block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+        }
+        if let Some(iffalse) = iffalse {
+            let block = &mut self.context.blocks[iffalse];
             block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
         }
 

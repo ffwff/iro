@@ -11,3 +11,4 @@ pub mod utils;
 pub mod lexer;
 pub mod ast;
 pub mod ssa;
+pub mod opt;

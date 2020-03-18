@@ -1,16 +1,27 @@
 use iro::utils;
 use iro::ssa::visitor::SSAVisitor;
 use iro::ast::Visitor;
+use iro::opt;
 
 fn main() {
     let ast = utils::parse_input("
     let a = 1 + 2
     a = 2 + 3
+    if 10
+        if 10
+            1
+        else
+            2
+        end
+    else
+        1
+    end
     ").unwrap();
     println!("{:#?}", ast);
     let mut visitor = SSAVisitor::new();
     visitor.visit_program(&ast).unwrap();
-    let func_contexts = visitor.into_func_contexts();
+    let mut func_contexts = visitor.into_func_contexts().unwrap();
+    func_contexts = opt::preprocess::preprocess(func_contexts);
     println!("{:#?}", func_contexts);
     // utils::ssa_visitor(&ast).unwrap();
 }
