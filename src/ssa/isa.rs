@@ -1,4 +1,7 @@
-use std::rc::{Rc, Weak};
+use std::borrow::Borrow;
+use std::rc::Rc;
+use std::collections::{BTreeSet, HashMap};
+use std::ops::BitAnd;
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -42,6 +45,11 @@ impl Context {
     }
 
     pub fn new_block(&mut self) -> usize {
+        if let Some(last) = self.blocks.last() {
+            if last.ins.is_empty() {
+                return self.blocks.len() - 1;
+            }
+        }
         self.blocks.push(Block { ins: vec![] });
         self.blocks.len() - 1
     }
@@ -62,16 +70,33 @@ pub struct Block {
 
 #[derive(Clone)]
 pub struct Ins {
-    pub retvar: usize,
+    retvar: usize,
     pub typed: InsType,
+}
+
+impl Ins {
+    pub fn new(retvar: usize, typed: InsType) -> Self {
+        Ins {
+            retvar,
+            typed
+        }
+    }
+
+    pub fn retvar(&self) -> Option<usize> {
+        if self.typed.is_jmp() {
+            None
+        } else {
+            Some(self.retvar)
+        }
+    }
 }
 
 impl std::fmt::Debug for Ins {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.typed {
-            InsType::IfJmp(x) => write!(f, "IfJmp({:?})", x),
-            InsType::Jmp(x) => write!(f, "Jmp({:?})", x),
-            other => write!(f, "v{} = {:?}", self.retvar, other)
+        if self.typed.is_jmp() {
+            write!(f, "{:?}", self.typed)
+        } else {
+            write!(f, "v{} = {:?}", self.retvar, self.typed)
         }
     }
 }
@@ -79,18 +104,30 @@ impl std::fmt::Debug for Ins {
 #[derive(Debug, Clone)]
 pub enum InsType {
     Nop,
+    LoadNil,
     LoadVar(usize),
     LoadArg(usize),
     LoadI32(i32),
     LoadString(Rc<str>),
-    Call((Rc<FunctionName>, Vec<usize>)),
+    Call { name: Rc<FunctionName>, args: Vec<usize> },
     Return(usize),
     Add((usize, usize)),
     Sub((usize, usize)),
     Mul((usize, usize)),
     Div((usize, usize)),
-    IfJmp((usize, usize, usize)),
+    IfJmp { condvar: usize, iftrue: usize, iffalse: usize },
     Jmp(usize),
+}
+
+impl InsType {
+    pub fn is_jmp(&self) -> bool {
+        match self {
+            InsType::IfJmp { .. } |
+            InsType::Jmp(_) |
+            InsType::Return(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -99,10 +136,46 @@ pub struct FunctionName {
     pub arg_types: Vec<Type>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub type FuncContexts = HashMap<Rc<FunctionName>, Option<Context>>;
+
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum Type {
     NoReturn,
+    Nil,
     I32,
     Float,
     String,
+    Union(Rc<BTreeSet<Type>>),
+}
+
+impl Type {
+    pub fn unify(&self, other: &Type) -> Self {
+        match (self, other) {
+            (left, right) if left == right => left.clone(),
+            (Type::NoReturn, right) => right.clone(),
+            (left, Type::NoReturn) => left.clone(),
+            (Type::Union(set_left), Type::Union(set_right)) => Type::Union(
+                Rc::new({
+                    let lset: &BTreeSet<Type> = set_left.borrow();
+                    let rset: &BTreeSet<Type> = set_right.borrow();
+                    lset.bitand(rset)
+                })),
+            (Type::Union(set), right) => Type::Union(
+                Rc::new({
+                    let bbset: &BTreeSet<Type> = set.borrow();
+                    let mut bset = bbset.clone();
+                    bset.insert(right.clone());
+                    bset
+                })),
+            (left, Type::Union(set)) => Type::Union(
+                Rc::new({
+                    let bbset: &BTreeSet<Type> = set.borrow();
+                    let mut bset = bbset.clone();
+                    bset.insert(left.clone());
+                    bset
+                })),
+            (left, right) => Type::Union(
+                Rc::new(btreeset!{ left.clone(), right.clone() })),
+        }
+    }
 }

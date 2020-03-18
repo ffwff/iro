@@ -38,4 +38,11 @@ impl<T> RcWrapper<T> {
         let retval = callback(data);
         retval
     }
+
+    pub fn try_unwrap(self) -> Result<T, RcWrapper<T>> {
+        match Rc::try_unwrap(self.inner) {
+            Ok(rcc) => Ok(rcc.into_inner()),
+            Err(inner) => Err(RcWrapper { inner }),
+        }
+    }
 }

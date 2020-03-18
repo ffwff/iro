@@ -61,17 +61,6 @@ LetExpr: NodeBox = {
     "let" <left:Term> "=" <right:StandaloneExpr> => {
         NodeBox::new(LetExpr{ left, right })
     },
-    IfExpr,
-};
-
-// If expression
-IfExpr: NodeBox = {
-    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "else" NL+ <elses:Expr*> "end" => {
-        NodeBox::new(IfExpr::new( cond, exprs, elses ))
-    },
-    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(IfExpr::new( cond, exprs, vec![] ))
-    },
     BinExpr,
 };
 
@@ -87,7 +76,7 @@ AndExpr = BinOpTier<AndOp, OrzExpr>;
 OrzExpr = BinOpTier<OrzOp, CmpExpr>;
 CmpExpr = BinOpTier<CmpOp, AddExpr>;
 AddExpr = BinOpTier<AddOp, FacExpr>;
-FacExpr = BinOpTier<FacOp, CallExpr>;
+FacExpr = BinOpTier<FacOp, IfExpr>;
 
 AsgOp: BinOp = {
     "=" => BinOp::Asg,
@@ -118,6 +107,17 @@ AddOp: BinOp = {
 FacOp: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
+};
+
+// If expression
+IfExpr: NodeBox = {
+    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "else" NL+ <elses:Expr*> "end" => {
+        NodeBox::new(IfExpr::new( cond, exprs, elses ))
+    },
+    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
+        NodeBox::new(IfExpr::new( cond, exprs, vec![] ))
+    },
+    CallExpr,
 };
 
 // Call expression

@@ -11,7 +11,7 @@ use crate::utils::RcWrapper;
 #[derive(Debug, Clone)]
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Rc<DefStatement>>,
-    pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
+    pub func_contexts: FuncContexts,
 }
 
 impl TopLevelInfo {
@@ -65,6 +65,20 @@ impl SSAVisitor {
         self.context
     }
 
+    pub fn into_func_contexts(self) -> Result<FuncContexts, ()> {
+        if let Ok(top_level) = self.top_level.try_unwrap() {
+            let context = self.context;
+            let mut func_contexts = top_level.func_contexts;
+            func_contexts.insert(Rc::new(FunctionName {
+                name: context.name.clone(),
+                arg_types: vec![],
+            }), Some(context));
+            Ok(func_contexts)
+        } else {
+            Err(())
+        }
+    }
+
     fn with_block<T, U>(&self, mut callback: T) -> U where T: FnMut(&Block) -> U {
         let block = self.context.block();
         callback(block)
@@ -84,8 +98,23 @@ impl SSAVisitor {
         None
     }
 
-    fn last_retvar(&self) -> usize {
-        self.with_block(|block| block.ins.last().unwrap().retvar)
+    fn set_non_local(&mut self, var: &Rc<str>, new_var: usize) {
+        for env in self.envs.iter_mut().rev() {
+            if let Some(_) = env.vars().get(var) {
+                env.vars_mut().insert(var.clone(), new_var);
+                return;
+            }
+        }
+    }
+
+    fn last_retvar(&self) -> Option<usize> {
+        self.with_block(|block| {
+            if let Some(ins) = block.ins.last() {
+                ins.retvar()
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -125,21 +154,23 @@ impl Visitor for SSAVisitor {
                 break;
             }
         }
-        if self.has_direct_return {
-            let retvar = self.last_retvar();
-            let rettype = self.context.variables[retvar].clone();
-            self.context.rettype = rettype;
-        } else {
-            unimplemented!()
+        if !self.has_direct_return && self.context.rettype != Type::NoReturn {
+            self.context.rettype = self.context.rettype.unify(&Type::Nil);
         }
         Ok(())
     }
 
     fn visit_return(&mut self,   n: &ReturnExpr) -> VisitorResult {
         n.expr.visit(self)?;
-        let retvar = self.last_retvar();
+        let retvar = self.last_retvar().unwrap();
+        let rettype = self.context.variables[retvar].clone();
+        if self.context.rettype == Type::NoReturn {
+            self.context.rettype = rettype;
+        } else if rettype != self.context.rettype {
+            self.context.rettype = self.context.rettype.unify(&rettype);
+        }
         self.with_block_mut(|block| {
-            block.ins.push(Ins { retvar, typed: InsType::Return(retvar) });
+            block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
         });
         self.has_direct_return = true;
         Ok(())
@@ -150,16 +181,20 @@ impl Visitor for SSAVisitor {
         let mut condvar = 0usize;
         let mut iftrue =  None;
         let mut iffalse = None;
+        let mut possible_retvars = vec![];
 
         // If-true branch
         self.envs.push(Env::new());
         let treturn = check_direct_return!(self, {
             n.cond.visit(self)?;
-            condvar = self.last_retvar();
+            condvar = self.last_retvar().unwrap();
             if !n.exprs.is_empty() {
                 iftrue = Some(self.context.new_block());
                 for node in &n.exprs {
                     node.visit(self)?;
+                }
+                if let Some(last_retvar) = self.last_retvar() {
+                    possible_retvars.push(last_retvar);
                 }
             }
         });
@@ -173,25 +208,12 @@ impl Visitor for SSAVisitor {
                 for node in &n.elses {
                     node.visit(self)?;
                 }
+                if let Some(last_retvar) = self.last_retvar() {
+                    possible_retvars.push(last_retvar);
+                }
             }
         });
         self.envs.pop();
-
-        // Insert jumps
-        if iftrue.is_some() || iffalse.is_some() {
-            self.context.new_block();
-            let curblock = self.context.blocks.len() - 1;
-            let block = &mut self.context.blocks[cond];
-            block.ins.push(Ins { retvar: 0, typed: InsType::IfJmp((condvar,
-                iftrue.unwrap_or(curblock),
-                iffalse.unwrap_or(curblock))) });
-            if iffalse.is_some() {
-                if let Some(iftrue) = iftrue {
-                    let block = &mut self.context.blocks[iftrue];
-                    block.ins.push(Ins { retvar: 0, typed: InsType::Jmp(curblock) });
-                }
-            }
-        }
 
         if treturn || freturn {
             if treturn != freturn {
@@ -200,6 +222,73 @@ impl Visitor for SSAVisitor {
                 n.returntype.replace(IfReturnType::BothBranch);
                 self.has_direct_return = true;
             }
+        }
+
+        let mut retvar_type = {
+            if let Some(first) = possible_retvars.get(0).cloned() {
+                if let Some(last) = possible_retvars.get(1).cloned() {
+                    Some(self.context.variables[first].unify(&self.context.variables[last]))
+                } else {
+                    Some(self.context.variables[first].unify(&Type::Nil))
+                }
+            } else if let Some(last) = possible_retvars.get(0).cloned() {
+                Some(self.context.variables[last].unify(&Type::Nil))
+            } else {
+                None
+            }
+        };
+
+        // Insert jumps
+        if iftrue.is_some() || iffalse.is_some() {
+            self.context.new_block();
+            let curblock = self.context.blocks.len() - 1;
+            let block = &mut self.context.blocks[cond];
+            block.ins.push(Ins::new(0, InsType::IfJmp {
+                condvar: condvar,
+                iftrue: iftrue.unwrap_or(curblock),
+                iffalse: iffalse.unwrap_or(curblock)
+            }));
+            let retvar = if let Some(retvar_type) = retvar_type.take() {
+                Some(self.context.insert_var(retvar_type))
+            } else {
+                None
+            };
+            if let Some(iffalse) = iffalse {
+                if let Some(iftrue) = iftrue {
+                    let block = &mut self.context.blocks[iftrue];
+                    if let Some(retvar) = retvar {
+                        if let Some(lastvar) = block.ins.last().unwrap().retvar() {
+                            block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
+                        }
+                    }
+                    block.ins.push(Ins::new(0, InsType::Jmp(curblock)));
+                }
+                {
+                    let block = &mut self.context.blocks[iffalse];
+                    if let Some(retvar) = retvar {
+                        if let Some(lastvar) = block.ins.last().unwrap().retvar() {
+                            block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
+                        }
+                    }
+                }
+            } else if let Some(iftrue) = iftrue {
+                let block = &mut self.context.blocks[iftrue];
+                if let Some(retvar) = retvar {
+                    if let Some(lastvar) = block.ins.last().unwrap().retvar() {
+                        block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
+                    }
+                }
+            }
+            if let Some(retvar) = retvar {
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(retvar, InsType::Nop));
+                })
+            }
+        } else {
+            let retvar = self.context.insert_var(Type::Nil);
+            self.with_block_mut(|block| {
+                block.ins.push(Ins::new(retvar, InsType::LoadNil));
+            })
         }
 
         Ok(())
@@ -212,7 +301,7 @@ impl Visitor for SSAVisitor {
                 let mut arg_types = vec![];
                 for arg in &n.args {
                     arg.visit(self)?;
-                    let retvar = self.last_retvar();
+                    let retvar = self.last_retvar().unwrap();
                     args.push(retvar);
                     arg_types.push(self.context.variables[retvar].clone());
                 }
@@ -261,21 +350,21 @@ impl Visitor for SSAVisitor {
                 {
                     let args = RefCell::new(Some(args));
                     self.with_block_mut(|block| {
-                        block.ins.push(Ins { retvar, typed: InsType::Call((
-                                func_name.clone(),
-                                args.replace(None).unwrap())) });
+                        block.ins.push(Ins::new(retvar, InsType::Call {
+                            name: func_name.clone(),
+                            args: args.replace(None).unwrap()
+                        }));
                     });
                 }
                 return Ok(())
             }
         }
         Err(Error::InvalidLHS)
-        // if let Some(context) = self.func_contexts.get()
     }
 
     fn visit_letexpr(&mut self,  n: &LetExpr) -> VisitorResult {
         n.right.visit(self)?;
-        let right = self.last_retvar();
+        let right = self.last_retvar().unwrap();
         if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
             if let Value::Identifier(id) = &id {
                 let env = self.envs.last_mut().unwrap();
@@ -294,10 +383,12 @@ impl Visitor for SSAVisitor {
                         if let Some(var) = self.non_local(&id) {
                             let retvar = self.context.insert_var(self.context.variables[var].clone());
                             self.with_block_mut(|block| {
-                                block.ins.push(Ins { retvar, typed: {
+                                block.ins.push(Ins::new(retvar, {
                                     InsType::LoadVar(var)
-                                } });
+                                }));
                             });
+                            self.set_non_local(id, retvar);
+                            return Ok(())
                         } else {
                             return Err(Error::UnknownIdentifier(id.clone()));
                         }
@@ -307,15 +398,15 @@ impl Visitor for SSAVisitor {
             },
             op => {
                 n.left.visit(self)?;
-                let left = self.last_retvar();
+                let left = self.last_retvar().unwrap();
                 n.right.visit(self)?;
-                let right = self.last_retvar();
+                let right = self.last_retvar().unwrap();
                 if self.context.variables[left] != self.context.variables[right] {
                     return Err(Error::IncompatibleType);
                 }
                 let retvar = self.context.insert_var(self.context.variables[left].clone());
                 self.with_block_mut(|block| {
-                    block.ins.push(Ins { retvar, typed: {
+                    block.ins.push(Ins::new(retvar, {
                         match op {
                             BinOp::Add => InsType::Add((left, right)),
                             BinOp::Sub => InsType::Sub((left, right)),
@@ -323,7 +414,7 @@ impl Visitor for SSAVisitor {
                             BinOp::Div => InsType::Div((left, right)),
                             _ => unimplemented!(),
                         }
-                    } });
+                    }));
                 });
                 Ok(())
             }
@@ -335,21 +426,21 @@ impl Visitor for SSAVisitor {
             Value::Int(x) => {
                 let retvar = self.context.insert_var(Type::I32);
                 self.with_block_mut(|block| {
-                    block.ins.push(Ins { retvar, typed: InsType::LoadI32(*x) });
+                    block.ins.push(Ins::new(retvar, InsType::LoadI32(*x)));
                 });
                 Ok(())
             }
             Value::String(x) => {
                 let retvar = self.context.insert_var(Type::String);
                 self.with_block_mut(|block| {
-                    block.ins.push(Ins { retvar, typed: InsType::LoadString(x.clone()) });
+                    block.ins.push(Ins::new(retvar, InsType::LoadString(x.clone()) ));
                 });
                 Ok(())
             }
             Value::Identifier(id) => {
-                if let Some(var) = self.non_local(&id) {
+                if let Some(retvar) = self.non_local(&id) {
                     self.with_block_mut(|block| {
-                        block.ins.push(Ins { retvar: var, typed: InsType::Nop });
+                        block.ins.push(Ins::new(retvar, InsType::Nop));
                     });
                     Ok(())
                 } else {
