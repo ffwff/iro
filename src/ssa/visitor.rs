@@ -179,7 +179,7 @@ impl Visitor for SSAVisitor {
     fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult {
         let mut cond = self.context.blocks.len() - 1;
         let mut condvar = 0usize;
-        let mut iftrue =  None;
+        let mut iftrue  = None;
         let mut iffalse = None;
         let mut possible_retvars = vec![];
 
@@ -200,6 +200,15 @@ impl Visitor for SSAVisitor {
         });
         self.envs.pop();
 
+        if n.exprs.is_empty() && n.elses.is_empty() {
+            // Return nil if two branches don't do anything
+            let retvar = self.context.insert_var(Type::Nil);
+            self.with_block_mut(|block| {
+                block.ins.push(Ins::new(retvar, InsType::Nop));
+            });
+            return Ok(());
+        }
+        
         // If-false branch
         self.envs.push(Env::new());
         let freturn = check_direct_return!(self, {
@@ -224,7 +233,7 @@ impl Visitor for SSAVisitor {
             }
         }
 
-        let mut retvar_type = {
+        let retvar_type = {
             if let Some(first) = possible_retvars.get(0).cloned() {
                 if let Some(last) = possible_retvars.get(1).cloned() {
                     Some(self.context.variables[first].unify(&self.context.variables[last]))
@@ -237,59 +246,49 @@ impl Visitor for SSAVisitor {
                 None
             }
         };
+        let retvar = retvar_type.map(|typed| self.context.insert_var(typed));
 
-        // Insert jumps
-        if iftrue.is_some() || iffalse.is_some() {
-            self.context.new_block();
-            let curblock = self.context.blocks.len() - 1;
-            let block = &mut self.context.blocks[cond];
-            block.ins.push(Ins::new(0, InsType::IfJmp {
-                condvar: condvar,
-                iftrue: iftrue.unwrap_or(curblock),
-                iffalse: iffalse.unwrap_or(curblock)
-            }));
-            let retvar = if let Some(retvar_type) = retvar_type.take() {
-                Some(self.context.insert_var(retvar_type))
-            } else {
-                None
-            };
-            if let Some(iffalse) = iffalse {
-                if let Some(iftrue) = iftrue {
-                    let block = &mut self.context.blocks[iftrue];
-                    if let Some(retvar) = retvar {
-                        if let Some(lastvar) = block.ins.last().unwrap().retvar() {
-                            block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
-                        }
-                    }
-                    block.ins.push(Ins::new(0, InsType::Jmp(curblock)));
-                }
-                {
-                    let block = &mut self.context.blocks[iffalse];
-                    if let Some(retvar) = retvar {
-                        if let Some(lastvar) = block.ins.last().unwrap().retvar() {
-                            block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
-                        }
-                    }
-                }
-            } else if let Some(iftrue) = iftrue {
+        // Insert retvars
+        if let Some(retvar) = retvar {
+            if let Some(iftrue) = iftrue {
                 let block = &mut self.context.blocks[iftrue];
-                if let Some(retvar) = retvar {
+                if let Some(last) = block.ins.last() {
                     if let Some(lastvar) = block.ins.last().unwrap().retvar() {
                         block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
                     }
                 }
             }
-            if let Some(retvar) = retvar {
-                self.with_block_mut(|block| {
-                    block.ins.push(Ins::new(retvar, InsType::Nop));
-                })
+            if let Some(iffalse) = iffalse {
+                let block = &mut self.context.blocks[iffalse];
+                if let Some(last) = block.ins.last() {
+                    if let Some(lastvar) = last.retvar() {
+                        block.ins.push(Ins::new(retvar, InsType::LoadVar(lastvar)));
+                    }
+                }
             }
-        } else {
-            let retvar = self.context.insert_var(Type::Nil);
-            self.with_block_mut(|block| {
-                block.ins.push(Ins::new(retvar, InsType::LoadNil));
-            })
         }
+
+        // Insert jumps
+        let outer_block = self.context.new_block();
+        if let Some(retvar) = retvar {
+            self.with_block_mut(|block| {
+                block.ins.push(Ins::new(retvar, InsType::Nop));
+            });
+        }
+        {
+            let block = &mut self.context.blocks[cond];
+            block.ins.push(Ins::new(0, InsType::IfJmp {
+                condvar: condvar,
+                iftrue: iftrue.unwrap_or(outer_block),
+                iffalse: iffalse.unwrap_or(outer_block)
+            }));
+        }
+        if let Some(iftrue) = iftrue {
+            let block = &mut self.context.blocks[iftrue];
+            block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+        }
+
+        println!("{:#?}", self.context);
 
         Ok(())
     }

@@ -45,11 +45,6 @@ impl Context {
     }
 
     pub fn new_block(&mut self) -> usize {
-        if let Some(last) = self.blocks.last() {
-            if last.ins.is_empty() {
-                return self.blocks.len() - 1;
-            }
-        }
         self.blocks.push(Block { ins: vec![] });
         self.blocks.len() - 1
     }
