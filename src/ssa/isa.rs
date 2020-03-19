@@ -93,6 +93,14 @@ impl Ins {
         }
     }
 
+    pub fn mut_retvar(&mut self) -> Option<&mut usize> {
+        if self.typed.is_jmp() {
+            None
+        } else {
+            Some(&mut self.retvar)
+        }
+    }
+
     pub fn rename_var(&mut self, oldvar: usize, newvar: usize) {
         let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
         let swap = |maybe_old: usize| {

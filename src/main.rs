@@ -5,13 +5,14 @@ use iro::opt;
 
 fn main() {
     let ast = utils::parse_input("
-    let a = 1 + 2
-    a = 2 + 3
-    if 10
-        a = 1
-    else
+    let a = 1
+    if 1
         a = 2
+    else
+        a = 3
     end
+    let b = a
+    a = b + 5
     ").unwrap();
     println!("{:#?}", ast);
     let mut visitor = SSAVisitor::new();

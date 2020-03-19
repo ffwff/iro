@@ -1,3 +1,4 @@
+#![feature(is_sorted)]
 #![feature(weak_ptr_eq)]
 #![feature(bind_by_move_pattern_guards)]
 
