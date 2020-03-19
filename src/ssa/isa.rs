@@ -92,6 +92,50 @@ impl Ins {
             Some(self.retvar)
         }
     }
+
+    pub fn rename_var(&mut self, oldvar: usize, newvar: usize) {
+        let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
+        let swap = |maybe_old: usize| {
+            if maybe_old == oldvar {
+                newvar
+            } else {
+                maybe_old
+            }
+        };
+        let new_typed = match old_typed {
+            InsType::LoadVar(x) if x == oldvar => {
+                InsType::LoadVar(newvar)
+            }
+            InsType::Call { name, mut args } => {
+                for arg in &mut args {
+                    if *arg == oldvar {
+                        *arg = newvar;
+                    }
+                }
+                InsType::Call { name, args }
+            }
+            InsType::Return(x) if x == oldvar => {
+                InsType::Return(newvar)
+            }
+            InsType::Phi { mut vars } => {
+                for var in &mut vars {
+                    if *var == oldvar {
+                        *var = newvar;
+                    }
+                }
+                InsType::Phi { vars }
+            }
+            InsType::Add((x, y)) if x == oldvar || y == oldvar => { InsType::Add((swap(x), swap(y))) },
+            InsType::Sub((x, y)) if x == oldvar || y == oldvar => { InsType::Sub((swap(x), swap(y))) },
+            InsType::Mul((x, y)) if x == oldvar || y == oldvar => { InsType::Mul((swap(x), swap(y))) },
+            InsType::Div((x, y)) if x == oldvar || y == oldvar => { InsType::Div((swap(x), swap(y))) },
+            InsType::IfJmp { condvar, iftrue, iffalse } if condvar == oldvar => {
+                InsType::IfJmp { condvar: newvar, iftrue, iffalse }
+            }
+            other => other,
+        };
+        std::mem::replace(&mut self.typed, new_typed);
+    }
 }
 
 impl std::fmt::Debug for Ins {

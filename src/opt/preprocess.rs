@@ -4,7 +4,8 @@ use crate::ssa::isa::*;
 pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
     for (name, context) in &mut contexts {
         let context = context.as_mut().unwrap();
-        let mut defsites : Vec<BTreeSet<usize>> = (0..context.variables.len()).map(|_| btreeset![]).collect();
+        let mut defsites : Vec<BTreeMap<usize, Option<usize>>> =
+            (0..context.variables.len()).map(|_| btreemap![]).collect();
 
         let num_blocks = context.blocks.len();
 
@@ -18,22 +19,28 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
 
         // FIlter out nops and build the graph maps
         for (idx, block) in context.blocks.iter_mut().enumerate() {
+            let mut jumped = false;
             block.ins.retain(|ins| {
+                if jumped {
+                    return false;
+                }
                 match &ins.typed {
                     InsType::Nop => false,
                     InsType::IfJmp { condvar: _, iftrue, iffalse } => {
                         insert_node(*iftrue, idx);
                         insert_node(*iffalse, idx);
+                        jumped = true;
                         true
                     }
                     InsType::Jmp(target) => {
                         insert_node(*target, idx);
+                        jumped = true;
                         true
                     }
                     _ => {
                         let retvar = ins.retvar().unwrap();
                         let set = &mut defsites[retvar];
-                        set.insert(idx);
+                        set.insert(idx, None);
                         true
                     },
                 }
@@ -117,6 +124,25 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                             // println!("{:?} {:?} {:?} {:?}", runner, b, doms[&b], doms[&runner]);
                             dom_frontier[runner].insert(b);
                             runner = doms[&runner];
+                        }
+                    }
+                }
+            }
+            println!("---\ndom_frontier: {:#?}", dom_frontier);
+            for (var, mut defsites) in defsites.iter_mut().enumerate() {
+                let defsites_vec: Vec<usize> = defsites.iter().map(|(x, _)| *x).collect();
+                let mut has_phi: BTreeSet<usize> = btreeset![];
+                for &defsite in &defsites_vec {
+                    for &block in &dom_frontier[defsite] {
+                        if !has_phi.contains(&block) {
+                            println!("var: {} {:?}", var, block);
+                            context.blocks[block].ins.insert(0, Ins::new(
+                                var,
+                                InsType::Phi {
+                                    vars: vec![],
+                                }
+                            ));
+                            has_phi.insert(block);
                         }
                     }
                 }

@@ -195,7 +195,11 @@ impl Visitor for SSAVisitor {
                     node.visit(self)?;
                 }
                 if let Some(last_retvar) = self.last_retvar() {
-                    iftrue_retvar = Some(last_retvar);
+                    let retvar = self.context.insert_var(self.context.variables[last_retvar].clone());
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
+                    });
+                    iftrue_retvar = Some(retvar);
                 }
             }
         });
@@ -219,7 +223,11 @@ impl Visitor for SSAVisitor {
                     node.visit(self)?;
                 }
                 if let Some(last_retvar) = self.last_retvar() {
-                    iffalse_retvar = Some(last_retvar);
+                    let retvar = self.context.insert_var(self.context.variables[last_retvar].clone());
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
+                    });
+                    iffalse_retvar = Some(retvar);
                 }
             }
         });

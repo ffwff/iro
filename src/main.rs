@@ -8,13 +8,9 @@ fn main() {
     let a = 1 + 2
     a = 2 + 3
     if 10
-        if 10
-            1
-        else
-            2
-        end
+        a = 1
     else
-        1
+        a = 2
     end
     ").unwrap();
     println!("{:#?}", ast);
