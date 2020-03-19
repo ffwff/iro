@@ -26,6 +26,10 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                 }
                 match &ins.typed {
                     InsType::Nop => false,
+                    InsType::Return(_) => {
+                        jumped = true;
+                        true
+                    }
                     InsType::IfJmp { condvar: _, iftrue, iffalse } => {
                         insert_node(*iftrue, idx);
                         insert_node(*iffalse, idx);
@@ -238,7 +242,24 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                 }
             }
         } else {
-            unimplemented!()
+            let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
+            for block in context.blocks.iter_mut() {
+                for ins in &mut block.ins {
+                    ins.rename_var_by(|var| mapping[var].unwrap());
+                    if let Some(retvar) = ins.mut_retvar() {
+                        if mapping[*retvar] == None {
+                            mapping[*retvar] = Some(*retvar);
+                        } else {
+                            let newlen = context.variables.len();
+                            let typed = context.variables[*retvar].clone();
+                            context.variables.push(typed);
+
+                            mapping[*retvar] = Some(newlen);
+                            *retvar = newlen;
+                        }
+                    }
+                }
+            }
         }
 
         // TODO: fill duplicate variables
