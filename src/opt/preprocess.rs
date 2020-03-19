@@ -50,7 +50,7 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
             }
         }
 
-        if num_blocks > 0 {
+        if num_blocks > 1 {
             // Build the post-order traversal array
             let mut rpo = Vec::with_capacity(context.blocks.len());
             {
@@ -167,19 +167,24 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                 let mut has_phi: BTreeMap<usize, Vec<usize>> = btreemap![];
                 for &defsite in defsites.iter() {
                     for &node in &dom_frontier[defsite] {
-                        println!("var: {} {:?}", var, node);
+                        // println!("var: {} {:?}", var, node);
                         if let Some(vec) = has_phi.get_mut(&node) {
                             vec.push(defsite);
                         } else {
-                            context.blocks[node].ins.insert(0, Ins::new(
-                                var,
-                                InsType::Phi {
-                                    vars: vec![],
-                                }
-                            ));
                             has_phi.insert(node, vec![ defsite ]);
                         }
                     }
+                }
+
+                // Prune out phi nodes with one argument and insert phi blocks
+                has_phi = has_phi.into_iter().filter(|(_, vec)| vec.len() > 1).collect();
+                for (&frontier_node, _) in &has_phi {
+                    context.blocks[frontier_node].ins.insert(0, Ins::new(
+                        var,
+                        InsType::Phi {
+                            vars: vec![],
+                        }
+                    ));
                 }
 
                 // Rename variables in each block and record the
@@ -231,13 +236,9 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                         context.variables.push(typed.clone());
                     }
                 }
-
-                {
-                    println!("---{}\n{:#?}---", var, context);
-                    use std::io::Read;
-                    std::io::stdin().bytes().next();
-                }
             }
+        } else {
+            unimplemented!()
         }
 
         // TODO: fill duplicate variables

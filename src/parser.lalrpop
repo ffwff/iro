@@ -31,12 +31,17 @@ StandaloneExpr = ReturnExpr;
 
 // Function definitions
 DefStatement: NodeBox = {
-    "def" <id:Identifier> "(" <args:Comma<DefArgument>> ")" NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(DefStatement { id: Rc::from(id), args, exprs })
+    "def" <id:Identifier> <args:DefArgumentList?> NL+ <exprs:Expr*> "end" => {
+        NodeBox::new(DefStatement {
+            id: Rc::from(id),
+            args: args.unwrap_or_else(|| vec![]),
+            exprs
+        })
     },
-    "def" <id:Identifier> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(DefStatement { id: Rc::from(id), args : vec![], exprs })
-    },
+};
+
+DefArgumentList: Vec<(Rc<str>, Option<NodeBox>)> = {
+    "(" <args:Comma<DefArgument>> ")" => args
 };
 
 DefArgument: (Rc<str>, Option<NodeBox>) = {

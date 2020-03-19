@@ -31,6 +31,7 @@ pub enum Tok {
     Int { value : i64 },
     Identifier { value : String },
     String { value : String },
+    Attribute { value : String },
 }
 
 pub type Spanned<T> = (usize, T, usize);
@@ -159,6 +160,31 @@ impl<'input> Iterator for Lexer<'input> {
                         }
                     }
                     return Some(Ok((idx0, Tok::String { value: string }, idx1)))
+                }
+
+                Some((idx0, '@')) => {
+                    let peek = self.chars.next();
+                    match peek {
+                        Some((mut idx1, ch)) if UnicodeXID::is_xid_start(ch) => {
+                            let mut string = ch.to_string();
+                            loop {
+                                match self.chars.next() {
+                                    Some((m_idx1, ch)) if UnicodeXID::is_xid_continue(ch) => {
+                                        string.push(ch);
+                                        idx1 = m_idx1;
+                                    }
+                                    ch => {
+                                        self.last_char = ch;
+                                        break;
+                                    }
+                                }
+                            }
+                            return Some(Ok((idx0, Tok::Attribute { value: string }, idx1)))
+                        },
+                        other => {
+                            unimplemented!()
+                        }
+                    }
                 }
 
                 None => return None,
