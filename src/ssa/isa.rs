@@ -3,6 +3,21 @@ use std::rc::Rc;
 use std::collections::{BTreeSet, BTreeMap, HashMap};
 use std::ops::BitAnd;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum IntrinsicType {
+    None,
+    Print,
+}
+
+impl IntrinsicType {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "print" => Some(IntrinsicType::Print),
+            _ => None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Context {
     pub blocks: Vec<Block>,
@@ -10,6 +25,7 @@ pub struct Context {
     pub name: Rc<str>,
     pub args: Vec<Type>,
     pub rettype: Type,
+    pub intrinsic: IntrinsicType,
 }
 
 impl Context {
@@ -20,6 +36,7 @@ impl Context {
             name,
             args: vec![],
             rettype: Type::NoReturn,
+            intrinsic: IntrinsicType::None,
         }
     }
 
@@ -36,6 +53,7 @@ impl Context {
             name,
             args,
             rettype: Type::NoReturn,
+            intrinsic: IntrinsicType::None,
         }
     }
 

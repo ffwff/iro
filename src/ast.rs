@@ -4,6 +4,7 @@ use std::cell::{RefCell, Cell};
 use std::rc::Rc;
 use std::any::Any;
 use downcast_rs::Downcast;
+use crate::ssa::isa::IntrinsicType;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -225,11 +226,19 @@ pub struct DefStatement {
     pub id: Rc<str>,
     pub args: Vec<(Rc<str>, Option<NodeBox>)>,
     pub exprs: Vec<NodeBox>,
+    pub attrs: Option<Vec<AttributeValue>>,
+    pub intrinsic: Cell<IntrinsicType>,
 }
 
 impl Node for DefStatement {
     debuggable!();
     visitable!(visit_defstmt);
+}
+
+#[derive(Debug)]
+pub struct AttributeValue {
+    pub name: String,
+    pub args: Vec<String>,
 }
 
 #[derive(Debug)]

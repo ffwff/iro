@@ -116,6 +116,10 @@ impl SSAVisitor {
             }
         })
     }
+
+    fn intrinsic_return_type(intrinsic: IntrinsicType, arg_types: &Vec<Type>) -> Option<Type> {
+        Some(Type::Nil)
+    }
 }
 
 impl Visitor for SSAVisitor {
@@ -123,6 +127,20 @@ impl Visitor for SSAVisitor {
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
+                if let Some(attrs) = &defstmt.attrs {
+                    for attr in attrs {
+                        match attr.name.as_ref() {
+                            "intrinsic" => {
+                                if let Some(intrinsic) = IntrinsicType::from_str(&attr.args[0]) {
+                                    defstmt.intrinsic.replace(intrinsic);
+                                } else {
+                                    return Err(Error::InternalError);
+                                }
+                            },
+                            _ => return Err(Error::InternalError),
+                        }
+                    }
+                }
                 self.top_level.with_mut(|top_level| {
                     top_level.defstmts.insert(defstmt.id.clone(),
                             expr.rc().downcast_rc::<DefStatement>().unwrap());
@@ -331,23 +349,47 @@ impl Visitor for SSAVisitor {
                     if let Some(rettype) = rettype {
                         rettype
                     } else {
-                        let visitor = RefCell::new(Some({
-                            let func_context = Context::with_args(id.clone(), arg_types);
-                            let mut visitor = SSAVisitor::with_context(func_context, self.top_level.clone());
-                            let defstmt = self.top_level.with_mut(|top_level| {
-                                top_level.func_contexts.insert(func_name.clone(), None);
-                                top_level.defstmts.get(id).cloned().unwrap()
-                            });
-                            visitor.visit_defstmt(defstmt.borrow())?;
-                            (func_name.clone(), visitor)
-                        }));
-                        self.top_level.with_mut(move |top_level| {
-                            let (func_name, visitor) = visitor.replace(None).unwrap();
-                            let context = visitor.into_context();
-                            let rettype = context.rettype.clone();
-                            top_level.func_contexts.insert(func_name, Some(context));
-                            rettype
-                        })
+                        let defstmt = self.top_level.with_mut(|top_level| {
+                            top_level.func_contexts.insert(func_name.clone(), None);
+                            top_level.defstmts.get(id).cloned().unwrap()
+                        });
+                        if defstmt.intrinsic.get() != IntrinsicType::None {
+                            if let Some(rettype) = {
+                                SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)
+                            } {
+                                let data = RefCell::new(Some(
+                                    (func_name.clone(), Context {
+                                        blocks: vec![],
+                                        variables: vec![],
+                                        name: id.clone(),
+                                        args: vec![],
+                                        rettype: rettype.clone(),
+                                        intrinsic: defstmt.intrinsic.get(),
+                                    })
+                                ));
+                                self.top_level.with_mut(move |top_level| {
+                                    let (func_name, context) = data.replace(None).unwrap();
+                                    top_level.func_contexts.insert(func_name, Some(context));
+                                });
+                                rettype
+                            } else {
+                                return Err(Error::InternalError);
+                            }
+                        } else {
+                            let visitor = RefCell::new(Some({
+                                let func_context = Context::with_args(id.clone(), arg_types);
+                                let mut visitor = SSAVisitor::with_context(func_context, self.top_level.clone());
+                                visitor.visit_defstmt(defstmt.borrow())?;
+                                (func_name.clone(), visitor)
+                            }));
+                            self.top_level.with_mut(move |top_level| {
+                                let (func_name, visitor) = visitor.replace(None).unwrap();
+                                let context = visitor.into_context();
+                                let rettype = context.rettype.clone();
+                                top_level.func_contexts.insert(func_name, Some(context));
+                                rettype
+                            })
+                        }
                     }
                 );
                 {
