@@ -193,7 +193,7 @@ impl std::fmt::Debug for Ins {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     Nop,
     LoadNil,
@@ -218,6 +218,15 @@ impl InsType {
             InsType::IfJmp { .. } |
             InsType::Jmp(_) |
             InsType::Return(_) => true,
+            _ => false,
+        }
+    }
+    pub fn is_const(&self) -> bool {
+        match self {
+            InsType::LoadNil |
+            InsType::LoadArg(_) |
+            InsType::LoadI32(_) |
+            InsType::LoadString(_) => true,
             _ => false,
         }
     }

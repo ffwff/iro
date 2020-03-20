@@ -157,7 +157,7 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                     for &p in predecessors {
                         let mut runner: usize = p;
                         while runner != doms[&b] {
-                            // println!("{:?} {:?} {:?} {:?}", runner, b, doms[&b], doms[&runner]);
+                            println!("dom runner: {:?} {:?} {:?} {:?}", runner, b, doms[&b], doms[&runner]);
                             dom_frontier[runner].insert(b);
                             runner = doms[&runner];
                         }
@@ -165,6 +165,7 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                 }
             }
             println!("---\ndom_frontier: {:#?}", dom_frontier);
+            println!("---\ndefsites: {:#?}", defsites);
             
             for (var, defsites) in defsites.iter_mut().enumerate() {
                 // Insert some phi nodes
@@ -180,13 +181,11 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                     }
                 }
 
-                // Prune out phi nodes with one argument and insert phi blocks
-                has_phi = has_phi.into_iter().filter(|(_, vec)| vec.len() > 1).collect();
                 for (&frontier_node, _) in &has_phi {
                     context.blocks[frontier_node].ins.insert(0, Ins::new(
                         var,
                         InsType::Phi {
-                            vars: vec![],
+                            vars: vec![ var ],
                         }
                     ));
                 }
@@ -221,14 +220,18 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                 }
 
                 if newvar != var {
-                    // Fill in variables for each phi nodes
+                    // Fill in variables for each phi nodes and filter out duplicates
                     for (&node, phivars) in &has_phi {
                         let block = &mut context.blocks[node];
                         let ins = &mut block.ins[0];
+                        let retvar = ins.retvar().unwrap();
                         if let InsType::Phi { vars } = &mut ins.typed {
                             for &phivar in phivars {
                                 vars.push(last_at_block[phivar]);
                             }
+                            vars.retain(|v| *v != retvar);
+                            vars.sort();
+                            vars.dedup();
                         } else {
                             unreachable!()
                         }

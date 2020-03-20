@@ -73,7 +73,7 @@ impl FuncContextVisitor {
             let isa_block = std::mem::replace(&mut self.block, isa::Block { ins: isa_ins });
             blocks.push(isa_block);
         }
-        println!("before: {:#?}\n---", blocks);
+        println!("---\nbefore: {:#?}\n===", blocks);
         self.allocate_registers(&mut blocks);
         self.optimize_instructions(&mut blocks);
         println!("after: {:#?}\n---", blocks);
