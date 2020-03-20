@@ -107,7 +107,7 @@ AndExpr = BinOpTier<AndOp, OrzExpr>;
 OrzExpr = BinOpTier<OrzOp, CmpExpr>;
 CmpExpr = BinOpTier<CmpOp, AddExpr>;
 AddExpr = BinOpTier<AddOp, FacExpr>;
-FacExpr = BinOpTier<FacOp, IfExpr>;
+FacExpr = BinOpTier<FacOp, WhileExpr>;
 
 AsgOp: BinOp = {
     "=" => BinOp::Asg,
@@ -140,13 +140,21 @@ FacOp: BinOp = {
     "/" => BinOp::Div,
 };
 
+// While expression
+WhileExpr: NodeBox = {
+    "while" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
+        NodeBox::new(WhileExpr { cond, exprs })
+    },
+    IfExpr
+};
+
 // If expression
 IfExpr: NodeBox = {
     "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "else" NL+ <elses:Expr*> "end" => {
-        NodeBox::new(IfExpr::new( cond, exprs, elses ))
+        NodeBox::new(IfExpr { cond, exprs, elses })
     },
     "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(IfExpr::new( cond, exprs, vec![] ))
+        NodeBox::new(IfExpr { cond, exprs, elses: vec![] })
     },
     CallExpr,
 };
@@ -187,6 +195,7 @@ extern {
         "return" => lexer::Tok::Return,
         "let" => lexer::Tok::Let,
         "if" => lexer::Tok::If,
+        "while" => lexer::Tok::While,
         "else" => lexer::Tok::Else,
         "end" => lexer::Tok::End,
         "and" => lexer::Tok::And,

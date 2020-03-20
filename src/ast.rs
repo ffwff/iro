@@ -23,6 +23,7 @@ pub trait Visitor {
     fn visit_program(&mut self,  n: &Program) -> VisitorResult;
     fn visit_defstmt(&mut self,  n: &DefStatement) -> VisitorResult;
     fn visit_return(&mut self,   n: &ReturnExpr) -> VisitorResult;
+    fn visit_whileexpr(&mut self,n: &WhileExpr) -> VisitorResult;
     fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult;
     fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult;
     fn visit_letexpr(&mut self,  n: &LetExpr) -> VisitorResult;
@@ -170,35 +171,27 @@ impl Node for BinExpr {
     visitable!(visit_binexpr);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum IfReturnType {
-    None,
-    OneBranch,
-    BothBranch,
-}
-
 #[derive(Debug)]
 pub struct IfExpr {
     pub cond:  NodeBox,
     pub exprs: Vec<NodeBox>,
     pub elses: Vec<NodeBox>,
-    pub returntype: Cell<IfReturnType>,
-}
-
-impl IfExpr {
-    pub fn new(cond : NodeBox, exprs: Vec<NodeBox>, elses: Vec<NodeBox>) -> Self {
-        IfExpr {
-            cond,
-            exprs,
-            elses,
-            returntype: Cell::new(IfReturnType::None)
-        }
-    }
 }
 
 impl Node for IfExpr {
     debuggable!();
     visitable!(visit_ifexpr);
+}
+
+#[derive(Debug)]
+pub struct WhileExpr {
+    pub cond:  NodeBox,
+    pub exprs: Vec<NodeBox>,
+}
+
+impl Node for WhileExpr {
+    debuggable!();
+    visitable!(visit_whileexpr);
 }
 
 #[derive(Debug)]
