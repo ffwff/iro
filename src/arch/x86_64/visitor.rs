@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use crate::arch::x86_64::isa;
 use crate::ssa::isa::*;
@@ -73,9 +73,10 @@ impl FuncContextVisitor {
             let isa_block = std::mem::replace(&mut self.block, isa::Block { ins: isa_ins });
             blocks.push(isa_block);
         }
+        println!("before: {:#?}\n---", blocks);
         self.allocate_registers(&mut blocks);
         self.optimize_instructions(&mut blocks);
-        println!("{:#?}\n---", blocks);
+        println!("after: {:#?}\n---", blocks);
         self.unflattened_code.insert(context.real_name.as_ref().unwrap().clone(), blocks);
     }
 
@@ -93,10 +94,10 @@ impl FuncContextVisitor {
             InsType::LoadArg(arg) => {
                 assert_eq!(&context.variables[*arg], &Type::I32);
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Mov(isa::TwoOperands {
-                        dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
-                        src: isa::Operand::Register(ARG_REGS[*arg]),
-                    })
+                    typed: isa::InsType::Mov(isa::TwoOperands::new(
+                        isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
+                        isa::Operand::Register(ARG_REGS[*arg]),
+                    ))
                 });
             },
             InsType::LoadI32(x) => {
@@ -106,10 +107,10 @@ impl FuncContextVisitor {
                 for (idx, &arg) in args.iter().enumerate() {
                     assert_eq!(&context.variables[arg], &Type::I32);
                     isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Mov(isa::TwoOperands {
-                            dest: isa::Operand::Register(ARG_REGS[idx]),
-                            src: self.get_register_for_var(arg),
-                        })
+                        typed: isa::InsType::Mov(isa::TwoOperands::new(
+                            isa::Operand::Register(ARG_REGS[idx]),
+                            self.get_register_for_var(arg),
+                        ))
                     });
                 }
                 isa_ins.push(isa::Ins {
@@ -121,10 +122,10 @@ impl FuncContextVisitor {
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Mov(isa::TwoOperands {
-                        dest: isa::Operand::Register(isa::Reg::Rax),
-                        src: self.get_register_for_var(*x),
-                    })
+                    typed: isa::InsType::Mov(isa::TwoOperands::new(
+                        isa::Operand::Register(isa::Reg::Rax),
+                        self.get_register_for_var(*x)
+                    ))
                 });
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Ret
@@ -137,16 +138,16 @@ impl FuncContextVisitor {
                     (Type::I32, Type::I32) => {
                         let dest = isa::Operand::UndeterminedMapping(ins.retvar().unwrap());
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Mov(isa::TwoOperands {
-                                dest: dest.clone(),
-                                src: self.get_register_for_var(*x),
-                            })
+                            typed: isa::InsType::Mov(isa::TwoOperands::new(
+                                dest.clone(),
+                                self.get_register_for_var(*x)
+                            ))
                         });
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Add(isa::TwoOperands {
-                                dest: dest.clone(),
-                                src: self.get_register_for_var(*y),
-                            })
+                            typed: isa::InsType::Add(isa::TwoOperands::new(
+                                dest.clone(),
+                                self.get_register_for_var(*y)
+                            ))
                         });
                     }
                     (_, _) => unimplemented!(),
@@ -161,28 +162,81 @@ impl FuncContextVisitor {
     }
 
     pub fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>) {
+        // Infer some lifetimes
+        {
+            let mut used: BTreeSet<usize> = btreeset![];
+            for block in blocks.iter_mut().rev() {
+                for ins in block.ins.iter_mut().rev() {
+                    match &mut ins.typed {
+                        isa::InsType::Mov(operands) |
+                        isa::InsType::Add(operands) => {
+                            let dest =
+                                if let isa::Operand::UndeterminedMapping(reg) = operands.dest {
+                                    used.insert(reg)
+                                } else {
+                                    false
+                                };
+                            let src =
+                                if let isa::Operand::UndeterminedMapping(reg) = operands.src {
+                                    used.insert(reg)
+                                } else {
+                                    false
+                                };
+                            match (dest, src) {
+                                (true, true) =>
+                                    operands.expires = isa::ExpirationPolicy::Both,
+                                (true, false) =>
+                                    operands.expires = isa::ExpirationPolicy::Dest,
+                                (false, true) =>
+                                    operands.expires = isa::ExpirationPolicy::Src,
+                                (false, false) => (),
+                            }
+                        }
+                        _ =>  (),
+                    }
+                }
+            }
+        }
+        // Fill in the undetermined mappings
+        let mut unused_regs: Vec<isa::Reg> = ALLOC_REGS.iter().rev().cloned().collect();
         let mut mapping: BTreeMap<usize, isa::Reg> = btreemap![];
-        let mut registers = 0;
-        let mut map_undetermined = |operand: &mut isa::Operand| {
+        fn map_undetermined(operand: &mut isa::Operand,
+                            mapping: &mut BTreeMap<usize, isa::Reg>,
+                            unused_regs: &mut Vec<isa::Reg>) {
             if let isa::Operand::UndeterminedMapping(u) = operand.clone() {
                 if let Some(register) = mapping.get(&u) {
                     std::mem::replace(operand, isa::Operand::Register(*register));
-                } else {
-                    let register = ALLOC_REGS[registers];
+                } else if let Some(register) = unused_regs.pop() {
                     std::mem::replace(operand, isa::Operand::Register(register));
                     mapping.insert(u, register);
-                    registers += 1;
+                } else {
+                    unimplemented!()
                 }
             }
-        };
-        println!("blocks: {:#?}", blocks);
+        }
         for block in blocks {
             for ins in &mut block.ins {
                 match &mut ins.typed {
                     isa::InsType::Mov(operands) |
                     isa::InsType::Add(operands) => {
-                        map_undetermined(&mut operands.dest);
-                        map_undetermined(&mut operands.src);
+                        map_undetermined(&mut operands.dest, &mut mapping, &mut unused_regs);
+                        map_undetermined(&mut operands.src, &mut mapping, &mut unused_regs);
+                        if operands.expires == isa::ExpirationPolicy::Dest ||
+                           operands.expires == isa::ExpirationPolicy::Both {
+                            if let isa::Operand::Register(reg) = operands.dest.clone() {
+                                unused_regs.push(reg);
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        if operands.expires == isa::ExpirationPolicy::Src ||
+                           operands.expires == isa::ExpirationPolicy::Both {
+                            if let isa::Operand::Register(reg) = operands.src.clone() {
+                                unused_regs.push(reg);
+                            } else {
+                                unreachable!()
+                            }
+                        }
                     }
                     _ =>  (),
                 }
