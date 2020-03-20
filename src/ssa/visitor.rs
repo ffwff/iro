@@ -45,7 +45,10 @@ macro_rules! check_direct_return {
 impl SSAVisitor {
     pub fn new() -> Self {
         Self {
-            context: Context::new(Rc::from("main")),
+            context: {
+                let s: Rc<str> = Rc::from("main");
+                Context::new(s.clone(), Some(s))
+            },
             envs: vec![],
             top_level: RcWrapper::new(TopLevelInfo::new()),
             has_direct_return: false,
@@ -155,6 +158,15 @@ impl Visitor for SSAVisitor {
         for node in &outerstmts {
             node.visit(self)?;
         }
+
+        self.top_level.with_mut(|top_level| {
+            for (func_name, context) in &mut top_level.func_contexts {
+                if let Some(context) = context {
+                    let func_name: &FunctionName = func_name.borrow();
+                    context.real_name = Some(Rc::from(func_name.to_string()));
+                }
+            }
+        });
         Ok(())
     }
 
@@ -358,14 +370,7 @@ impl Visitor for SSAVisitor {
                                 SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)
                             } {
                                 let data = RefCell::new(Some(
-                                    (func_name.clone(), Context {
-                                        blocks: vec![],
-                                        variables: vec![],
-                                        name: id.clone(),
-                                        args: vec![],
-                                        rettype: rettype.clone(),
-                                        intrinsic: defstmt.intrinsic.get(),
-                                    })
+                                    (func_name.clone(), Context::with_intrinsics(id.clone(), rettype.clone(), defstmt.intrinsic.get()))
                                 ));
                                 self.top_level.with_mut(move |top_level| {
                                     let (func_name, context) = data.replace(None).unwrap();

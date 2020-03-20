@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 use std::collections::{BTreeSet, BTreeMap, HashMap};
 use std::ops::BitAnd;
+use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntrinsicType {
@@ -26,10 +27,11 @@ pub struct Context {
     pub args: Vec<Type>,
     pub rettype: Type,
     pub intrinsic: IntrinsicType,
+    pub real_name: Option<Rc<str>>,
 }
 
 impl Context {
-    pub fn new(name: Rc<str>) -> Self {
+    pub fn new(name: Rc<str>, real_name: Option<Rc<str>>) -> Self {
         Context {
             blocks: vec![],
             variables: vec![],
@@ -37,6 +39,7 @@ impl Context {
             args: vec![],
             rettype: Type::NoReturn,
             intrinsic: IntrinsicType::None,
+            real_name,
         }
     }
 
@@ -54,6 +57,21 @@ impl Context {
             args,
             rettype: Type::NoReturn,
             intrinsic: IntrinsicType::None,
+            real_name: None,
+        }
+    }
+
+    pub fn with_intrinsics(name: Rc<str>,
+                           rettype: Type,
+                           intrinsic: IntrinsicType) -> Self {
+        Context {
+            variables: vec![],
+            blocks: vec![],
+            name,
+            args: vec![],
+            rettype,
+            intrinsic,
+            real_name: None,
         }
     }
 
@@ -209,6 +227,19 @@ impl InsType {
 pub struct FunctionName {
     pub name: Rc<str>,
     pub arg_types: Vec<Type>,
+}
+
+impl ToString for FunctionName {
+    fn to_string(&self)  -> String {
+        let mut string = self.name.clone().to_string() + "(";
+        string += &self.arg_types.iter().map(|typed| {
+            let mut string = String::new();
+            write!(&mut string, "{:?}", typed).unwrap();
+            string
+        }).collect::<Vec<String>>().join(", ");
+        string += ")";
+        string
+    }
 }
 
 pub type FuncContexts = HashMap<Rc<FunctionName>, Option<Context>>;
