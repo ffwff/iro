@@ -118,6 +118,12 @@ impl FuncContextVisitor {
                         contexts[name].as_ref().unwrap().real_name.as_ref().unwrap().clone()
                     )
                 });
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Mov(isa::TwoOperands::new(
+                        self.get_register_for_var(ins.retvar().unwrap()),
+                        isa::Operand::Register(isa::Reg::Rax),
+                    ))
+                });
             }
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
@@ -202,7 +208,7 @@ impl FuncContextVisitor {
         let mut mapping: BTreeMap<usize, isa::Reg> = btreemap![];
         fn map_undetermined(operand: &mut isa::Operand,
                             mapping: &mut BTreeMap<usize, isa::Reg>,
-                            unused_regs: &mut Vec<isa::Reg>) {
+                            unused_regs: &mut Vec<isa::Reg>) -> Option<usize> {
             if let isa::Operand::UndeterminedMapping(u) = operand.clone() {
                 if let Some(register) = mapping.get(&u) {
                     std::mem::replace(operand, isa::Operand::Register(*register));
@@ -212,18 +218,21 @@ impl FuncContextVisitor {
                 } else {
                     unimplemented!()
                 }
+                return Some(u);
             }
+            None
         }
         for block in blocks {
             for ins in &mut block.ins {
                 match &mut ins.typed {
                     isa::InsType::Mov(operands) |
                     isa::InsType::Add(operands) => {
-                        map_undetermined(&mut operands.dest, &mut mapping, &mut unused_regs);
-                        map_undetermined(&mut operands.src, &mut mapping, &mut unused_regs);
+                        let old_dest = map_undetermined(&mut operands.dest, &mut mapping, &mut unused_regs);
+                        let old_src = map_undetermined(&mut operands.src, &mut mapping, &mut unused_regs);
                         if operands.expires == isa::ExpirationPolicy::Dest ||
                            operands.expires == isa::ExpirationPolicy::Both {
                             if let isa::Operand::Register(reg) = operands.dest.clone() {
+                                mapping.remove(old_dest.as_ref().unwrap());
                                 unused_regs.push(reg);
                             } else {
                                 unreachable!()
@@ -232,6 +241,7 @@ impl FuncContextVisitor {
                         if operands.expires == isa::ExpirationPolicy::Src ||
                            operands.expires == isa::ExpirationPolicy::Both {
                             if let isa::Operand::Register(reg) = operands.src.clone() {
+                                mapping.remove(old_src.as_ref().unwrap());
                                 unused_regs.push(reg);
                             } else {
                                 unreachable!()

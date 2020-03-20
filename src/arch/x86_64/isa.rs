@@ -73,7 +73,11 @@ impl TwoOperands {
 
 impl std::fmt::Debug for TwoOperands {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}, {:?}, {:?}", self.dest, self.src, self.expires)
+        write!(f, "{:?}, {:?}", self.dest, self.src)?;
+        if self.expires != ExpirationPolicy::None {
+            write!(f, ", expires: {:?}", self.expires)?;
+        }
+        Ok(())
     }
 }
 

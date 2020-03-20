@@ -429,6 +429,9 @@ impl Visitor for SSAVisitor {
                             top_level.func_contexts.insert(func_name.clone(), None);
                             top_level.defstmts.get(id).cloned().unwrap()
                         });
+                        if defstmt.args.len() != arg_types.len() {
+                            return Err(Error::InvalidArguments);
+                        }
                         if defstmt.intrinsic.get() != IntrinsicType::None {
                             if let Some(rettype) = {
                                 SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)
@@ -513,6 +516,7 @@ impl Visitor for SSAVisitor {
                 let left = self.last_retvar().unwrap();
                 n.right.visit(self)?;
                 let right = self.last_retvar().unwrap();
+                println!("{:#?}", self.context);
                 if self.context.variables[left] != self.context.variables[right] {
                     return Err(Error::IncompatibleType);
                 }
