@@ -363,32 +363,38 @@ pub fn data_flow_analysis(mut contexts: FuncContexts) -> FuncContexts {
     contexts
 }
 
-pub fn remove_unused_local_vars(mut contexts: FuncContexts) -> FuncContexts {
+pub fn eliminate_phi(mut contexts: FuncContexts) -> FuncContexts {
     for (_, context) in &mut contexts {
         let context = context.as_mut().unwrap();
-        for block in &mut context.blocks {
-            let mut to_remove: BTreeSet<usize> = BTreeSet::new();
+        let mut replacements = BTreeMap::new();
+        for block in &context.blocks {
             for ins in &block.ins {
-                if let Some(retvar) = ins.retvar() {
-                    to_remove.insert(retvar);
+                let retvar = ins.retvar();
+                match &ins.typed {
+                    InsType::Phi { vars } => {
+                        let retvar = retvar.unwrap();
+                        for var in vars {
+                            replacements.insert(*var, retvar);
+                        }
+                    }
+                    _ => (),
                 }
-                ins.each_used_var(|used| {
-                    to_remove.remove(&used);
-                })
             }
-            for var in &block.vars_in {
-                to_remove.remove(&var);
-            }
-            for var in &block.vars_out {
-                to_remove.remove(&var);
-            }
-            block.ins.retain(|ins| {
-                if let Some(retvar) = ins.retvar() {
-                    !to_remove.contains(&retvar)
-                } else {
-                    true
+        }
+        for block in &mut context.blocks {
+            let oldins = std::mem::replace(&mut block.ins, Vec::new());
+            for ins in &oldins {
+                match &ins.typed {
+                    InsType::Phi { .. } => continue,
+                    _ => (),
                 }
-            });
+                block.ins.push(ins.clone());
+                if let Some(retvar) = ins.retvar() {
+                    if let Some(newvar) = replacements.get(&retvar) {
+                        block.ins.push(Ins::new(*newvar, InsType::LoadVar(retvar)));
+                    }
+                }
+            }
         }
     }
     contexts

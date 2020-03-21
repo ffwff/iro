@@ -48,49 +48,40 @@ pub enum Operand {
     UndeterminedMapping(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ExpirationPolicy {
-    None,
-    Dest,
-    Src,
-    Both
-}
-
 #[derive(Clone)]
 pub struct TwoOperands {
     pub dest: Operand,
     pub src: Operand,
-    pub expires: ExpirationPolicy,
-}
-
-impl TwoOperands {
-    pub fn new(dest: Operand, src: Operand) -> Self {
-        TwoOperands {
-            dest, src,
-            expires: ExpirationPolicy::None,
-        }
-    }
 }
 
 impl std::fmt::Debug for TwoOperands {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}, {:?}", self.dest, self.src)?;
-        if self.expires != ExpirationPolicy::None {
-            write!(f, ", expires: {:?}", self.expires)?;
-        }
         Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
+pub struct VirtualThreeOperands {
+    pub dest : usize,
+    pub left : usize,
+    pub right: usize,
+}
+
+#[derive(Debug, Clone)]
 pub enum InsType {
-    Mov(TwoOperands),
-    Add(TwoOperands),
-    Sub(TwoOperands),
-    IMul(TwoOperands),
-    IDiv(TwoOperands),
+    MovI32(TwoOperands),
+    AddI32(TwoOperands),
+    SubI32(TwoOperands),
+    MulI32(TwoOperands),
+    DivI32(TwoOperands),
+    Cmp(TwoOperands),
     Jmp(usize),
+    Jgt(usize),
+    Jlt(usize),
     Call(Rc<FunctionName>),
+    Lt(VirtualThreeOperands),
+    IfJmp { condvar: Operand, iftrue: usize, iffalse: usize },
     Ret,
 }
 
