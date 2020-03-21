@@ -37,6 +37,10 @@ pub fn eliminate_unused(mut contexts: FuncContexts) -> FuncContexts {
                             InsType::Sub((x, y)) => { u.insert(*x); u.insert(*y); },
                             InsType::Mul((x, y)) => { u.insert(*x); u.insert(*y); },
                             InsType::Div((x, y)) => { u.insert(*x); u.insert(*y); },
+                            InsType::Lt((x, y))  => { u.insert(*x); u.insert(*y); },
+                            InsType::Gt((x, y))  => { u.insert(*x); u.insert(*y); },
+                            InsType::Lte((x, y)) => { u.insert(*x); u.insert(*y); },
+                            InsType::Gte((x, y)) => { u.insert(*x); u.insert(*y); },
                             _ => (),
                         }
                     }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::ssa::isa::FunctionName;
 
 #[derive(Clone)]
 pub struct Ins {
@@ -85,8 +86,11 @@ impl std::fmt::Debug for TwoOperands {
 pub enum InsType {
     Mov(TwoOperands),
     Add(TwoOperands),
+    Sub(TwoOperands),
+    IMul(TwoOperands),
+    IDiv(TwoOperands),
     Jmp(usize),
-    Call(Rc<str>),
+    Call(Rc<FunctionName>),
     Ret,
 }
 
@@ -99,7 +103,7 @@ pub struct Block {
 pub struct Context {
     pub code: Vec<u8>,
     pub data: Vec<u8>,
-    pub relocation: Vec<(usize, Rc<str>)>,
+    pub relocation: Vec<(usize, Rc<FunctionName>)>,
 }
 
-pub type IsaContexts = HashMap<Rc<str>, Context>;
+pub type IsaContexts = HashMap<Rc<FunctionName>, Context>;

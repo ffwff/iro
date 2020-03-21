@@ -45,10 +45,7 @@ macro_rules! check_direct_return {
 impl SSAVisitor {
     pub fn new() -> Self {
         Self {
-            context: {
-                let s: Rc<str> = Rc::from("main");
-                Context::new(s.clone(), Some(s))
-            },
+            context: Context::new(Rc::from("main")),
             envs: vec![],
             top_level: RcWrapper::new(TopLevelInfo::new()),
             has_direct_return: false,
@@ -159,14 +156,6 @@ impl Visitor for SSAVisitor {
             node.visit(self)?;
         }
 
-        self.top_level.with_mut(|top_level| {
-            for (func_name, context) in &mut top_level.func_contexts {
-                if let Some(context) = context {
-                    let func_name: &FunctionName = func_name.borrow();
-                    context.real_name = Some(Rc::from(func_name.to_string()));
-                }
-            }
-        });
         Ok(())
     }
 
@@ -494,15 +483,44 @@ impl Visitor for SSAVisitor {
 
     fn visit_binexpr(&mut self,  n: &BinExpr) -> VisitorResult {
         match &n.op {
-            BinOp::Asg => {
+            BinOp::Asg |
+            BinOp::Adds |
+            BinOp::Subs |
+            BinOp::Muls |
+            BinOp::Divs => {
                 if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
                     if let Value::Identifier(id) = &id {
                         if let Some(var) = self.non_local(&id) {
                             n.right.visit(self)?;
                             let right = self.last_retvar().unwrap();
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::LoadVar(right)));
-                            });
+                            match &n.op {
+                                BinOp::Asg => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(var, InsType::LoadVar(right)));
+                                    });
+                                },
+                                BinOp::Adds => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(var, InsType::Add((var, right))));
+                                    });
+                                }
+                                BinOp::Subs => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(var, InsType::Sub((var, right))));
+                                    });
+                                }
+                                BinOp::Muls => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(var, InsType::Mul((var, right))));
+                                    });
+                                }
+                                BinOp::Divs => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(var, InsType::Div((var, right))));
+                                    });
+                                }
+                                _ => unreachable!()
+                            }
                             return Ok(())
                         } else {
                             return Err(Error::UnknownIdentifier(id.clone()));
@@ -520,7 +538,15 @@ impl Visitor for SSAVisitor {
                 if self.context.variables[left] != self.context.variables[right] {
                     return Err(Error::IncompatibleType);
                 }
-                let retvar = self.context.insert_var(self.context.variables[left].clone());
+                let retvar = self.context.insert_var(
+                    match op {
+                        BinOp::Lt |
+                        BinOp::Gt |
+                        BinOp::Lte |
+                        BinOp::Gte => Type::I32,
+                        _ => self.context.variables[left].clone()
+                    }
+                );
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, {
                         match op {
@@ -528,6 +554,10 @@ impl Visitor for SSAVisitor {
                             BinOp::Sub => InsType::Sub((left, right)),
                             BinOp::Mul => InsType::Mul((left, right)),
                             BinOp::Div => InsType::Div((left, right)),
+                            BinOp::Lt  => InsType::Lt((left, right)),
+                            BinOp::Gt  => InsType::Gt((left, right)),
+                            BinOp::Lte => InsType::Lte((left, right)),
+                            BinOp::Gte => InsType::Gte((left, right)),
                             _ => unimplemented!(),
                         }
                     }));

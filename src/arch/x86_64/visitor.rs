@@ -35,7 +35,7 @@ pub enum Error {
 
 pub struct FuncContextVisitor {
     block: isa::Block,
-    unflattened_code: HashMap<Rc<str>, Vec<isa::Block>>,
+    unflattened_code: HashMap<Rc<FunctionName>, Vec<isa::Block>>,
     constant_operands: BTreeMap<usize, isa::Operand>,
 }
 
@@ -49,15 +49,15 @@ impl FuncContextVisitor {
     }
 
     pub fn process(&mut self, contexts: &FuncContexts) -> Result<isa::IsaContexts, Error> {
-        for (_, context) in contexts {
+        for (name, context) in contexts {
             if let Some(context) = context {
-                self.visit_context(&context, contexts);
+                self.visit_context(&context, &name, contexts);
             }
         }
         Ok(isa::IsaContexts::new())
     }
 
-    pub fn visit_context(&mut self, context: &Context, contexts: &FuncContexts) {
+    pub fn visit_context(&mut self, context: &Context, name: &Rc<FunctionName>, contexts: &FuncContexts) {
         if context.intrinsic != IntrinsicType::None {
             return self.visit_intrinsic(context);
         }
@@ -77,7 +77,7 @@ impl FuncContextVisitor {
         self.allocate_registers(&mut blocks);
         self.optimize_instructions(&mut blocks);
         println!("after: {:#?}\n---", blocks);
-        self.unflattened_code.insert(context.real_name.as_ref().unwrap().clone(), blocks);
+        self.unflattened_code.insert(name.clone(), blocks);
     }
 
     fn get_register_for_var(&mut self, arg: usize) -> isa::Operand {
@@ -113,11 +113,7 @@ impl FuncContextVisitor {
                         ))
                     });
                 }
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Call(
-                        contexts[name].as_ref().unwrap().real_name.as_ref().unwrap().clone()
-                    )
-                });
+                isa_ins.push(isa::Ins { typed: isa::InsType::Call(name.clone()) });
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Mov(isa::TwoOperands::new(
                         self.get_register_for_var(ins.retvar().unwrap()),
@@ -137,7 +133,10 @@ impl FuncContextVisitor {
                     typed: isa::InsType::Ret
                 });
             }
-            InsType::Add((x, y)) => {
+            InsType::Add((x, y)) |
+            InsType::Sub((x, y)) |
+            InsType::Mul((x, y)) |
+            InsType::Div((x, y)) => {
                 let left = &context.variables[*x];
                 let right = &context.variables[*y];
                 match (left, right) {
@@ -150,10 +149,19 @@ impl FuncContextVisitor {
                             ))
                         });
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Add(isa::TwoOperands::new(
-                                dest.clone(),
-                                self.get_register_for_var(*y)
-                            ))
+                            typed: {
+                                let operands = isa::TwoOperands::new(
+                                    dest.clone(),
+                                    self.get_register_for_var(*y)
+                                );
+                                match &ins.typed {
+                                    InsType::Add(_) => isa::InsType::Add(operands),
+                                    InsType::Sub(_) => isa::InsType::Sub(operands),
+                                    InsType::Mul(_) => isa::InsType::IMul(operands),
+                                    InsType::Div(_) => isa::InsType::IDiv(operands),
+                                    _ => unreachable!(),
+                                }
+                            }
                         });
                     }
                     (_, _) => unimplemented!(),
@@ -228,7 +236,6 @@ impl FuncContextVisitor {
                     isa::InsType::Mov(operands) |
                     isa::InsType::Add(operands) => {
                         let old_dest = map_undetermined(&mut operands.dest, &mut mapping, &mut unused_regs);
-                        let old_src = map_undetermined(&mut operands.src, &mut mapping, &mut unused_regs);
                         if operands.expires == isa::ExpirationPolicy::Dest ||
                            operands.expires == isa::ExpirationPolicy::Both {
                             if let isa::Operand::Register(reg) = operands.dest.clone() {
@@ -238,6 +245,7 @@ impl FuncContextVisitor {
                                 unreachable!()
                             }
                         }
+                        let old_src = map_undetermined(&mut operands.src, &mut mapping, &mut unused_regs);
                         if operands.expires == isa::ExpirationPolicy::Src ||
                            operands.expires == isa::ExpirationPolicy::Both {
                             if let isa::Operand::Register(reg) = operands.src.clone() {

@@ -27,11 +27,10 @@ pub struct Context {
     pub args: Vec<Type>,
     pub rettype: Type,
     pub intrinsic: IntrinsicType,
-    pub real_name: Option<Rc<str>>,
 }
 
 impl Context {
-    pub fn new(name: Rc<str>, real_name: Option<Rc<str>>) -> Self {
+    pub fn new(name: Rc<str>) -> Self {
         Context {
             blocks: vec![],
             variables: vec![],
@@ -39,7 +38,6 @@ impl Context {
             args: vec![],
             rettype: Type::NoReturn,
             intrinsic: IntrinsicType::None,
-            real_name,
         }
     }
 
@@ -57,7 +55,6 @@ impl Context {
             args,
             rettype: Type::NoReturn,
             intrinsic: IntrinsicType::None,
-            real_name: None,
         }
     }
 
@@ -71,7 +68,6 @@ impl Context {
             args: vec![],
             rettype,
             intrinsic,
-            real_name: None,
         }
     }
 
@@ -164,6 +160,10 @@ impl Ins {
             InsType::Sub((x, y)) => { InsType::Sub((swap(x), swap(y))) },
             InsType::Mul((x, y)) => { InsType::Mul((swap(x), swap(y))) },
             InsType::Div((x, y)) => { InsType::Div((swap(x), swap(y))) },
+            InsType::Lt((x, y))  => { InsType::Lt ((swap(x), swap(y))) },
+            InsType::Gt((x, y))  => { InsType::Gt ((swap(x), swap(y))) },
+            InsType::Lte((x, y)) => { InsType::Lte((swap(x), swap(y))) },
+            InsType::Gte((x, y)) => { InsType::Gte((swap(x), swap(y))) },
             InsType::IfJmp { condvar, iftrue, iffalse } => {
                 InsType::IfJmp { condvar: swap(condvar), iftrue, iffalse }
             }
@@ -208,6 +208,10 @@ pub enum InsType {
     Sub((usize, usize)),
     Mul((usize, usize)),
     Div((usize, usize)),
+    Lt((usize, usize)),
+    Gt((usize, usize)),
+    Lte((usize, usize)),
+    Gte((usize, usize)),
     IfJmp { condvar: usize, iftrue: usize, iffalse: usize },
     Jmp(usize),
 }

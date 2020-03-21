@@ -128,6 +128,10 @@ OrzOp: BinOp = {
 CmpOp: BinOp = {
     "==" => BinOp::Equ,
     "!=" => BinOp::Neq,
+    "<"  => BinOp::Lt,
+    ">"  => BinOp::Gt,
+    "<=" => BinOp::Lte,
+    ">=" => BinOp::Gte,
 };
 
 AddOp: BinOp = {
@@ -170,7 +174,7 @@ CallExpr: NodeBox = {
 // Literals / terms
 Term: NodeBox = {
     <Literal> => NodeBox::new(<>),
-    "(" <Expr> ")" => <>,
+    "(" <StandaloneExpr> ")" => <>,
 };
 
 Literal: Value = {
@@ -211,6 +215,10 @@ extern {
         "-=" => lexer::Tok::Subs,
         "*=" => lexer::Tok::Muls,
         "/=" => lexer::Tok::Divs,
+        "<" => lexer::Tok::Lt,
+        ">" => lexer::Tok::Gt,
+        "<=" => lexer::Tok::Lte,
+        ">=" => lexer::Tok::Gte,
         "(" => lexer::Tok::LeftParen,
         ")" => lexer::Tok::RightParen,
         "," => lexer::Tok::Comma,

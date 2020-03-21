@@ -157,6 +157,10 @@ pub enum BinOp {
     And,
     Equ,
     Neq,
+    Lt,
+    Gt,
+    Lte,
+    Gte,
 }
 
 #[derive(Debug)]
