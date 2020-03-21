@@ -93,12 +93,20 @@ impl Context {
 #[derive(Debug, Clone)]
 pub struct Block {
     pub ins: Vec<Ins>,
+    pub preds: Vec<usize>,
+    pub succs: Vec<usize>,
+    pub vars_in: BTreeSet<usize>,
+    pub vars_out: BTreeSet<usize>,
 }
 
 impl Block {
     pub fn new(ins: Vec<Ins>) -> Self {
         Block {
             ins,
+            preds: vec![],
+            succs: vec![],
+            vars_in: BTreeSet::new(),
+            vars_out: BTreeSet::new(),
         }
     }
 }
@@ -181,6 +189,39 @@ impl Ins {
             }
         })
     }
+
+    pub fn each_used_var<T>(&self, mut callback: T) where T: FnMut(usize) {
+        match &self.typed {
+            InsType::LoadVar(x) => {
+                callback(*x);
+            }
+            InsType::Call { name, args } => {
+                for arg in args {
+                    callback(*arg);
+                }
+            }
+            InsType::Return(x) => {
+                callback(*x);
+            }
+            InsType::Phi { vars } => {
+                for arg in vars {
+                    callback(*arg);
+                }
+            }
+            InsType::Add((x, y)) => { callback(*x); callback(*y); },
+            InsType::Sub((x, y)) => { callback(*x); callback(*y); },
+            InsType::Mul((x, y)) => { callback(*x); callback(*y); },
+            InsType::Div((x, y)) => { callback(*x); callback(*y); },
+            InsType::Lt((x, y))  => { callback(*x); callback(*y); },
+            InsType::Gt((x, y))  => { callback(*x); callback(*y); },
+            InsType::Lte((x, y)) => { callback(*x); callback(*y); },
+            InsType::Gte((x, y)) => { callback(*x); callback(*y); },
+            InsType::IfJmp { condvar, iftrue, iffalse } => {
+                callback(*condvar);
+            }
+            _ => (),
+        }
+    }
 }
 
 impl std::fmt::Debug for Ins {
@@ -225,12 +266,20 @@ impl InsType {
             _ => false,
         }
     }
+
     pub fn is_const(&self) -> bool {
         match self {
             InsType::LoadNil |
             InsType::LoadArg(_) |
             InsType::LoadI32(_) |
             InsType::LoadString(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_return(&self) -> bool  {
+        match self {
+            InsType::Return(_) => true,
             _ => false,
         }
     }

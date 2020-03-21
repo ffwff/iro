@@ -1,8 +1,8 @@
 use std::collections::{BTreeSet, BTreeMap};
 use crate::ssa::isa::*;
 
-pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
-    for (name, context) in &mut contexts {
+pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
+    for (_, context) in &mut contexts {
         let context = context.as_mut().unwrap();
         let mut defsites : Vec<BTreeSet<usize>> =
             (0..context.variables.len()).map(|_| btreeset![]).collect();
@@ -54,24 +54,31 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
             }
         }
 
+        // Store predecessors and successors in blocks
+        for ((preds, succs), block) in predecessors_map.into_iter().zip(successors_map).zip(context.blocks.iter_mut()) {
+            block.preds = preds;
+            block.succs = succs;
+        }
+
         if num_blocks > 1 {
             // Build the post-order traversal array
             let mut rpo = Vec::with_capacity(context.blocks.len());
             {
                 let mut visited = btreeset![];
                 fn walk(node: usize,
-                        successors_map: &Vec<Vec<usize>>,
+                        context: &Context,
                         post_order: &mut Vec<usize>,
                         visited: &mut BTreeSet<usize>) {
                     visited.insert(node);
-                    for succ in &successors_map[node] {
+                    let block = &context.blocks[node];
+                    for succ in &block.succs {
                         if !visited.contains(succ) {
-                            walk(*succ, successors_map, post_order, visited);
+                            walk(*succ, context, post_order, visited);
                         }
                     }
                     post_order.push(node);
                 };
-                walk(0, &successors_map, &mut rpo, &mut visited);
+                walk(0, &context, &mut rpo, &mut visited);
             }
             
             let rpo_ordering: Vec<usize> = {
@@ -101,7 +108,7 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                         b1
                     };
                     let new_idom =
-                        predecessors_map[b]
+                        context.blocks[b].preds
                             .iter()
                             .filter(|p| doms.contains_key(&p))
                             .fold(None, |last, &curr| {
@@ -117,7 +124,7 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                     }
                 }
             }
-            println!("---\nsucc:{:#?}\npreds: {:#?}\ndoms: {:#?}\n---", successors_map, predecessors_map, doms);
+            // println!("---\nsucc:{:#?}\npreds: {:#?}\ndoms: {:#?}\n---", successors_map, predecessors_map, doms);
 
             // Calculate the dominance tree
             let mut dom_tree: BTreeMap<usize, Vec<usize>> = btreemap![];
@@ -151,10 +158,9 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
 
             // Find the dominance frontier for each block
             let mut dom_frontier: Vec<BTreeSet<usize>> = (0..num_blocks).map(|_| btreeset![]).collect();
-            for b in 0..num_blocks {
-                let predecessors = &predecessors_map[b];
-                if predecessors.len() >= 2 {
-                    for &p in predecessors {
+            for (b, blocks) in context.blocks.iter_mut().enumerate() {
+                if blocks.preds.len() >= 2 {
+                    for &p in &blocks.preds {
                         let mut runner: usize = p;
                         while runner != doms[&b] {
                             println!("dom runner: {:?} {:?} {:?} {:?}", runner, b, doms[&b], doms[&runner]);
@@ -180,92 +186,187 @@ pub fn preprocess(mut contexts: FuncContexts) -> FuncContexts {
                         }
                     }
                 }
+                println!("phi: {} {:#?}", var, has_phi);
+
+                let mut last_assignment_for_block: BTreeMap<usize, usize> = BTreeMap::new();
+                let mut newvar = var;
+                {
+                    let mut did_initial_assignment = false;
+                    for &node in defsites.iter() {
+                        let block = &mut context.blocks[node];
+                        let mut last_at_block = 0usize;
+                        for ins in &mut block.ins {
+                            if var != newvar {
+                                ins.rename_var(var, newvar);
+                            }
+                            if let Some(retvar) = ins.mut_retvar() {
+                                if *retvar == var {
+                                    if !did_initial_assignment {
+                                        did_initial_assignment = true;
+                                    } else if newvar == var {
+                                        newvar = context.variables.len();
+                                        *retvar = newvar;
+                                    } else {
+                                        newvar += 1;
+                                        *retvar = newvar;
+                                    }
+                                    last_at_block = *retvar;
+                                }
+                            }
+                        }
+                        last_assignment_for_block.insert(node, last_at_block);
+                    }
+                }
 
                 for (&frontier_node, _) in &has_phi {
-                    context.blocks[frontier_node].ins.insert(0, Ins::new(
-                        var,
+                    let block = &mut context.blocks[frontier_node];
+                    let vars = block.preds.iter()
+                        .map(|pred| last_assignment_for_block[&pred])
+                        .collect();
+                    block.ins.insert(0, Ins::new(
+                        newvar,
                         InsType::Phi {
-                            vars: vec![ var ],
+                            vars,
                         }
                     ));
+                    newvar += 1;
+                    println!("{:#?} {:#?}", context, last_assignment_for_block);
+                    unimplemented!()
                 }
 
-                // Rename variables in each block and record the
-                // final type of that variable in the block
-                let mut did_initial_assignment = false;
-                let mut newvar = var;
-                let mut last_at_block: Vec<usize> = vec![];
-                for &node in &dominance_dfs {
-                    let block = &mut context.blocks[node];
-                    last_at_block.push(newvar);
-                    for ins in &mut block.ins {
-                        if var != newvar {
-                            ins.rename_var(var, newvar);
-                        }
-                        if let Some(retvar) = ins.mut_retvar() {
-                            if *retvar == var {
-                                if !did_initial_assignment {
-                                    did_initial_assignment = true;
-                                } else if newvar == var {
-                                    newvar = context.variables.len();
-                                    *retvar = newvar;
-                                } else {
-                                    newvar += 1;
-                                    *retvar = newvar;
-                                }
-                                last_at_block[node] = *retvar;
-                            }
-                        }
-                    }
-                }
-
-                if newvar != var {
-                    // Fill in variables for each phi nodes and filter out duplicates
-                    for (&node, phivars) in &has_phi {
-                        let block = &mut context.blocks[node];
-                        let ins = &mut block.ins[0];
-                        let retvar = ins.retvar().unwrap();
-                        if let InsType::Phi { vars } = &mut ins.typed {
-                            for &phivar in phivars {
-                                vars.push(last_at_block[phivar]);
-                            }
-                            vars.retain(|v| *v != retvar);
-                            vars.sort();
-                            vars.dedup();
-                        } else {
-                            unreachable!()
-                        }
-                    }
-                    // Create types for each new instance of this variable
-                    let typed = context.variables[var].clone();
-                    let len = context.variables.len();
-                    for _ in len..=newvar {
-                        context.variables.push(typed.clone());
-                    }
-                }
             }
         } else {
             let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
-            for block in context.blocks.iter_mut() {
-                for ins in &mut block.ins {
-                    ins.rename_var_by(|var| mapping[var].unwrap());
-                    if let Some(retvar) = ins.mut_retvar() {
-                        if mapping[*retvar] == None {
-                            mapping[*retvar] = Some(*retvar);
-                        } else {
-                            let newlen = context.variables.len();
-                            let typed = context.variables[*retvar].clone();
-                            context.variables.push(typed);
-
-                            mapping[*retvar] = Some(newlen);
-                            *retvar = newlen;
-                        }
+            let block = &mut context.blocks[0];
+            for ins in &mut block.ins {
+                ins.rename_var_by(|var| mapping[var].unwrap());
+                if let Some(retvar) = ins.mut_retvar() {
+                    if mapping[*retvar] == None {
+                        mapping[*retvar] = Some(*retvar);
+                    } else {
+                        let newlen = context.variables.len();
+                        let typed = context.variables[*retvar].clone();
+                        context.variables.push(typed);
+                        mapping[*retvar] = Some(newlen);
+                        *retvar = newlen;
                     }
                 }
             }
         }
+    }
+    contexts
+}
 
-        // TODO: fill duplicate variables
+pub fn remove_defined_never_used(mut contexts: FuncContexts) -> FuncContexts {
+    for (_, context) in &mut contexts {
+        let context = context.as_mut().unwrap();
+        let mut to_remove: BTreeSet<usize> = BTreeSet::new();
+        for block in &mut context.blocks {
+            for ins in &block.ins {
+                if let Some(retvar) = ins.retvar() {
+                    to_remove.insert(retvar);
+                }
+                ins.each_used_var(|used| {
+                    to_remove.remove(&used);
+                })
+            }
+        }
+        for block in &mut context.blocks {
+            block.ins.retain(|ins| {
+                if let Some(retvar) = ins.retvar() {
+                    !to_remove.contains(&retvar)
+                } else {
+                    true
+                }
+            })
+        }
+    }
+    contexts
+}
+
+pub fn data_flow_analysis(mut contexts: FuncContexts) -> FuncContexts {
+    for (_, context) in &mut contexts {
+        let context = context.as_mut().unwrap();
+
+        // Generate the initial worklist by putting blocks with side-effects
+        let mut worklist: Vec<usize> =
+            context.blocks
+                .iter()
+                .enumerate()
+                .filter(|(idx, block)| block.ins.iter().any(|ins| ins.typed.is_return()))
+                .map(|(idx, block)| idx).collect();
+        
+        println!("initial worklist: {:#?}", worklist);
+        while let Some(node) = worklist.pop() {
+            let mut vars_in = BTreeSet::new();
+            let mut vars_declared_in_this_block = BTreeSet::new();
+            // Temporarily borrow preds
+            let (preds, state_changed) = {
+                let block = &mut context.blocks[node];
+                std::mem::replace(&mut vars_in, block.vars_in.clone());
+                // Calculate input variables for this block, this will be
+                // used as output variables for preceding blocks
+                for ins in &block.ins {
+                    if let Some(retvar) = ins.retvar() {
+                        vars_declared_in_this_block.insert(retvar);
+                    }
+                    ins.each_used_var(|var| {
+                        if !vars_declared_in_this_block.contains(&var) {
+                            vars_in.insert(var);
+                        }
+                    });
+                }
+                let state_changed = vars_in != block.vars_in;
+                (std::mem::replace(&mut block.preds, Vec::new()), state_changed)
+            };
+            // Add preceding blocks to the worklist if old in-state != new in-state
+            if state_changed {
+                for &pred in &preds {
+                    let block = &mut context.blocks[pred];
+                    block.vars_out = vars_in.clone();
+                    worklist.push(pred);
+                }
+            }
+            // Give preds back and fill vars_in
+            {
+                let block = &mut context.blocks[node];
+                block.preds = preds;
+                block.vars_in = vars_in;
+            }
+            println!("worklist: {:#?}", worklist);
+        }
+        println!("worklist: {:#?}", worklist);
+    }
+    contexts
+}
+
+pub fn remove_unused_local_vars(mut contexts: FuncContexts) -> FuncContexts {
+    for (_, context) in &mut contexts {
+        let context = context.as_mut().unwrap();
+        for block in &mut context.blocks {
+            let mut to_remove: BTreeSet<usize> = BTreeSet::new();
+            for ins in &block.ins {
+                if let Some(retvar) = ins.retvar() {
+                    to_remove.insert(retvar);
+                }
+                ins.each_used_var(|used| {
+                    to_remove.remove(&used);
+                })
+            }
+            for var in &block.vars_in {
+                to_remove.remove(&var);
+            }
+            for var in &block.vars_out {
+                to_remove.remove(&var);
+            }
+            block.ins.retain(|ins| {
+                if let Some(retvar) = ins.retvar() {
+                    !to_remove.contains(&retvar)
+                } else {
+                    true
+                }
+            });
+        }
     }
     contexts
 }

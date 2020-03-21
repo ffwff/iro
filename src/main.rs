@@ -6,9 +6,9 @@ use iro::arch::x86_64;
 
 fn main() {
     let ast = utils::parse_input("
-    let i = 0
-    while i < 5
-        i += 1
+    let a = 1
+    if a < 5
+        a = 2
     end
     ").unwrap();
     println!("---\n{:#?}", ast);
@@ -16,13 +16,19 @@ fn main() {
     visitor.visit_program(&ast).unwrap();
     let mut func_contexts = visitor.into_func_contexts().unwrap();
     println!("---\n{:#?}", func_contexts);
-    func_contexts = opt::preprocess::preprocess(func_contexts);
+    func_contexts = opt::preprocess::build_graph_and_rename_vars(func_contexts);
     println!("---\n{:#?}", func_contexts);
-    func_contexts = opt::ssa::eliminate_unused(func_contexts);
+    /* func_contexts = opt::preprocess::remove_defined_never_used(func_contexts);
+    println!("---\n{:#?}", func_contexts);
+    func_contexts = opt::preprocess::data_flow_analysis(func_contexts);
+    println!("---\n{:#?}", func_contexts);
+    func_contexts = opt::preprocess::remove_unused_local_vars(func_contexts);
+    println!("---\n{:#?}", func_contexts); */
+    /* func_contexts = opt::ssa::eliminate_unused(func_contexts);
     println!("---\n{:#?}", func_contexts);
     func_contexts = opt::ssa::eliminate_consts(func_contexts);
     println!("---\n{:#?}", func_contexts);
     let mut visitor = x86_64::visitor::FuncContextVisitor::new();
-    visitor.process(&func_contexts);
+    visitor.process(&func_contexts); */
     // utils::ssa_visitor(&ast).unwrap();
 }
