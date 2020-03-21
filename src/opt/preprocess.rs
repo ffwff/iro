@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, BTreeMap, VecDeque};
+use std::ops::BitXor;
 use crate::ssa::isa::*;
 
 pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
@@ -277,17 +278,22 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
 pub fn remove_defined_never_used(mut contexts: FuncContexts) -> FuncContexts {
     for (_, context) in &mut contexts {
         let context = context.as_mut().unwrap();
-        let mut to_remove: BTreeSet<usize> = BTreeSet::new();
+        let mut defined: BTreeSet<usize> = BTreeSet::new();
+        let mut used: BTreeSet<usize> = BTreeSet::new();
         for block in &mut context.blocks {
             for ins in &block.ins {
                 if let Some(retvar) = ins.retvar() {
-                    to_remove.insert(retvar);
+                    defined.insert(retvar);
+                    if ins.typed.has_side_effects() {
+                        used.insert(retvar);
+                    }
                 }
-                ins.each_used_var(|used| {
-                    to_remove.remove(&used);
+                ins.each_used_var(|var| {
+                    used.insert(var);
                 })
             }
         }
+        let to_remove = defined.bitxor(&used);
         for block in &mut context.blocks {
             block.ins.retain(|ins| {
                 if let Some(retvar) = ins.retvar() {

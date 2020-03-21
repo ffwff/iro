@@ -6,11 +6,14 @@ use iro::arch::x86_64;
 
 fn main() {
     let ast = utils::parse_input("
-    let a = 1
-    while a < 5
-        a = 2
+    def f()
+        let a = 1
+        while a < 5
+            a += 1
+        end
+        return a
     end
-    let b = a + 3
+    f()
     ").unwrap();
     println!("---\n{:#?}", ast);
     let mut visitor = SSAVisitor::new();

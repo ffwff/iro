@@ -281,6 +281,14 @@ impl InsType {
         }
     }
 
+    pub fn has_side_effects(&self) -> bool  {
+        match self {
+            InsType::Call { .. } |
+            InsType::Return(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_return(&self) -> bool  {
         match self {
             InsType::Return(_) => true,
