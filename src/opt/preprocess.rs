@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeSet, BTreeMap, VecDeque};
 use crate::ssa::isa::*;
 
 pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
@@ -77,7 +77,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                         }
                     }
                     post_order.push(node);
-                };
+                }
                 walk(0, &context, &mut rpo, &mut visited);
             }
             
@@ -86,7 +86,6 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                 zipped.sort_by_key(|(k, v)| *k);
                 zipped.into_iter().map(|(idx, node)| node).collect()
             };
-            rpo.pop();
             rpo.reverse();
 
             // Calculate the dominators for each block
@@ -95,7 +94,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
             let mut changed = true;
             while changed {
                 changed = false;
-                for &b in rpo.iter() {
+                for &b in rpo.iter().skip(1) { // Skip first block
                     let intersect = |mut b1: usize, mut b2: usize| {
                         while b1 != b2 {
                             while rpo_ordering[b1] < rpo_ordering[b2] {
@@ -173,73 +172,91 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
             println!("---\ndom_frontier: {:#?}", dom_frontier);
             println!("---\ndefsites: {:#?}", defsites);
             
+            // Insert some phi nodes
             for (var, defsites) in defsites.iter_mut().enumerate() {
-                // Insert some phi nodes
-                let mut has_phi: BTreeMap<usize, Vec<usize>> = btreemap![];
+                let mut has_phi: BTreeSet<usize> = btreeset![];
                 for &defsite in defsites.iter() {
                     for &node in &dom_frontier[defsite] {
-                        // println!("var: {} {:?}", var, node);
-                        if let Some(vec) = has_phi.get_mut(&node) {
-                            vec.push(defsite);
-                        } else {
-                            has_phi.insert(node, vec![ defsite ]);
-                        }
+                        has_phi.insert(node);
                     }
                 }
-                println!("phi: {} {:#?}", var, has_phi);
-
-                let mut last_assignment_for_block: BTreeMap<usize, usize> = BTreeMap::new();
-                let mut newvar = var;
-                {
-                    let mut did_initial_assignment = false;
-                    for &node in defsites.iter() {
-                        let block = &mut context.blocks[node];
-                        let mut last_at_block = 0usize;
-                        for ins in &mut block.ins {
-                            if var != newvar {
-                                ins.rename_var(var, newvar);
-                            }
-                            if let Some(retvar) = ins.mut_retvar() {
-                                if *retvar == var {
-                                    if !did_initial_assignment {
-                                        did_initial_assignment = true;
-                                    } else if newvar == var {
-                                        newvar = context.variables.len();
-                                        *retvar = newvar;
-                                    } else {
-                                        newvar += 1;
-                                        *retvar = newvar;
-                                    }
-                                    last_at_block = *retvar;
-                                }
-                            }
-                        }
-                        last_assignment_for_block.insert(node, last_at_block);
-                    }
-                }
-
-                for (&frontier_node, _) in &has_phi {
-                    let block = &mut context.blocks[frontier_node];
-                    let vars = block.preds.iter()
-                        .map(|pred| last_assignment_for_block[&pred])
-                        .collect();
-                    block.ins.insert(0, Ins::new(
-                        newvar,
+                for &frontier_node in &has_phi {
+                    context.blocks[frontier_node].ins.insert(0, Ins::new(
+                        var,
                         InsType::Phi {
-                            vars,
+                            vars: vec![ var ],
                         }
                     ));
-                    newvar += 1;
-                    println!("{:#?} {:#?}", context, last_assignment_for_block);
-                    unimplemented!()
                 }
+            }
 
+            println!("AAA {:#?}", context);
+
+            // Rename variables
+            let orig_varlen = context.variables.len();
+            let mut last_defined_at_block: Vec<usize> = (0..orig_varlen).map(|_| 0).collect();
+            for var in 0..orig_varlen {
+                println!("renaming variable {}", var);
+                let mut did_initial_assignment = false;
+                for last_defined in &mut last_defined_at_block {
+                    *last_defined = var;
+                }
+                println!("rpo: {:#?}", rpo);
+                let typed = context.variables[var].clone();
+                for &node in rpo.iter() {
+                    let block = &mut context.blocks[node];
+                    let mut last_defined = last_defined_at_block[node];
+                    for ins in &mut block.ins {
+                        ins.rename_var(false, var, last_defined);
+                        if let Some(retvar) = ins.mut_retvar() {
+                            if *retvar == var {
+                                let old = *retvar;
+                                if !did_initial_assignment {
+                                    did_initial_assignment = true;
+                                } else {
+                                    context.variables.push(typed.clone());
+                                    *retvar = context.variables.len() - 1;
+                                }
+                                println!("changed {} to {}", old, *retvar);
+                                last_defined = *retvar;
+                            }
+                        }
+                    }
+                    last_defined_at_block[node] = last_defined;
+                    for &succ in &block.succs {
+                        last_defined_at_block[succ] = last_defined;
+                    }
+                }
+                // Insert vars for phi-node
+                for block in &mut context.blocks {
+                    for ins in &mut block.ins {
+                        let retvar = ins.retvar();
+                        match &mut ins.typed {
+                            InsType::Phi { vars } => {
+                                println!("{:#?}", vars);
+                                if vars.len() == 1 && vars[0] == var {
+                                    let mut v: Vec<usize> = block.preds
+                                        .iter()
+                                        .map(|pred| last_defined_at_block[*pred])
+                                        .collect();
+                                    let retvar = retvar.unwrap();
+                                    v.retain(|var| *var != retvar);
+                                    *vars = v;
+                                    break;
+                                }
+                            },
+                            _ => (),
+                        }
+                    }
+                }
+                println!("{} ==> {:#?}", var, context);
+                //panic!("!!!");
             }
         } else {
             let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
             let block = &mut context.blocks[0];
             for ins in &mut block.ins {
-                ins.rename_var_by(|var| mapping[var].unwrap());
+                ins.rename_var_by(true, |var| mapping[var].unwrap());
                 if let Some(retvar) = ins.mut_retvar() {
                     if mapping[*retvar] == None {
                         mapping[*retvar] = Some(*retvar);

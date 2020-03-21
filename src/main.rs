@@ -7,9 +7,10 @@ use iro::arch::x86_64;
 fn main() {
     let ast = utils::parse_input("
     let a = 1
-    if a < 5
+    while a < 5
         a = 2
     end
+    let b = a + 3
     ").unwrap();
     println!("---\n{:#?}", ast);
     let mut visitor = SSAVisitor::new();
@@ -18,11 +19,11 @@ fn main() {
     println!("---\n{:#?}", func_contexts);
     func_contexts = opt::preprocess::build_graph_and_rename_vars(func_contexts);
     println!("---\n{:#?}", func_contexts);
-    /* func_contexts = opt::preprocess::remove_defined_never_used(func_contexts);
+    func_contexts = opt::preprocess::remove_defined_never_used(func_contexts);
     println!("---\n{:#?}", func_contexts);
     func_contexts = opt::preprocess::data_flow_analysis(func_contexts);
     println!("---\n{:#?}", func_contexts);
-    func_contexts = opt::preprocess::remove_unused_local_vars(func_contexts);
+    /* func_contexts = opt::preprocess::remove_unused_local_vars(func_contexts);
     println!("---\n{:#?}", func_contexts); */
     /* func_contexts = opt::ssa::eliminate_unused(func_contexts);
     println!("---\n{:#?}", func_contexts);

@@ -87,7 +87,7 @@ pub fn eliminate_consts(mut contexts: FuncContexts) -> FuncContexts {
         }
         for block in &mut context.blocks {
             for ins in &mut block.ins {
-                ins.rename_var_by(|oldvar| {
+                ins.rename_var_by(true, |oldvar| {
                     if let Some(var) = replace.get(&oldvar) {
                         *var
                     } else {
