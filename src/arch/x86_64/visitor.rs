@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
-use crate::arch::x86_64::isa;
+use crate::arch::context;
+use crate::arch::x86_64::{isa, encoder};
 use crate::ssa::isa::*;
 
 static ARG_REGS: [isa::Reg; 6] = [
@@ -46,13 +47,16 @@ impl FuncContextVisitor {
         }
     }
 
-    pub fn process(&mut self, contexts: &FuncContexts) -> Result<isa::IsaContexts, Error> {
+    pub fn process(&mut self, contexts: &FuncContexts) -> Result<context::IsaContexts, Error> {
         for (name, context) in contexts {
             let context = context.as_ref().unwrap();
             self.visit_context(&context, &name, contexts);
         }
-        println!("{:#?}", self.unflattened_code);
-        Ok(isa::IsaContexts::new())
+        let mut isa_contexts = context::IsaContexts::new();
+        for (name, context) in &self.unflattened_code {
+            isa_contexts.insert(name.clone(), encoder::encode_blocks(&context));
+        }
+        Ok(isa_contexts)
     }
 
     pub fn visit_context(&mut self, context: &Context, name: &Rc<FunctionName>, contexts: &FuncContexts) {
@@ -142,6 +146,11 @@ impl FuncContextVisitor {
                     typed: isa::InsType::Ret
                 });
             }
+            InsType::Exit => {
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Ret
+                });
+            }
             InsType::IfJmp { condvar, iftrue, iffalse } => {
                 match isa_ins.last() {
                     Some(isa::Ins { typed: isa::InsType::Lt(threeops) })
@@ -149,7 +158,7 @@ impl FuncContextVisitor {
                         let threeops = threeops.clone();
                         isa_ins.pop();
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Cmp(isa::TwoOperands {
+                            typed: isa::InsType::CmpI32(isa::TwoOperands {
                                 dest: self.get_register_for_var(threeops.left),
                                 src: self.get_register_for_var(threeops.right)
                             })

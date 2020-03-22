@@ -155,6 +155,9 @@ impl Visitor for SSAVisitor {
         for node in &outerstmts {
             node.visit(self)?;
         }
+        self.with_block_mut(|block| {
+            block.ins.push(Ins::new(0, InsType::Exit));
+        });
 
         Ok(())
     }

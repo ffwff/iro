@@ -15,7 +15,7 @@ impl Ins {
             InsType::SubI32(ops) |
             InsType::MulI32(ops) |
             InsType::DivI32(ops) |
-            InsType::Cmp(ops) => {
+            InsType::CmpI32(ops) => {
                 if dest_first {
                     callback(&ops.dest);
                     callback(&ops.src);
@@ -35,7 +35,7 @@ impl Ins {
             InsType::SubI32(ops) |
             InsType::MulI32(ops) |
             InsType::DivI32(ops) |
-            InsType::Cmp(ops) => {
+            InsType::CmpI32(ops) => {
                 if dest_first {
                     callback(&mut ops.dest);
                     callback(&mut ops.src);
@@ -58,7 +58,7 @@ impl std::fmt::Debug for Ins {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum Reg {
-    Rax,
+    Rax = 0,
     Rcx,
     Rdx,
     Rbx,
@@ -114,17 +114,17 @@ pub enum InsType {
     SubI32(TwoOperands),
     MulI32(TwoOperands),
     DivI32(TwoOperands),
-    Cmp(TwoOperands),
+    CmpI32(TwoOperands),
     Jmp(usize),
     Jgt(usize),
     Jlt(usize),
     Call(Rc<FunctionName>),
-    Lt(VirtualThreeOperands),
+    Ret,
     Push(Operand),
-    IfJmp { condvar: Operand, iftrue: usize, iffalse: usize },
     Enter,
     LeaveAndRet,
-    Ret,
+    Lt(VirtualThreeOperands),
+    IfJmp { condvar: Operand, iftrue: usize, iffalse: usize },
 }
 
 impl InsType {
@@ -156,12 +156,3 @@ impl InsType {
 pub struct Block {
     pub ins: Vec<Ins>,
 }
-
-#[derive(Debug, Clone)]
-pub struct Context {
-    pub code: Vec<u8>,
-    pub data: Vec<u8>,
-    pub relocation: Vec<(usize, Rc<FunctionName>)>,
-}
-
-pub type IsaContexts = HashMap<Rc<FunctionName>, Context>;

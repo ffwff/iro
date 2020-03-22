@@ -249,6 +249,7 @@ pub enum InsType {
     Phi { vars: Vec<usize> },
     Call { name: Rc<FunctionName>, args: Vec<usize> },
     Return(usize),
+    Exit,
     Add((usize, usize)),
     Sub((usize, usize)),
     Mul((usize, usize)),
@@ -284,7 +285,8 @@ impl InsType {
     pub fn has_side_effects(&self) -> bool  {
         match self {
             InsType::Call { .. } |
-            InsType::Return(_) => true,
+            InsType::Return(_) |
+            InsType::Exit => true,
             _ => false,
         }
     }

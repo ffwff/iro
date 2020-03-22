@@ -7,10 +7,7 @@ use iro::arch::x86_64;
 fn main() {
     let ast = utils::parse_input("
     def f(a,b)
-        if a < 5
-            return a+b+5
-        end
-        return a + 1
+        return a + 5
     end
     f(1,2)
     ").unwrap();
