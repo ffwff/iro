@@ -3,11 +3,15 @@ use iro::ssa::visitor::SSAVisitor;
 use iro::ssa::opt;
 use iro::ast::Visitor;
 use iro::arch::x86_64;
+use iro::arch::mmap;
 
 fn main() {
     let ast = utils::parse_input("
     def f(a,b)
-        return a + 5
+        if a > 5
+            return a + b + 5
+        end
+        return a
     end
     f(1,2)
     ").unwrap();
@@ -25,5 +29,8 @@ fn main() {
     func_contexts = opt::eliminate_phi(func_contexts);
     println!("---\n{:#?}", func_contexts);
     let mut visitor = x86_64::visitor::FuncContextVisitor::new();
-    visitor.process(&func_contexts);
+    let contexts = visitor.process(&func_contexts).unwrap();
+    unsafe {
+        let mmap = mmap::Mmap::from_contexts(&contexts);
+    }
 }

@@ -86,6 +86,17 @@ pub enum Operand {
     UndeterminedMapping(usize),
 }
 
+impl Operand {
+    pub fn is_lit(&self) -> bool {
+        match self {
+            Operand::U16(_) |
+            Operand::U32(_) |
+            Operand::U64(_) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct TwoOperands {
     pub dest: Operand,
@@ -123,6 +134,9 @@ pub enum InsType {
     Push(Operand),
     Enter,
     LeaveAndRet,
+    Clobber { reg: Reg, except_for_var: Option<usize> },
+    Unclobber(Reg),
+    Gt(VirtualThreeOperands),
     Lt(VirtualThreeOperands),
     IfJmp { condvar: Operand, iftrue: usize, iffalse: usize },
 }

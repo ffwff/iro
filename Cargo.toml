@@ -10,6 +10,7 @@ lalrpop-util = "0.18.1"
 unicode-xid = "0.1.0"
 maplit = "1.0.2"
 downcast-rs = "1.1.1"
+libc = "0.2.68"
 
 [build-dependencies]
 lalrpop = "0.18.1"

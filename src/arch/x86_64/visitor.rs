@@ -30,6 +30,7 @@ static ALLOC_REGS: [isa::Reg; 14] = [
     isa::Reg::Rdi,
 ];
 
+#[derive(Debug, Clone)]
 pub enum Error {
     None,
 }
@@ -47,12 +48,12 @@ impl FuncContextVisitor {
         }
     }
 
-    pub fn process(&mut self, contexts: &FuncContexts) -> Result<context::IsaContexts, Error> {
+    pub fn process(&mut self, contexts: &FuncContexts) -> Result<context::Contexts, Error> {
         for (name, context) in contexts {
             let context = context.as_ref().unwrap();
             self.visit_context(&context, &name, contexts);
         }
-        let mut isa_contexts = context::IsaContexts::new();
+        let mut isa_contexts = context::Contexts::new();
         for (name, context) in &self.unflattened_code {
             isa_contexts.insert(name.clone(), encoder::encode_blocks(&context));
         }
@@ -119,19 +120,40 @@ impl FuncContextVisitor {
             InsType::Call { name, args } => {
                 for (idx, &arg) in args.iter().enumerate() {
                     assert_eq!(&context.variables[arg], &Type::I32);
+                    let reg = ARG_REGS[idx];
+                    isa_ins.push(isa::Ins {
+                        typed: isa::InsType::Clobber {
+                            reg,
+                            except_for_var: Some(arg)
+                        }
+                    });
                     isa_ins.push(isa::Ins {
                         typed: isa::InsType::MovI32(isa::TwoOperands {
-                            dest: isa::Operand::Register(ARG_REGS[idx]),
+                            dest: isa::Operand::Register(reg),
                             src: self.get_register_for_var(arg),
                         })
                     });
                 }
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Clobber {
+                        reg: isa::Reg::Rax,
+                        except_for_var: None,
+                    }
+                });
                 isa_ins.push(isa::Ins { typed: isa::InsType::Call(name.clone()) });
+                for (idx, _) in args.iter().enumerate() {
+                    isa_ins.push(isa::Ins {
+                        typed: isa::InsType::Unclobber(ARG_REGS[idx])
+                    });
+                }
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
                         dest: self.get_register_for_var(ins.retvar().unwrap()),
                         src: isa::Operand::Register(isa::Reg::Rax),
                     })
+                });
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Unclobber(isa::Reg::Rax)
                 });
             }
             InsType::Return(x) => {
@@ -153,10 +175,11 @@ impl FuncContextVisitor {
             }
             InsType::IfJmp { condvar, iftrue, iffalse } => {
                 match isa_ins.last() {
-                    Some(isa::Ins { typed: isa::InsType::Lt(threeops) })
+                    Some(isa::Ins { typed: isa::InsType::Lt(threeops) }) |
+                    Some(isa::Ins { typed: isa::InsType::Gt(threeops) })
                         if threeops.dest == *condvar => {
                         let threeops = threeops.clone();
-                        isa_ins.pop();
+                        let last = isa_ins.pop().unwrap();
                         isa_ins.push(isa::Ins {
                             typed: isa::InsType::CmpI32(isa::TwoOperands {
                                 dest: self.get_register_for_var(threeops.left),
@@ -164,7 +187,11 @@ impl FuncContextVisitor {
                             })
                         });
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Jlt(*iftrue)
+                            typed: match last.typed {
+                                isa::InsType::Lt(_) => isa::InsType::Jlt(*iftrue),
+                                isa::InsType::Gt(_) => isa::InsType::Jgt(*iftrue),
+                                _ => unreachable!()
+                            }
                         });
                         isa_ins.push(isa::Ins {
                             typed: isa::InsType::Jmp(*iffalse)
@@ -194,6 +221,16 @@ impl FuncContextVisitor {
                 };
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Lt(operands)
+                });
+            }
+            InsType::Gt((x, y)) => {
+                let operands = isa::VirtualThreeOperands {
+                    dest: ins.retvar().unwrap(),
+                    left: *x,
+                    right: *y,
+                };
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Gt(operands)
                 });
             }
             InsType::Add((x, y)) |
@@ -261,23 +298,88 @@ impl FuncContextVisitor {
             }
 
             // Map of variable to (register, allocated interval)
+            // if register is none, additional work must be done
+            // to retrieve it from local stack
             let mut unused_regs = ALLOC_REGS.to_vec();
-            let mut var_to_reg: BTreeMap<usize, (isa::Reg, usize)> = btreemap![];
+            let mut var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)> = btreemap![];
             let mut prelude = vec![];
             let mut body = vec![];
             let mut postlude = vec![];
             for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
                 println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
+                match &ins.typed {
+                    isa::InsType::Clobber { reg, except_for_var } => {
+                        if unused_regs.contains(&reg) {
+                            unused_regs.remove_item(&reg);
+                        } else {
+                            let mut to_remove = None;
+                            for (var, vdata) in &mut var_to_reg {
+                                if vdata.0 == Some(*reg) {
+                                    if Some(*var) == *except_for_var {
+                                        break;
+                                    }
+                                    if let Some(newreg) = unused_regs.pop() {
+                                        // FIXME: correct mov type pls
+                                        body.push(isa::Ins {
+                                            typed: isa::InsType::MovI32(isa::TwoOperands {
+                                                dest: isa::Operand::Register(newreg),
+                                                src: isa::Operand::Register(*reg)
+                                            })
+                                        });
+                                        vdata.0 = Some(newreg);
+                                    } else {
+                                        body.push(isa::Ins {
+                                            typed: isa::InsType::MovI32(isa::TwoOperands {
+                                                dest: isa::Operand::UndeterminedMapping(*var),
+                                                src: isa::Operand::Register(*reg),
+                                            })
+                                        });
+                                        to_remove = Some(*var);
+                                    }
+                                    break;
+                                }
+                            }
+                            if let Some(to_remove) = to_remove {
+                                var_to_reg.remove(&to_remove);
+                            }
+                        }
+                        continue;
+                    }
+                    isa::InsType::Unclobber(reg) => {
+                        unused_regs.push(*reg);
+                        continue;
+                    }
+                    _ => ()
+                }
                 ins.rename_var_by(false, |var| {
                     println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
                     println!("  => {:?}", unused_regs);
                     if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
-                        let reg = if let Some(reg) = var_to_reg.get(&mapping) {
-                            *var = isa::Operand::Register(reg.0);
-                            reg.0
+                        let reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
+                            match maybe_reg.clone() {
+                                (Some(reg), _) => {
+                                    *var = isa::Operand::Register(reg);
+                                    reg
+                                },
+                                (None, _) => {
+                                    // The variable used to store this node has previously
+                                    // been clobbered, so hopefully we can retrieve
+                                    // the clobbered register again
+                                    let reg = unused_regs.pop().unwrap();
+                                    body.push(isa::Ins {
+                                        typed: isa::InsType::MovI32(isa::TwoOperands {
+                                            dest: isa::Operand::Register(reg),
+                                            src: var.clone()
+                                        })
+                                    });
+                                    maybe_reg.0 = Some(reg);
+                                    reg
+                                },
+                            }
                         } else if let Some(reg) = unused_regs.pop() {
                             // Unspill the local variable if it's used in the precceding blocks
                             if cblock.vars_in.contains(&mapping) {
+                                // FIXME: correct mov type pls
                                 body.push(isa::Ins {
                                     typed: isa::InsType::MovI32(isa::TwoOperands {
                                         dest: isa::Operand::Register(reg),
@@ -286,7 +388,7 @@ impl FuncContextVisitor {
                                 });
                             }
                             *var = isa::Operand::Register(reg);
-                            var_to_reg.insert(mapping, (reg, idx));
+                            var_to_reg.insert(mapping, (Some(reg), idx));
                             reg
                         } else {
                             // save one of the vars to stack
@@ -299,7 +401,7 @@ impl FuncContextVisitor {
                                 // We defer despilling of the output variables to cleanup stage
                                 // or when we run out of variables
                                 if !cblock.vars_out.contains(&mapping) {
-                                    unused_regs.push(reg);
+                                    unused_regs.push(reg.unwrap());
                                 }
                             }
                         }
@@ -314,14 +416,15 @@ impl FuncContextVisitor {
 
             // cleanup
             for (var, (reg, _)) in &var_to_reg {
+                let reg = reg.unwrap();
                 if cblock.vars_out.contains(&var) {
                     body.push(isa::Ins {
                         typed: isa::InsType::MovI32(isa::TwoOperands {
                             dest: isa::Operand::UndeterminedMapping(*var),
-                            src: isa::Operand::Register(*reg),
+                            src: isa::Operand::Register(reg),
                         })
                     });
-                    unused_regs.push(*reg);
+                    unused_regs.push(reg);
                 }
             }
 

@@ -3,12 +3,19 @@ use std::collections::HashMap;
 use crate::ssa::isa::FunctionName;
 
 #[derive(Debug, Clone)]
+pub struct RelativeRelocation {
+    pub label: usize,
+    pub branch: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct Context {
     pub code: Vec<u8>,
     pub data: Vec<u8>,
     /// Relative 32-bit function relocation
     pub func_relocation: Vec<(usize, Rc<FunctionName>)>,
-    pub label_relocation: Vec<(usize, usize)>,
+    /// Relative 32-bit label relocation
+    pub rel_relocation: Vec<RelativeRelocation>,
 }
 
-pub type IsaContexts = HashMap<Rc<FunctionName>, Context>;
+pub type Contexts = HashMap<Rc<FunctionName>, Context>;

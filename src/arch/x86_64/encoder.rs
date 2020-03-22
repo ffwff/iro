@@ -2,19 +2,48 @@ use crate::arch::context;
 use crate::arch::x86_64::isa;
 use isa::{InsType, Operand, Reg};
 use crate::ssa::isa::FunctionName;
+use crate::arch::context::RelativeRelocation;
 
 pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
     let mut context = context::Context {
         code: vec![],
         data: vec![],
         func_relocation: vec![],
-        label_relocation: vec![],
+        rel_relocation: vec![],
     };
+    let mut label_locations = vec![];
     for block in blocks {
         println!("encoding block: {:#?}", block);
+        if context.code.is_empty() {
+            label_locations.push(0);
+        } else {
+            label_locations.push(context.code.len() - 1);
+        }
         for ins in &block.ins {
             encode_instruction(&mut context, ins);
         }
+        if context.code.len() % 2 != 0 {
+            context.code.push(0x90);
+        }
+    }
+    for relocation in &context.rel_relocation {
+        let distance =
+            label_locations[relocation.branch] - relocation.label - 3;
+        if distance < 0 {
+            let bytes = ((0x1_0000_0000i64 - distance as i64) as u32).to_le_bytes();
+            for i in 0..4 {
+                context.code[relocation.label + i] = bytes[i];
+            }
+        } else {
+            let bytes = (distance as u32).to_le_bytes();
+            for i in 0..4 {
+                context.code[relocation.label + i] = bytes[i];
+            }
+        }
+    }
+    if !context.code.is_empty() {
+        let len = ((context.code.len()-1) | 15) + 1;
+        context.code.resize(len, 0x90);
     }
     context
 }
@@ -27,11 +56,15 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             match (&ops.dest, &ops.src) {
                 (Operand::Register(left), Operand::U32(n))
                     if (*left as u8) <= 0b111 => {
-                    dest.code.push(0xB0 + *left as u8);
+                    dest.code.push(0xB8 + *left as u8);
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
-                (_, _) => {
+                (Operand::Memory { .. }, Operand::Register(_)) => {
                     dest.code.push(0x89);
+                    modrm(dest, ops.src.clone(), ops.dest.clone());
+                }
+                (_, _) => {
+                    dest.code.push(0x8B);
                     modrm(dest, ops.dest.clone(), ops.src.clone());
                 }
             }
@@ -41,6 +74,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 (Operand::Register(left), Operand::U32(n))
                     if (*left as u8) <= 0b111 => {
                     dest.code.push(0x81);
+                    modrm(dest, ops.dest.clone(), ops.src.clone());
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
                 (_, _) => {
@@ -63,15 +97,39 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             dest.code.push(0x39);
             modrm(dest, ops.dest.clone(), ops.src.clone());
         },
-        InsType::Jmp(ops) => unimplemented!(),
-        InsType::Jgt(ops) => unimplemented!(),
+        InsType::Jmp(branch) => {
+            dest.code.push(0xE9);
+            let len = dest.code.len();
+            dest.code.push(0x0);
+            dest.code.push(0x0);
+            dest.code.push(0x0);
+            dest.code.push(0x0);
+            dest.rel_relocation.push(RelativeRelocation {
+                label: len,
+                branch: *branch,
+            });
+        },
+        InsType::Jgt(branch) => {
+            dest.code.push(0x0F);
+            dest.code.push(0x8F);
+            let len = dest.code.len();
+            dest.code.push(0x0);
+            dest.code.push(0x0);
+            dest.code.push(0x0);
+            dest.code.push(0x0);
+            dest.rel_relocation.push(RelativeRelocation {
+                label: len,
+                branch: *branch,
+            });
+        },
         InsType::Jlt(ops) => unimplemented!(),
         InsType::Call(name) => {
             dest.code.push(0xE8);
-            let len = dest.code.len() - 1;
+            let len = dest.code.len();
             for _ in 0..4 {
                 dest.code.push(0);
             }
+            dest.code.push(0x90); // this nop is a HACK to make relocation easier
             dest.func_relocation.push((len, name.clone()));
         },
         InsType::Ret => {
@@ -79,9 +137,10 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         },
         InsType::Push(op) => unimplemented!(),
         InsType::Enter => {
-            // push ebp
+            // push rbp
             dest.code.push(0x55);
-            // mov esp <- ebp
+            // mov rsp <- rbp
+            dest.code.push(0x48);
             dest.code.push(0x89);
             dest.code.push(0xEC);
         },
@@ -100,7 +159,27 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
     match (odest, osrc) {
         (Operand::Register(left), Operand::Register(right))
             if (left as u8) <= 0b111 && (right as u8) <= 0b111
-                => dest.code.push(0b11_000_000 | ((left as u8) << 3) | (right as u8)),
-        _ => unimplemented!(),
+            => dest.code.push(0b11_000_000 | ((left as u8) << 3) | (right as u8)),
+        (Operand::Register(reg), Operand::Memory { disp, base })
+            => {
+                if -127 <= disp && disp <= 127 {
+                    dest.code.push(0b01_000_000 | ((reg as u8) << 3) | (base as u8));
+                    if disp < 0 {
+                        dest.code.push((0x100 + disp) as u8);
+                    } else {
+                        dest.code.push(disp as u8);
+                    }
+                } else {
+                    dest.code.push(0b10_000_000 | ((reg as u8) << 3) | (base as u8));
+                    if disp < 0 {
+                        dest.code.extend_from_slice(&(0x1_0000_0000i64 - (disp as i64)).to_le_bytes());
+                    } else {
+                        dest.code.extend_from_slice(&disp.to_le_bytes());
+                    }
+                }
+            }
+        (Operand::Register(left), right) if right.is_lit()
+            => dest.code.push(0b11_000_000 | (left as u8)),
+        _ => unimplemented!(), 
     }
 }
