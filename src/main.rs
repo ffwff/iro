@@ -9,9 +9,8 @@ fn main() {
     def f(a,b)
         if a < 5
             return a+b+5
-        else
-            return a+1
         end
+        return a + 1
     end
     f(1,2)
     ").unwrap();

@@ -8,8 +8,44 @@ pub struct Ins {
 }
 
 impl Ins {
-    pub fn flatten(&self) -> Vec<u8> {
-        vec![]
+    pub fn each_used_var<T>(&self, dest_first: bool, mut callback: T) where T: FnMut(&Operand) {
+        match &self.typed {
+            InsType::MovI32(ops) |
+            InsType::AddI32(ops) |
+            InsType::SubI32(ops) |
+            InsType::MulI32(ops) |
+            InsType::DivI32(ops) |
+            InsType::Cmp(ops) => {
+                if dest_first {
+                    callback(&ops.dest);
+                    callback(&ops.src);
+                } else {
+                    callback(&ops.src);
+                    callback(&ops.dest);
+                }
+            }
+            _ => (),
+        }
+    }
+    
+    pub fn rename_var_by<T>(&mut self, dest_first: bool, mut callback: T) where T: FnMut(&mut Operand) {
+        match &mut self.typed {
+            InsType::MovI32(ops) |
+            InsType::AddI32(ops) |
+            InsType::SubI32(ops) |
+            InsType::MulI32(ops) |
+            InsType::DivI32(ops) |
+            InsType::Cmp(ops) => {
+                if dest_first {
+                    callback(&mut ops.dest);
+                    callback(&mut ops.src);
+                } else {
+                    callback(&mut ops.src);
+                    callback(&mut ops.dest);
+                }
+            }
+            _ => (),
+        }
     }
 }
 
@@ -20,6 +56,7 @@ impl std::fmt::Debug for Ins {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
 pub enum Reg {
     Rax,
     Rcx,
@@ -45,6 +82,7 @@ pub enum Operand {
     U16(u16),
     U32(u32),
     U64(u64),
+    Memory { disp: i32, base: Reg },
     UndeterminedMapping(usize),
 }
 
@@ -70,6 +108,7 @@ pub struct VirtualThreeOperands {
 
 #[derive(Debug, Clone)]
 pub enum InsType {
+    MovI64(TwoOperands),
     MovI32(TwoOperands),
     AddI32(TwoOperands),
     SubI32(TwoOperands),
@@ -81,8 +120,36 @@ pub enum InsType {
     Jlt(usize),
     Call(Rc<FunctionName>),
     Lt(VirtualThreeOperands),
+    Push(Operand),
     IfJmp { condvar: Operand, iftrue: usize, iffalse: usize },
+    Enter,
+    LeaveAndRet,
     Ret,
+}
+
+impl InsType {
+    pub fn is_jmp(&self) -> bool {
+        match self {
+            InsType::Jmp(_) |
+            InsType::Jgt(_) |
+            InsType::Jlt(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_ret(&self) -> bool {
+        match self {
+            InsType::Ret => true,
+            _ => false,
+        }
+    }
+
+    pub fn mov_size(&self) -> Option<usize> {
+        match self {
+            InsType::MovI32(_) => Some(4),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

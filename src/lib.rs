@@ -1,5 +1,4 @@
-#![feature(is_sorted)]
-#![feature(weak_ptr_eq)]
+#![feature(option_flattening)]
 #![feature(bind_by_move_pattern_guards)]
 
 #[macro_use] extern crate lalrpop_util;
