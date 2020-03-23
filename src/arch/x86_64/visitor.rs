@@ -57,6 +57,7 @@ impl FuncContextVisitor {
     }
 
     pub fn process(&mut self, contexts: &FuncContexts) -> Result<context::Contexts, Error> {
+        dbg_println!("processing {:#?}", contexts);
         for (name, context) in contexts {
             let context = context.as_ref().unwrap();
             self.visit_context(&context, &name, contexts);

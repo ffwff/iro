@@ -8,10 +8,11 @@ use iro::arch::mmap;
 fn main() {
     let ast = utils::parse_input("
     def f(a,b)
-        if a > 5
-            return a + b + 5
+        let x = 0
+        while x < 10
+            x += 1
         end
-        return a
+        return x
     end
     f(1,2)
     ").unwrap();
@@ -21,8 +22,8 @@ fn main() {
     let mut func_contexts = visitor.into_func_contexts().unwrap();
     func_contexts = opt::build_graph_and_rename_vars(func_contexts);
     func_contexts = opt::remove_defined_never_used(func_contexts);
-    func_contexts = opt::data_flow_analysis(func_contexts);
     func_contexts = opt::eliminate_phi(func_contexts);
+    func_contexts = opt::data_flow_analysis(func_contexts);
     let mut visitor = x86_64::visitor::FuncContextVisitor::new();
     let contexts = visitor.process(&func_contexts).unwrap();
     unsafe {
