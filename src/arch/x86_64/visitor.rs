@@ -60,7 +60,7 @@ impl FuncContextVisitor {
         dbg_println!("processing {:#?}", contexts);
         for (name, context) in contexts {
             let context = context.as_ref().unwrap();
-            self.visit_context(&context, &name, contexts);
+            self.visit_context(&context, &name);
         }
         let mut isa_contexts = context::Contexts::new();
         for (name, context) in &self.unflattened_code {
@@ -69,18 +69,13 @@ impl FuncContextVisitor {
         Ok(isa_contexts)
     }
 
-    pub fn visit_context(
-        &mut self,
-        context: &Context,
-        name: &Rc<FunctionName>,
-        contexts: &FuncContexts,
-    ) {
+    pub fn visit_context(&mut self, context: &Context, name: &Rc<FunctionName>) {
         if context.intrinsic != IntrinsicType::None {
             return self.visit_intrinsic(context);
         }
         let mut blocks = vec![];
+        self.constant_operands.clear();
         for (idx, block) in context.blocks.iter().enumerate() {
-            self.constant_operands.clear();
             let mut isa_ins = vec![];
             dbg_println!("{:#?}", block);
             for ins in &block.ins {
@@ -232,7 +227,7 @@ impl FuncContextVisitor {
                                         typed: isa::InsType::Jmp(*iffalse),
                                     });
                                 }
-                            },
+                            }
                             isa::InsType::Gt(_) => {
                                 if *iftrue == block_idx + 1 {
                                     isa_ins.push(isa::Ins {
@@ -246,8 +241,8 @@ impl FuncContextVisitor {
                                         typed: isa::InsType::Jmp(*iffalse),
                                     });
                                 }
-                            },
-                            _ => unreachable!()
+                            }
+                            _ => unreachable!(),
                         }
                         return;
                     }
@@ -329,149 +324,167 @@ impl FuncContextVisitor {
     }
 
     pub fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
-        for (node, cblock) in context.blocks.iter().enumerate() {
-            let mut isa_block = std::mem::replace(&mut blocks[node], isa::Block { ins: vec![] });
-            let mut variable_factored: BTreeSet<usize> = btreeset![];
-            // A vector of (ins index, variable) which maps the position in the block.ins
-            // to the variable being deallocated
-            let mut deallocation: Vec<(usize, usize)> = vec![];
-            // Infer lifetimes for each variable
-            for (idx, ins) in isa_block.ins.iter().enumerate().rev() {
-                ins.each_used_var(true, |var| match var {
-                    isa::Operand::UndeterminedMapping(var) => {
-                        if !variable_factored.contains(&var) {
-                            deallocation.push((idx, *var));
-                            variable_factored.insert(*var);
-                        }
-                    }
-                    _ => (),
-                });
-            }
+        self.allocate_registers_for_block(
+            0,
+            blocks,
+            context,
+            ALLOC_REGS.to_vec(),
+            BTreeMap::new(),
+        );
+    }
 
-            // Map of variable to (register, allocated interval)
-            // if register is none, additional work must be done
-            // to retrieve it from local stack
-            let mut unused_regs = ALLOC_REGS.to_vec();
-            let mut var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)> = btreemap![];
-            let mut prelude = vec![];
-            let mut body = vec![];
-            let mut postlude = vec![];
-            for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
-                dbg_println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
-                match &ins.typed {
-                    isa::InsType::Clobber {
-                        reg,
-                        except_for_var,
-                    } => {
-                        if unused_regs.contains(&reg) {
-                            unused_regs.remove_item(&reg);
-                        } else {
-                            let mut to_remove = None;
-                            for (var, vdata) in &mut var_to_reg {
-                                if vdata.0 == Some(*reg) {
-                                    if Some(*var) == *except_for_var {
-                                        break;
-                                    }
-                                    if let Some(newreg) = unused_regs.pop() {
-                                        // FIXME: correct mov type pls
-                                        body.push(isa::Ins {
-                                            typed: isa::InsType::MovI32(isa::TwoOperands {
-                                                dest: isa::Operand::Register(newreg),
-                                                src: isa::Operand::Register(*reg),
-                                            }),
-                                        });
-                                        vdata.0 = Some(newreg);
-                                    } else {
-                                        body.push(isa::Ins {
-                                            typed: isa::InsType::MovI32(isa::TwoOperands {
-                                                dest: isa::Operand::UndeterminedMapping(*var),
-                                                src: isa::Operand::Register(*reg),
-                                            }),
-                                        });
-                                        to_remove = Some(*var);
-                                    }
+    fn allocate_registers_for_block(
+        &mut self,
+        node: usize,
+        blocks: &mut Vec<isa::Block>,
+        context: &Context,
+        mut unused_regs: Vec<isa::Reg>,
+        // Map of variable to (register, allocated interval).
+        // if register is none, additional work must be done
+        // to retrieve it from local stack.
+        mut var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)>,
+    ) {
+        let cblock = &context.blocks[node];
+        let mut isa_block = std::mem::replace(&mut blocks[node], isa::Block { ins: vec![] });
+        let mut variable_factored: BTreeSet<usize> = btreeset![];
+        // A vector of (ins index, variable) which maps the position in the block.ins
+        // to the variable being deallocated
+        let mut deallocation: Vec<(usize, usize)> = vec![];
+        // Infer lifetimes for each variable
+        for (idx, ins) in isa_block.ins.iter().enumerate().rev() {
+            ins.each_used_var(true, |var| match var {
+                isa::Operand::UndeterminedMapping(var) => {
+                    if !variable_factored.contains(&var) {
+                        deallocation.push((idx, *var));
+                        variable_factored.insert(*var);
+                    }
+                }
+                _ => (),
+            });
+        }
+
+        let mut prelude = vec![];
+        let mut body = vec![];
+        let mut postlude = vec![];
+        for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
+            dbg_println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
+            match &ins.typed {
+                isa::InsType::Clobber {
+                    reg,
+                    except_for_var,
+                } => {
+                    if unused_regs.contains(&reg) {
+                        unused_regs.remove_item(&reg);
+                    } else {
+                        let mut to_remove = None;
+                        for (var, vdata) in &mut var_to_reg {
+                            if vdata.0 == Some(*reg) {
+                                if Some(*var) == *except_for_var {
                                     break;
                                 }
-                            }
-                            if let Some(to_remove) = to_remove {
-                                var_to_reg.remove(&to_remove);
-                            }
-                        }
-                        continue;
-                    }
-                    isa::InsType::Unclobber(reg) => {
-                        unused_regs.push(*reg);
-                        continue;
-                    }
-                    _ => (),
-                }
-                ins.rename_var_by(false, |var| {
-                    dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
-                    dbg_println!("  => {:?}", unused_regs);
-                    if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
-                        let _reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
-                            match maybe_reg.clone() {
-                                (Some(reg), _) => {
-                                    *var = isa::Operand::Register(reg);
-                                    reg
-                                }
-                                (None, _) => {
-                                    // The variable used to store this node has previously
-                                    // been clobbered, so hopefully we can retrieve
-                                    // the clobbered register again
-                                    let reg = unused_regs.pop().unwrap();
+                                if let Some(newreg) = unused_regs.pop() {
+                                    // FIXME: correct mov type pls
                                     body.push(isa::Ins {
                                         typed: isa::InsType::MovI32(isa::TwoOperands {
-                                            dest: isa::Operand::Register(reg),
-                                            src: var.clone(),
+                                            dest: isa::Operand::Register(newreg),
+                                            src: isa::Operand::Register(*reg),
                                         }),
                                     });
-                                    maybe_reg.0 = Some(reg);
-                                    reg
+                                    vdata.0 = Some(newreg);
+                                } else {
+                                    body.push(isa::Ins {
+                                        typed: isa::InsType::MovI32(isa::TwoOperands {
+                                            dest: isa::Operand::UndeterminedMapping(*var),
+                                            src: isa::Operand::Register(*reg),
+                                        }),
+                                    });
+                                    to_remove = Some(*var);
                                 }
+                                break;
                             }
-                        } else if let Some(reg) = unused_regs.pop() {
-                            // Unspill the local variable if it's used in the precceding blocks
-                            if cblock.vars_in.contains(&mapping) {
-                                // FIXME: correct mov type pls
+                        }
+                        if let Some(to_remove) = to_remove {
+                            var_to_reg.remove(&to_remove);
+                        }
+                    }
+                    continue;
+                }
+                isa::InsType::Unclobber(reg) => {
+                    debug_assert!(!unused_regs.contains(reg));
+                    unused_regs.push(*reg);
+                    continue;
+                }
+                _ => (),
+            }
+            ins.rename_var_by(false, |var| {
+                dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
+                dbg_println!("  => {:?}", unused_regs);
+                if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
+                    let _reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
+                        match maybe_reg.clone() {
+                            (Some(reg), _) => {
+                                *var = isa::Operand::Register(reg);
+                                reg
+                            }
+                            (None, _) => {
+                                // The variable used to store this node has previously
+                                // been clobbered, so hopefully we can retrieve
+                                // the clobbered register again
+                                let reg = unused_regs.pop().unwrap();
                                 body.push(isa::Ins {
                                     typed: isa::InsType::MovI32(isa::TwoOperands {
                                         dest: isa::Operand::Register(reg),
                                         src: var.clone(),
                                     }),
                                 });
+                                maybe_reg.0 = Some(reg);
+                                reg
                             }
-                            *var = isa::Operand::Register(reg);
-                            var_to_reg.insert(mapping, (Some(reg), idx));
-                            reg
-                        } else {
-                            // save one of the vars to stack
-                            unimplemented!()
-                        };
-                        if let Some((didx, dvar)) = deallocation.last() {
-                            if idx == *didx && mapping == *dvar {
-                                deallocation.pop();
-                                let (reg, _) = var_to_reg[&mapping];
-                                // We defer despilling of the output variables to cleanup stage
-                                // or when we run out of variables
-                                if !cblock.vars_out.contains(&mapping) {
-                                    unused_regs.push(reg.unwrap());
-                                }
+                        }
+                    } else if let Some(reg) = unused_regs.pop() {
+                        // Unspill the local variable if it's used in the precceding blocks
+                        if cblock.vars_in.contains(&mapping) {
+                            // FIXME: correct mov type pls
+                            body.push(isa::Ins {
+                                typed: isa::InsType::MovI32(isa::TwoOperands {
+                                    dest: isa::Operand::Register(reg),
+                                    src: var.clone(),
+                                }),
+                            });
+                        }
+                        *var = isa::Operand::Register(reg);
+                        var_to_reg.insert(mapping, (Some(reg), idx));
+                        reg
+                    } else {
+                        // save one of the vars to stack
+                        unimplemented!()
+                    };
+                    if let Some((didx, dvar)) = deallocation.last() {
+                        if idx == *didx && mapping == *dvar {
+                            deallocation.pop();
+                            let (reg, _) = var_to_reg[&mapping];
+                            // We defer despilling of the output variables to cleanup stage
+                            // or when we run out of variables
+                            if !cblock.vars_out.contains(&mapping) {
+                                unused_regs.push(reg.unwrap());
                             }
                         }
                     }
-                });
-                if ins.typed.is_postlude() {
-                    postlude.push(ins.clone());
-                } else {
-                    body.push(ins.clone());
                 }
+            });
+            if ins.typed.is_postlude() {
+                postlude.push(ins.clone());
+            } else {
+                body.push(ins.clone());
             }
+        }
 
-            // cleanup
-            for (var, (reg, _)) in &var_to_reg {
-                let reg = reg.unwrap();
-                if cblock.vars_out.contains(&var) {
+        // cleanup and create new envs
+        let mut new_var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)> = BTreeMap::new();
+        for (var, (reg, _)) in &var_to_reg {
+            let reg = reg.unwrap();
+            if cblock.vars_out.contains(&var) {
+                if cblock.vars_in.contains(&var) {
                     body.push(isa::Ins {
                         typed: isa::InsType::MovI32(isa::TwoOperands {
                             dest: isa::Operand::UndeterminedMapping(*var),
@@ -479,24 +492,41 @@ impl FuncContextVisitor {
                         }),
                     });
                     unused_regs.push(reg);
+                } else {
+                    new_var_to_reg.insert(*var, (Some(reg), 0));
                 }
             }
+        }
 
-            // insert to new block
-            let new_isa_block = &mut blocks[node];
-            new_isa_block.ins.append(&mut prelude);
-            new_isa_block.ins.append(&mut body);
-            new_isa_block.ins.append(&mut postlude);
+        // insert to new block
+        let new_isa_block = &mut blocks[node];
+        new_isa_block.ins.append(&mut prelude);
+        new_isa_block.ins.append(&mut body);
+        new_isa_block.ins.append(&mut postlude);
 
-            dbg_println!("free vars {:?}", unused_regs);
-            dbg_println!(
-                "dealloc: {:#?}\n{:#?}\n{:#?}\n{:#?}",
-                deallocation,
-                isa_block,
-                cblock,
-                new_isa_block
-            );
-            // panic!("...");
+        dbg_println!("free vars {:?}", unused_regs);
+        dbg_println!("new_var_to_reg {:?}", new_var_to_reg);
+        dbg_println!(
+            "dealloc: {:#?}\n{:#?}\n{:#?}\n{:#?}",
+            deallocation,
+            isa_block,
+            cblock,
+            new_isa_block
+        );
+
+        // Repeat the process for each descendent
+        for succ in &cblock.succs {
+            // Since this is a DFS tree, all non-looping descendents
+            // must have larger indices that its parent
+            if *succ > node {
+                self.allocate_registers_for_block(
+                    *succ,
+                    blocks,
+                    context,
+                    unused_regs.clone(),
+                    new_var_to_reg.clone(),
+                );
+            }
         }
     }
 

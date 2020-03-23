@@ -118,17 +118,17 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 branch: *branch,
             });
         }
-        InsType::Jgt(branch) |
-        InsType::Jlt(branch) |
-        InsType::Jge(branch) |
-        InsType::Jle(branch) => {
+        InsType::Jgt(branch)
+        | InsType::Jlt(branch)
+        | InsType::Jge(branch)
+        | InsType::Jle(branch) => {
             dest.code.push(0x0F);
             match &ins.typed {
                 InsType::Jgt(_) => dest.code.push(0x8F),
                 InsType::Jlt(_) => dest.code.push(0x8C),
                 InsType::Jge(_) => dest.code.push(0x8D),
                 InsType::Jle(_) => dest.code.push(0x8E),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
             let len = dest.code.len();
             dest.code.push(0x0);
@@ -236,7 +236,9 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
                 }
             }
         }
-        (Operand::Register(left), right) if right.is_lit() => dest.code.push(0b11_000_000 | (left as u8)),
+        (Operand::Register(left), right) if right.is_lit() => {
+            dest.code.push(0b11_000_000 | (left as u8))
+        }
         _ => unimplemented!(),
     }
 }

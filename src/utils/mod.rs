@@ -15,7 +15,9 @@ pub fn parse_input(input: &str) -> ParseResult {
 }
 
 pub fn ssa_pipeline<F>(func_contexts: &mut ssa::isa::FuncContexts, funcs: &[F])
-    where F: Fn(&mut ssa::isa::Context) {
+where
+    F: Fn(&mut ssa::isa::Context),
+{
     for (_, context) in func_contexts {
         let context = context.as_mut().unwrap();
         for func in funcs {
