@@ -63,9 +63,15 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         InsType::AddI32(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
-                dest.code.push(0x81);
-                modrm(dest, ops.dest.clone(), ops.src.clone());
-                dest.code.extend_from_slice(&n.to_le_bytes());
+                if *n <= 0xFF {
+                    dest.code.push(0x83);
+                    modrm(dest, ops.dest.clone(), ops.src.clone());
+                    dest.code.push(*n as u8);
+                } else {
+                    dest.code.push(0x81);
+                    modrm(dest, ops.dest.clone(), ops.src.clone());
+                    dest.code.extend_from_slice(&n.to_le_bytes());
+                }
             }
             (_, _) => {
                 dest.code.push(0x01);
@@ -234,7 +240,7 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
                 }
             }
         }
-        (Operand::Register(left), right) => dest.code.push(0b11_000_000 | ((left as u8) << 3)),
+        (Operand::Register(left), right) => dest.code.push(0b11_000_000 | (left as u8)),
         _ => unimplemented!(),
     }
 }
