@@ -17,7 +17,7 @@ impl Ins {
             | InsType::SubI32(ops)
             | InsType::MulI32(ops)
             | InsType::DivI32(ops)
-            | InsType::CmpI32(ops) => {
+            | InsType::CmpI32{ ops, .. } => {
                 if dest_first {
                     callback(&ops.dest);
                     callback(&ops.src);
@@ -40,7 +40,7 @@ impl Ins {
             | InsType::SubI32(ops)
             | InsType::MulI32(ops)
             | InsType::DivI32(ops)
-            | InsType::CmpI32(ops) => {
+            | InsType::CmpI32{ ops, .. } => {
                 if dest_first {
                     callback(&mut ops.dest);
                     callback(&mut ops.src);
@@ -128,10 +128,12 @@ pub enum InsType {
     SubI32(TwoOperands),
     MulI32(TwoOperands),
     DivI32(TwoOperands),
-    CmpI32(TwoOperands),
+    CmpI32 { ops: TwoOperands, is_postlude: bool },
     Jmp(usize),
     Jgt(usize),
+    Jge(usize),
     Jlt(usize),
+    Jle(usize),
     Call(Rc<FunctionName>),
     Ret,
     Push(Operand),
@@ -159,7 +161,19 @@ pub enum InsType {
 impl InsType {
     pub fn is_jmp(&self) -> bool {
         match self {
-            InsType::Jmp(_) | InsType::Jgt(_) | InsType::Jlt(_) => true,
+            InsType::Jmp(_) |
+            InsType::Jgt(_) |
+            InsType::Jlt(_) |
+            InsType::Jge(_) |
+            InsType::Jle(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_postlude(&self) -> bool {
+        if self.is_jmp() { return true; }
+        match self {
+            InsType::CmpI32 { is_postlude, .. } => *is_postlude,
             _ => false,
         }
     }

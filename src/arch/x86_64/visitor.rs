@@ -79,12 +79,12 @@ impl FuncContextVisitor {
             return self.visit_intrinsic(context);
         }
         let mut blocks = vec![];
-        for block in &context.blocks {
+        for (idx, block) in context.blocks.iter().enumerate() {
             self.constant_operands.clear();
             let mut isa_ins = vec![];
             dbg_println!("{:#?}", block);
             for ins in &block.ins {
-                self.visit_ins(ins, &mut isa_ins, context, contexts);
+                self.visit_ins(ins, &mut isa_ins, idx, context);
             }
             dbg_println!("{:#?}", isa_ins);
             blocks.push(isa::Block { ins: isa_ins });
@@ -109,8 +109,8 @@ impl FuncContextVisitor {
         &mut self,
         ins: &Ins,
         isa_ins: &mut Vec<isa::Ins>,
+        block_idx: usize,
         context: &Context,
-        _contexts: &FuncContexts,
     ) {
         dbg_println!("ins: {:#?}", ins);
         match &ins.typed {
@@ -210,21 +210,45 @@ impl FuncContextVisitor {
                         let threeops = threeops.clone();
                         let last = isa_ins.pop().unwrap();
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::CmpI32(isa::TwoOperands {
-                                dest: self.get_register_for_var(threeops.left),
-                                src: self.get_register_for_var(threeops.right),
-                            }),
-                        });
-                        isa_ins.push(isa::Ins {
-                            typed: match last.typed {
-                                isa::InsType::Lt(_) => isa::InsType::Jlt(*iftrue),
-                                isa::InsType::Gt(_) => isa::InsType::Jgt(*iftrue),
-                                _ => unreachable!(),
+                            typed: isa::InsType::CmpI32 {
+                                ops: isa::TwoOperands {
+                                    dest: self.get_register_for_var(threeops.left),
+                                    src: self.get_register_for_var(threeops.right),
+                                },
+                                is_postlude: true,
                             },
                         });
-                        isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Jmp(*iffalse),
-                        });
+                        match last.typed {
+                            isa::InsType::Lt(_) => {
+                                if *iftrue == block_idx + 1 {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jge(*iffalse),
+                                    });
+                                } else {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jlt(*iftrue),
+                                    });
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jmp(*iffalse),
+                                    });
+                                }
+                            },
+                            isa::InsType::Gt(_) => {
+                                if *iftrue == block_idx + 1 {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jle(*iffalse),
+                                    });
+                                } else {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jgt(*iftrue),
+                                    });
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jmp(*iffalse),
+                                    });
+                                }
+                            },
+                            _ => unreachable!()
+                        }
                         return;
                     }
                     _ => (),
@@ -437,7 +461,7 @@ impl FuncContextVisitor {
                         }
                     }
                 });
-                if ins.typed.is_jmp() {
+                if ins.typed.is_postlude() {
                     postlude.push(ins.clone());
                 } else {
                     body.push(ins.clone());
