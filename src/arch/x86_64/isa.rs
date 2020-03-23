@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use crate::ssa::isa::FunctionName;
 
@@ -55,7 +55,7 @@ impl std::fmt::Debug for Ins {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Reg {
     Rax = 0,
@@ -132,8 +132,8 @@ pub enum InsType {
     Call(Rc<FunctionName>),
     Ret,
     Push(Operand),
-    Enter,
-    LeaveAndRet,
+    Enter { local_size: u32, save_regs: Vec<Reg>  },
+    LeaveAndRet { save_regs: Vec<Reg> },
     Clobber { reg: Reg, except_for_var: Option<usize> },
     Unclobber(Reg),
     Gt(VirtualThreeOperands),

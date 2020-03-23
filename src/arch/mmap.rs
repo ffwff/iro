@@ -1,9 +1,18 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 use crate::arch::context::*;
+use crate::ssa::isa::FunctionName;
 
+#[derive(Debug, Clone)]
 pub struct Mmap {
-    contents: *mut u8,
-    execute_start: *mut u8,
+    contents: *const u8,
+    size: usize,
+    context_locs: HashMap<Rc<FunctionName>, usize>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    UnableToMmap,
 }
 
 const PAGE_SIZE: usize = 4096;
@@ -13,9 +22,9 @@ fn round_to_page_size(n: usize) -> usize {
 }
 
 impl Mmap {
-    pub unsafe fn from_contexts(contexts: &Contexts) -> Self {
+    pub unsafe fn from_contexts(contexts: &Contexts) -> Result<Self, Error> {
         let mut size = 0usize;
-        for (name, context) in contexts {
+        for (_, context) in contexts {
             size += context.code.len();
         }
         size = round_to_page_size(size);
@@ -26,10 +35,8 @@ impl Mmap {
             (bytes as *mut u8, err)
         };
         if err != 0 {
-            println!("unable to can: {:?}", err);
-            panic!("///");
+            return Err(Error::UnableToMmap);
         }
-        println!("bytes: {:?} {}", bytes, size);
 
         let mut context_locs = HashMap::new();
         let mut placement = 0usize;
@@ -55,6 +62,30 @@ impl Mmap {
                 }
             }
         }
-        libc::abort();
+        libc::mprotect(bytes as *mut libc::c_void, size, libc::PROT_EXEC | libc::PROT_READ);
+
+        Ok(Mmap {
+            contents: bytes as *const u8,
+            size,
+            context_locs
+        })
+    }
+
+    pub unsafe fn execute(&self) -> i64 {
+        let main_name = Rc::new(FunctionName {
+            name: Rc::from("main"),
+            arg_types: vec![],
+        });
+        let main_offset = self.context_locs[&main_name];
+        let func = std::mem::transmute::<_, (extern "C" fn() -> i64)>(self.contents.add(main_offset));
+        func()
+    }   
+}
+
+impl Drop for Mmap {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.contents as *mut libc::c_void, self.size);
+        }
     }
 }

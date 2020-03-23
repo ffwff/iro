@@ -22,9 +22,6 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
         for ins in &block.ins {
             encode_instruction(&mut context, ins);
         }
-        if context.code.len() % 2 != 0 {
-            context.code.push(0x90);
-        }
     }
     for relocation in &context.rel_relocation {
         let distance =
@@ -136,17 +133,50 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             dest.code.push(0xC3);
         },
         InsType::Push(op) => unimplemented!(),
-        InsType::Enter => {
+        InsType::Enter { local_size, save_regs } => {
+            // push all the save regs
+            for &reg in save_regs.iter() {
+                if (reg as u8) <= 0b111 {
+                    dest.code.push(0x50 + (reg as u8));
+                } else {
+                    dest.code.push(0x41);
+                    dest.code.push(0x50 + (reg as u8) - 0b111);
+                }
+            }
             // push rbp
             dest.code.push(0x55);
-            // mov rsp <- rbp
+            // mov rbp <- rsp
             dest.code.push(0x48);
             dest.code.push(0x89);
-            dest.code.push(0xEC);
+            dest.code.push(0xE5);
+            let local_size = *local_size;
+            if local_size != 0 {
+                // sub rsp, alloc
+                if local_size <= 0xFF {
+                    dest.code.push(0x48);
+                    dest.code.push(0x83);
+                    dest.code.push(0xEC);
+                    dest.code.push(local_size as u8);
+                } else {
+                    dest.code.push(0x48);
+                    dest.code.push(0x81);
+                    dest.code.push(0xEC);
+                    dest.code.extend_from_slice(&local_size.to_le_bytes());
+                }
+            }
         },
-        InsType::LeaveAndRet => {
+        InsType::LeaveAndRet { save_regs } => {
             // leave
             dest.code.push(0xC9);
+            // pop all the save regs
+            for &reg in save_regs.iter().rev() {
+                if (reg as u8) <= 0b111 {
+                    dest.code.push(0x58 + (reg as u8));
+                } else {
+                    dest.code.push(0x41);
+                    dest.code.push(0x58 + (reg as u8) - 0b111);
+                }
+            }
             // ret
             dest.code.push(0xC3);
         },

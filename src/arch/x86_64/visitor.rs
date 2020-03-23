@@ -20,14 +20,22 @@ static ALLOC_REGS: [isa::Reg; 14] = [
     isa::Reg::R12,
     isa::Reg::R11,
     isa::Reg::R10,
+    isa::Reg::Rbx,
     isa::Reg::R9,
     isa::Reg::R8,
-    isa::Reg::Rbx,
     isa::Reg::Rax,
     isa::Reg::Rcx,
     isa::Reg::Rdx,
     isa::Reg::Rsi,
     isa::Reg::Rdi,
+];
+
+static CALLEE_SAVED: [isa::Reg; 5] = [
+    isa::Reg::Rbx,
+    isa::Reg::R12,
+    isa::Reg::R13,
+    isa::Reg::R14,
+    isa::Reg::R15,
 ];
 
 #[derive(Debug, Clone)]
@@ -442,8 +450,10 @@ impl FuncContextVisitor {
 
     pub fn setup_stack_and_locals(&mut self, blocks: &mut Vec<isa::Block>) {
         let mut map_to_stack_offset = BTreeMap::new();
-        let mut alloc = 0;
+        let stack_offset = -8; // skip 1 dword value for saved rbp
+        let mut alloc = 0u32;
         let mut stack_used = false;
+        let mut save_regs = BTreeSet::new();
         for block in blocks.iter_mut() {
             for ins in &mut block.ins {
                 if let Some(size) = ins.typed.mov_size() {
@@ -455,11 +465,11 @@ impl FuncContextVisitor {
                                 } else {
                                     let offset = alloc;
                                     map_to_stack_offset.insert(mapping, offset);
-                                    alloc -= size as i32;
+                                    alloc += size as u32;
                                     offset
                                 };
                                 *var = isa::Operand::Memory {
-                                    disp,
+                                    disp: -(disp as i32) + stack_offset,
                                     base: isa::Reg::Rbp,
                                 };
                             }
@@ -468,6 +478,11 @@ impl FuncContextVisitor {
                                 => {
                                 stack_used = true;
                             }
+                            isa::Operand::Register(reg) => {
+                                if CALLEE_SAVED.contains(&reg) {
+                                    save_regs.insert(reg);
+                                }
+                            }
                             _ => (),
                         }
                     });
@@ -475,17 +490,26 @@ impl FuncContextVisitor {
             }
         }
         if alloc != 0 || stack_used {
+            let save_regs: Vec<isa::Reg> = save_regs.iter().cloned().collect();
             if let Some(block) = blocks.first_mut() {
                 block.ins.insert(0, isa::Ins {
-                    typed: isa::InsType::Enter
+                    typed: isa::InsType::Enter {
+                        local_size: alloc,
+                        save_regs: save_regs.clone(),
+                    }
                 });
             }
-            for block in blocks.iter_mut() {
-                if let Some(last) = block.ins.last_mut() {
-                    if last.typed.is_ret() {
-                        last.typed = isa::InsType::LeaveAndRet;
+            if save_regs.is_empty() {
+                for block in blocks.iter_mut() {
+                    if let Some(last) = block.ins.last_mut() {
+                        if last.typed.is_ret() {
+                            last.typed = isa::InsType::LeaveAndRet { save_regs: vec![] };
+                        }
                     }
                 }
+            } else {
+                println!("{:#?}", save_regs);
+                unimplemented!()
             }
         }
     }

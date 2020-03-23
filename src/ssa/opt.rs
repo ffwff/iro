@@ -124,7 +124,6 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                     }
                 }
             }
-            // println!("---\nsucc:{:#?}\npreds: {:#?}\ndoms: {:#?}\n---", successors_map, predecessors_map, doms);
 
             // Calculate the dominance tree
             let mut dom_tree: BTreeMap<usize, Vec<usize>> = btreemap![];
@@ -190,8 +189,6 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                     ));
                 }
             }
-
-            println!("AAA {:#?}", context);
 
             // Rename variables
             let orig_varlen = context.variables.len();
