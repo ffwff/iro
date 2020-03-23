@@ -13,7 +13,7 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
     };
     let mut label_locations = vec![];
     for block in blocks {
-        println!("encoding block: {:#?}", block);
+        dbg_println!("encoding block: {:#?}", block);
         if context.code.is_empty() {
             label_locations.push(0);
         } else {
@@ -24,18 +24,10 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
         }
     }
     for relocation in &context.rel_relocation {
-        let distance =
-            label_locations[relocation.branch] - relocation.label - 3;
-        if distance < 0 {
-            let bytes = ((0x1_0000_0000i64 - distance as i64) as u32).to_le_bytes();
-            for i in 0..4 {
-                context.code[relocation.label + i] = bytes[i];
-            }
-        } else {
-            let bytes = (distance as u32).to_le_bytes();
-            for i in 0..4 {
-                context.code[relocation.label + i] = bytes[i];
-            }
+        let distance = label_locations[relocation.branch] - relocation.label - 3;
+        let bytes = (distance as u32).to_le_bytes();
+        for i in 0..4 {
+            context.code[relocation.label + i] = bytes[i];
         }
     }
     if !context.code.is_empty() {
@@ -46,7 +38,7 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
 }
 
 fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
-    println!("encoding insn: {:#?}", ins);
+    dbg_println!("encoding insn: {:#?}", ins);
     match &ins.typed {
         InsType::MovI64(ops) => unimplemented!(),
         InsType::MovI32(ops) => {
@@ -182,7 +174,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         },
         _ => unreachable!()
     }
-    println!(" => {:02x?}", dest.code);
+    dbg_println!(" => {:02x?}", dest.code);
 }
 
 fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {

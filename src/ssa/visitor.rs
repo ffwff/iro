@@ -260,8 +260,6 @@ impl Visitor for SSAVisitor {
             block.ins.push(Ins::new(while_retvar, InsType::Nop));
         });
 
-        println!("{:#?}", self.context);
-        // unimplemented!();
         Ok(())
     }
 
@@ -537,7 +535,7 @@ impl Visitor for SSAVisitor {
                 let left = self.last_retvar().unwrap();
                 n.right.visit(self)?;
                 let right = self.last_retvar().unwrap();
-                println!("{:#?}", self.context);
+                dbg_println!("{:#?}", self.context);
                 if self.context.variables[left] != self.context.variables[right] {
                     return Err(Error::IncompatibleType);
                 }

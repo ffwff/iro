@@ -9,7 +9,7 @@ lalrpop_mod!(pub parser);
 #[macro_use] extern crate downcast_rs;
 extern crate libc;
 
-pub mod utils;
+#[macro_use] pub mod utils;
 pub mod lexer;
 pub mod ast;
 pub mod ssa;

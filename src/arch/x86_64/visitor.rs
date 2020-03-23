@@ -76,19 +76,19 @@ impl FuncContextVisitor {
         for block in &context.blocks {
             self.constant_operands.clear();
             let mut isa_ins = vec![];
-            println!("{:#?}", block);
+            dbg_println!("{:#?}", block);
             for ins in &block.ins {
                 self.visit_ins(ins, &mut isa_ins, context, contexts);
             }
-            println!("{:#?}", isa_ins);
+            dbg_println!("{:#?}", isa_ins);
             blocks.push(isa::Block { ins: isa_ins });
         }
-        println!("---\nbefore: {:#?}\n===", blocks);
+        dbg_println!("---\nbefore: {:#?}\n===", blocks);
         self.allocate_registers(&mut blocks, context);
         self.setup_stack_and_locals(&mut blocks);
         self.remove_unnecessary_movs(&mut blocks);
         self.remove_unnecessary_jmps(&mut blocks);
-        println!("after: {:#?}\n---", blocks);
+        dbg_println!("after: {:#?}\n---", blocks);
         self.unflattened_code.insert(name.clone(), blocks);
     }
 
@@ -101,7 +101,7 @@ impl FuncContextVisitor {
                      ins: &Ins,
                      isa_ins: &mut Vec<isa::Ins>,
                      context: &Context, contexts: &FuncContexts) {
-        println!("ins: {:#?}", ins);
+        dbg_println!("ins: {:#?}", ins);
         match &ins.typed {
             InsType::Nop => (),
             InsType::LoadVar(arg) => {
@@ -314,7 +314,7 @@ impl FuncContextVisitor {
             let mut body = vec![];
             let mut postlude = vec![];
             for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
-                println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
+                dbg_println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
                 match &ins.typed {
                     isa::InsType::Clobber { reg, except_for_var } => {
                         if unused_regs.contains(&reg) {
@@ -360,8 +360,8 @@ impl FuncContextVisitor {
                     _ => ()
                 }
                 ins.rename_var_by(false, |var| {
-                    println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
-                    println!("  => {:?}", unused_regs);
+                    dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
+                    dbg_println!("  => {:?}", unused_regs);
                     if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
                         let reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
                             match maybe_reg.clone() {
@@ -442,8 +442,8 @@ impl FuncContextVisitor {
             new_isa_block.ins.append(&mut body);
             new_isa_block.ins.append(&mut postlude);
 
-            println!("free vars {:?}", unused_regs);
-            println!("dealloc: {:#?}\n{:#?}\n{:#?}\n{:#?}", deallocation, isa_block, cblock, new_isa_block);
+            dbg_println!("free vars {:?}", unused_regs);
+            dbg_println!("dealloc: {:#?}\n{:#?}\n{:#?}\n{:#?}", deallocation, isa_block, cblock, new_isa_block);
             // panic!("...");
         }
     }
@@ -508,7 +508,7 @@ impl FuncContextVisitor {
                     }
                 }
             } else {
-                println!("{:#?}", save_regs);
+                dbg_println!("{:#?}", save_regs);
                 unimplemented!()
             }
         }

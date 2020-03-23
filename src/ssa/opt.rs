@@ -136,7 +136,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                 }
             }
 
-            println!("dom_tree: {:#?}", dom_tree);
+            dbg_println!("dom_tree: {:#?}", dom_tree);
 
             // Flatten the dominance tree in DFS order
             let mut dominance_dfs = vec![];
@@ -153,7 +153,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                 }
                 walk(0, &mut dominance_dfs, &dom_tree);
             }
-            println!("dominance_dfs: {:?}", dominance_dfs);
+            dbg_println!("dominance_dfs: {:?}", dominance_dfs);
 
             // Find the dominance frontier for each block
             let mut dom_frontier: Vec<BTreeSet<usize>> = (0..num_blocks).map(|_| btreeset![]).collect();
@@ -162,15 +162,15 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                     for &p in &blocks.preds {
                         let mut runner: usize = p;
                         while runner != doms[&b] {
-                            println!("dom runner: {:?} {:?} {:?} {:?}", runner, b, doms[&b], doms[&runner]);
+                            dbg_println!("dom runner: {:?} {:?} {:?} {:?}", runner, b, doms[&b], doms[&runner]);
                             dom_frontier[runner].insert(b);
                             runner = doms[&runner];
                         }
                     }
                 }
             }
-            println!("---\ndom_frontier: {:#?}", dom_frontier);
-            println!("---\ndefsites: {:#?}", defsites);
+            dbg_println!("---\ndom_frontier: {:#?}", dom_frontier);
+            dbg_println!("---\ndefsites: {:#?}", defsites);
             
             // Insert some phi nodes
             for (var, defsites) in defsites.iter_mut().enumerate() {
@@ -194,12 +194,12 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
             let orig_varlen = context.variables.len();
             let mut last_defined_at_block: Vec<usize> = (0..orig_varlen).map(|_| 0).collect();
             for var in 0..orig_varlen {
-                println!("renaming variable {}", var);
+                dbg_println!("renaming variable {}", var);
                 let mut did_initial_assignment = false;
                 for last_defined in &mut last_defined_at_block {
                     *last_defined = var;
                 }
-                println!("rpo: {:#?}", rpo);
+                dbg_println!("rpo: {:#?}", rpo);
                 let typed = context.variables[var].clone();
                 for &node in rpo.iter() {
                     let block = &mut context.blocks[node];
@@ -215,7 +215,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                                     context.variables.push(typed.clone());
                                     *retvar = context.variables.len() - 1;
                                 }
-                                println!("changed {} to {}", old, *retvar);
+                                dbg_println!("changed {} to {}", old, *retvar);
                                 last_defined = *retvar;
                             }
                         }
@@ -231,7 +231,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                         let retvar = ins.retvar();
                         match &mut ins.typed {
                             InsType::Phi { vars } => {
-                                println!("{:#?}", vars);
+                                dbg_println!("{:#?}", vars);
                                 if vars.len() == 1 && vars[0] == var {
                                     let mut v: Vec<usize> = block.preds
                                         .iter()
@@ -247,7 +247,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                         }
                     }
                 }
-                println!("{} ==> {:#?}", var, context);
+                dbg_println!("{} ==> {:#?}", var, context);
                 //panic!("!!!");
             }
         } else {
@@ -316,7 +316,7 @@ pub fn data_flow_analysis(mut contexts: FuncContexts) -> FuncContexts {
                 .filter(|(idx, block)| block.ins.iter().any(|ins| ins.typed.is_return()))
                 .map(|(idx, block)| idx).collect();
         
-        println!("initial worklist: {:#?}", worklist);
+        dbg_println!("initial worklist: {:#?}", worklist);
         while let Some(node) = worklist.pop() {
             let mut vars_in = BTreeSet::new();
             let mut vars_declared_in_this_block = BTreeSet::new();
@@ -353,9 +353,9 @@ pub fn data_flow_analysis(mut contexts: FuncContexts) -> FuncContexts {
                 block.preds = preds;
                 block.vars_in = vars_in;
             }
-            println!("worklist: {:#?}", worklist);
+            dbg_println!("worklist: {:#?}", worklist);
         }
-        println!("worklist: {:#?}", worklist);
+        dbg_println!("worklist: {:#?}", worklist);
     }
     contexts
 }
