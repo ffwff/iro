@@ -100,7 +100,7 @@ impl FuncContextVisitor {
     pub fn visit_ins(&mut self,
                      ins: &Ins,
                      isa_ins: &mut Vec<isa::Ins>,
-                     context: &Context, contexts: &FuncContexts) {
+                     context: &Context, _contexts: &FuncContexts) {
         dbg_println!("ins: {:#?}", ins);
         match &ins.typed {
             InsType::Nop => (),
@@ -279,7 +279,7 @@ impl FuncContextVisitor {
         }
     }
 
-    pub fn visit_intrinsic(&mut self, context: &Context) {
+    pub fn visit_intrinsic(&mut self, _context: &Context) {
         // TODO
     }
 
@@ -363,7 +363,7 @@ impl FuncContextVisitor {
                     dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
                     dbg_println!("  => {:?}", unused_regs);
                     if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
-                        let reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
+                        let _reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
                             match maybe_reg.clone() {
                                 (Some(reg), _) => {
                                     *var = isa::Operand::Register(reg);
@@ -473,8 +473,8 @@ impl FuncContextVisitor {
                                     base: isa::Reg::Rbp,
                                 };
                             }
-                            isa::Operand::Memory { disp: _, base: isa::Reg::Rsp } |
-                            isa::Operand::Memory { disp: _, base: isa::Reg::Rbp }
+                            isa::Operand::Memory { base: isa::Reg::Rsp, .. } |
+                            isa::Operand::Memory { base: isa::Reg::Rbp, .. }
                                 => {
                                 stack_used = true;
                             }

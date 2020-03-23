@@ -57,8 +57,8 @@ impl Mmap {
                 }
                 dist -= 4i64;
                 let le_bytes = (dist as u32).to_le_bytes();
-                for i in 0..4 {
-                    bytes.add(cur_context_loc + label + i).write_unaligned(le_bytes[i]);
+                for (i, byte) in le_bytes.iter().enumerate() {
+                    bytes.add(cur_context_loc + label + i).write_unaligned(*byte);
                 }
             }
         }

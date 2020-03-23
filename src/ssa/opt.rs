@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, BTreeMap, VecDeque};
+use std::collections::{BTreeSet, BTreeMap};
 use std::ops::BitXor;
 use crate::ssa::isa::*;
 
@@ -31,7 +31,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
                         jumped = true;
                         true
                     }
-                    InsType::IfJmp { condvar: _, iftrue, iffalse } => {
+                    InsType::IfJmp { iftrue, iffalse, .. } => {
                         insert_node(*iftrue, idx);
                         insert_node(*iffalse, idx);
                         jumped = true;
@@ -84,8 +84,8 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
             
             let rpo_ordering: Vec<usize> = {
                 let mut zipped: Vec<(usize, usize)> = rpo.iter().enumerate().map(|(idx, node)| (*node, idx)).collect();
-                zipped.sort_by_key(|(k, v)| *k);
-                zipped.into_iter().map(|(idx, node)| node).collect()
+                zipped.sort_by_key(|(k, _v)| *k);
+                zipped.into_iter().map(|(_idx, node)| node).collect()
             };
             rpo.reverse();
 
@@ -129,7 +129,7 @@ pub fn build_graph_and_rename_vars(mut contexts: FuncContexts) -> FuncContexts {
             let mut dom_tree: BTreeMap<usize, Vec<usize>> = btreemap![];
             for (&idx, &dominator) in &doms {
                 if idx == dominator { continue; }
-                if let Some(mut vec) = dom_tree.get_mut(&dominator) {
+                if let Some(vec) = dom_tree.get_mut(&dominator) {
                     vec.push(idx);
                 } else {
                     dom_tree.insert(dominator, vec![ idx ]);
@@ -313,8 +313,8 @@ pub fn data_flow_analysis(mut contexts: FuncContexts) -> FuncContexts {
             context.blocks
                 .iter()
                 .enumerate()
-                .filter(|(idx, block)| block.ins.iter().any(|ins| ins.typed.is_return()))
-                .map(|(idx, block)| idx).collect();
+                .filter(|(_idx, block)| block.ins.iter().any(|ins| ins.typed.is_return()))
+                .map(|(idx, _block)| idx).collect();
         
         dbg_println!("initial worklist: {:#?}", worklist);
         while let Some(node) = worklist.pop() {

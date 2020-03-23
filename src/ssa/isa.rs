@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::rc::Rc;
-use std::collections::{BTreeSet, BTreeMap, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::ops::BitAnd;
 use std::fmt::Write;
 
@@ -199,7 +199,7 @@ impl Ins {
             InsType::LoadVar(x) => {
                 callback(*x);
             }
-            InsType::Call { name, args } => {
+            InsType::Call { name: _, args } => {
                 for arg in args {
                     callback(*arg);
                 }
@@ -220,7 +220,7 @@ impl Ins {
             InsType::Gt((x, y))  => { callback(*x); callback(*y); },
             InsType::Lte((x, y)) => { callback(*x); callback(*y); },
             InsType::Gte((x, y)) => { callback(*x); callback(*y); },
-            InsType::IfJmp { condvar, iftrue, iffalse } => {
+            InsType::IfJmp { condvar, .. } => {
                 callback(*condvar);
             }
             _ => (),

@@ -1,7 +1,7 @@
 use crate::arch::context;
 use crate::arch::x86_64::isa;
-use isa::{InsType, Operand, Reg};
-use crate::ssa::isa::FunctionName;
+use isa::{InsType, Operand};
+
 use crate::arch::context::RelativeRelocation;
 
 pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
@@ -40,7 +40,7 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
 fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     dbg_println!("encoding insn: {:#?}", ins);
     match &ins.typed {
-        InsType::MovI64(ops) => unimplemented!(),
+        InsType::MovI64(_ops) => unimplemented!(),
         InsType::MovI32(ops) => {
             match (&ops.dest, &ops.src) {
                 (Operand::Register(left), Operand::U32(n))
@@ -81,7 +81,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             dest.code.push(0xAF);
             modrm(dest, ops.dest.clone(), ops.src.clone());
         },
-        InsType::DivI32(ops) => unimplemented!(),
+        InsType::DivI32(_ops) => unimplemented!(),
         InsType::CmpI32(ops) => {
             dest.code.push(0x39);
             modrm(dest, ops.dest.clone(), ops.src.clone());
@@ -111,7 +111,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 branch: *branch,
             });
         },
-        InsType::Jlt(ops) => unimplemented!(),
+        InsType::Jlt(_ops) => unimplemented!(),
         InsType::Call(name) => {
             dest.code.push(0xE8);
             let len = dest.code.len();
@@ -124,7 +124,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         InsType::Ret => {
             dest.code.push(0xC3);
         },
-        InsType::Push(op) => unimplemented!(),
+        InsType::Push(_op) => unimplemented!(),
         InsType::Enter { local_size, save_regs } => {
             // push all the save regs
             for &reg in save_regs.iter() {

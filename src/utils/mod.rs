@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::lexer;
 use crate::parser;
-use crate::ast::Visitor;
+
 mod rc_wrapper;
 pub use rc_wrapper::RcWrapper;
 

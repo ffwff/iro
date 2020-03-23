@@ -1,8 +1,8 @@
 use std::fmt;
 use std::borrow::Borrow;
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell};
 use std::rc::Rc;
-use std::any::Any;
+
 use downcast_rs::Downcast;
 use crate::ssa::isa::IntrinsicType;
 

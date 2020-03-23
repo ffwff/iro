@@ -189,7 +189,7 @@ impl<'input> Iterator for Lexer<'input> {
                             }
                             return Some(Ok((idx0, Tok::Attribute { value: string }, idx1)))
                         },
-                        other => {
+                        _other => {
                             unimplemented!()
                         }
                     }

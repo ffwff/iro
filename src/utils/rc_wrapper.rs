@@ -28,15 +28,13 @@ impl<T> RcWrapper<T> {
     pub fn with<U, V>(&self, mut callback: U) -> V where U : FnMut(&T) -> V {
         let rc : &RefCell<T> = &self.inner;
         let data : &T = &rc.borrow();
-        let retval = callback(data);
-        retval
+        callback(data)
     }
 
     pub fn with_mut<U, V>(&self, mut callback: U) -> V where U : FnMut(&mut T) -> V {
         let rc : &RefCell<T> = &self.inner;
         let data : &mut T = &mut rc.borrow_mut();
-        let retval = callback(data);
-        retval
+        callback(data)
     }
 
     pub fn try_unwrap(self) -> Result<T, RcWrapper<T>> {

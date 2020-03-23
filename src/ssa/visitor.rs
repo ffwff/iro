@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::borrow::Borrow;
 use crate::ast;
 use crate::ast::*;
@@ -98,15 +98,6 @@ impl SSAVisitor {
         None
     }
 
-    fn set_non_local(&mut self, var: &Rc<str>, new_var: usize) {
-        for env in self.envs.iter_mut().rev() {
-            if let Some(_) = env.vars().get(var) {
-                env.vars_mut().insert(var.clone(), new_var);
-                return;
-            }
-        }
-    }
-
     fn last_retvar(&self) -> Option<usize> {
         self.with_block(|block| {
             if let Some(ins) = block.ins.last() {
@@ -117,7 +108,7 @@ impl SSAVisitor {
         })
     }
 
-    fn intrinsic_return_type(intrinsic: IntrinsicType, arg_types: &Vec<Type>) -> Option<Type> {
+    fn intrinsic_return_type(_intrinsic: IntrinsicType, _arg_types: &Vec<Type>) -> Option<Type> {
         Some(Type::Nil)
     }
 }
@@ -199,8 +190,8 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_whileexpr(&mut self,   n: &WhileExpr) -> VisitorResult {
-        let mut cond_block = None;
-        let mut while_block = None;
+        let cond_block;
+        let while_block;
         let mut while_retvar = None;
 
         self.envs.push(Env::new());
@@ -220,7 +211,6 @@ impl Visitor for SSAVisitor {
             }
             if n.exprs.is_empty() {
                 unimplemented!();
-                return Ok(());
             }
             while_block = Some(self.context.new_block());
             if !n.exprs.is_empty() {
@@ -246,7 +236,7 @@ impl Visitor for SSAVisitor {
             let new_block = self.context.new_block();
             let cond_block = &mut self.context.blocks[cond_block.unwrap()];
             let ins = cond_block.ins.last_mut().unwrap();
-            if let InsType::IfJmp{ condvar: _, iftrue, iffalse } =&mut ins.typed {
+            if let InsType::IfJmp{ iftrue, iffalse, .. } = &mut ins.typed {
                 *iftrue = while_block.unwrap();
                 *iffalse = new_block;
             } else {
@@ -265,7 +255,7 @@ impl Visitor for SSAVisitor {
 
     fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult {
         let cond = self.context.blocks.len() - 1;
-        let mut condvar = 0usize;
+        let condvar;
         let mut iftrue_start   = None;
         let mut iftrue_end     = None;
         let mut iffalse_start  = None;
@@ -598,7 +588,7 @@ impl Visitor for SSAVisitor {
         }
     }
     
-    fn visit_typeid(&mut self,   n: &TypeId) -> VisitorResult {
+    fn visit_typeid(&mut self,   _n: &TypeId) -> VisitorResult {
         unimplemented!()
     }
 }
