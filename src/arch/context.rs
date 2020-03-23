@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use std::collections::HashMap;
 use crate::ssa::isa::FunctionName;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct RelativeRelocation {

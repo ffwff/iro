@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RcWrapper<T> {
@@ -9,7 +9,7 @@ pub struct RcWrapper<T> {
 impl<T> RcWrapper<T> {
     pub fn new(data: T) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(data))
+            inner: Rc::new(RefCell::new(data)),
         }
     }
 
@@ -25,15 +25,21 @@ impl<T> RcWrapper<T> {
         &self.inner
     }
 
-    pub fn with<U, V>(&self, mut callback: U) -> V where U : FnMut(&T) -> V {
-        let rc : &RefCell<T> = &self.inner;
-        let data : &T = &rc.borrow();
+    pub fn with<U, V>(&self, mut callback: U) -> V
+    where
+        U: FnMut(&T) -> V,
+    {
+        let rc: &RefCell<T> = &self.inner;
+        let data: &T = &rc.borrow();
         callback(data)
     }
 
-    pub fn with_mut<U, V>(&self, mut callback: U) -> V where U : FnMut(&mut T) -> V {
-        let rc : &RefCell<T> = &self.inner;
-        let data : &mut T = &mut rc.borrow_mut();
+    pub fn with_mut<U, V>(&self, mut callback: U) -> V
+    where
+        U: FnMut(&mut T) -> V,
+    {
+        let rc: &RefCell<T> = &self.inner;
+        let data: &mut T = &mut rc.borrow_mut();
         callback(data)
     }
 

@@ -1,10 +1,10 @@
-use std::fmt;
 use std::borrow::Borrow;
-use std::cell::{Cell};
+use std::cell::Cell;
+use std::fmt;
 use std::rc::Rc;
 
-use downcast_rs::Downcast;
 use crate::ssa::isa::IntrinsicType;
+use downcast_rs::Downcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -20,16 +20,16 @@ pub enum Error {
 pub type VisitorResult = Result<(), Error>;
 
 pub trait Visitor {
-    fn visit_program(&mut self,  n: &Program) -> VisitorResult;
-    fn visit_defstmt(&mut self,  n: &DefStatement) -> VisitorResult;
-    fn visit_return(&mut self,   n: &ReturnExpr) -> VisitorResult;
-    fn visit_whileexpr(&mut self,n: &WhileExpr) -> VisitorResult;
-    fn visit_ifexpr(&mut self,   n: &IfExpr) -> VisitorResult;
+    fn visit_program(&mut self, n: &Program) -> VisitorResult;
+    fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult;
+    fn visit_return(&mut self, n: &ReturnExpr) -> VisitorResult;
+    fn visit_whileexpr(&mut self, n: &WhileExpr) -> VisitorResult;
+    fn visit_ifexpr(&mut self, n: &IfExpr) -> VisitorResult;
     fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult;
-    fn visit_letexpr(&mut self,  n: &LetExpr) -> VisitorResult;
-    fn visit_binexpr(&mut self,  n: &BinExpr) -> VisitorResult;
-    fn visit_value(&mut self,    n: &Value) -> VisitorResult;
-    fn visit_typeid(&mut self,   n: &TypeId) -> VisitorResult;
+    fn visit_letexpr(&mut self, n: &LetExpr) -> VisitorResult;
+    fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult;
+    fn visit_value(&mut self, n: &Value) -> VisitorResult;
+    fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult;
 }
 
 pub trait Node: Downcast {
@@ -59,9 +59,12 @@ pub struct NodeBox {
 }
 
 impl NodeBox {
-    pub fn new<T: 'static>(node: T) -> Self where T: Node {
+    pub fn new<T: 'static>(node: T) -> Self
+    where
+        T: Node,
+    {
         NodeBox {
-            data: Rc::new(node)
+            data: Rc::new(node),
         }
     }
 
@@ -101,7 +104,7 @@ pub struct Program {
 
 impl Node for Program {
     debuggable!();
-    
+
     fn visit(&self, _visitor: &mut Visitor) -> VisitorResult {
         unimplemented!()
     }
@@ -165,7 +168,7 @@ pub enum BinOp {
 
 #[derive(Debug)]
 pub struct BinExpr {
-    pub left:  NodeBox,
+    pub left: NodeBox,
     pub right: NodeBox,
     pub op: BinOp,
 }
@@ -177,7 +180,7 @@ impl Node for BinExpr {
 
 #[derive(Debug)]
 pub struct IfExpr {
-    pub cond:  NodeBox,
+    pub cond: NodeBox,
     pub exprs: Vec<NodeBox>,
     pub elses: Vec<NodeBox>,
 }
@@ -189,7 +192,7 @@ impl Node for IfExpr {
 
 #[derive(Debug)]
 pub struct WhileExpr {
-    pub cond:  NodeBox,
+    pub cond: NodeBox,
     pub exprs: Vec<NodeBox>,
 }
 
@@ -205,11 +208,8 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    pub fn new(callee : NodeBox, args: Vec<NodeBox>) -> Self {
-        CallExpr {
-            callee,
-            args,
-        }
+    pub fn new(callee: NodeBox, args: Vec<NodeBox>) -> Self {
+        CallExpr { callee, args }
     }
 }
 

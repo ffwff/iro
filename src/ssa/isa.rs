@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
-use std::rc::Rc;
 use std::collections::{BTreeSet, HashMap};
-use std::ops::BitAnd;
 use std::fmt::Write;
+use std::ops::BitAnd;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntrinsicType {
@@ -14,7 +14,7 @@ impl IntrinsicType {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "print" => Some(IntrinsicType::Print),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -44,13 +44,15 @@ impl Context {
     pub fn with_args(name: Rc<str>, args: Vec<Type>) -> Self {
         Context {
             variables: args.clone(),
-            blocks: vec![
-                Block::new(
-                    args.iter().enumerate().map(|(idx, _)| {
-                        Ins { retvar: idx, typed: InsType::LoadArg(idx) }
-                    }).collect(),
-                )
-            ],
+            blocks: vec![Block::new(
+                args.iter()
+                    .enumerate()
+                    .map(|(idx, _)| Ins {
+                        retvar: idx,
+                        typed: InsType::LoadArg(idx),
+                    })
+                    .collect(),
+            )],
             name,
             args,
             rettype: Type::NoReturn,
@@ -58,9 +60,7 @@ impl Context {
         }
     }
 
-    pub fn with_intrinsics(name: Rc<str>,
-                           rettype: Type,
-                           intrinsic: IntrinsicType) -> Self {
+    pub fn with_intrinsics(name: Rc<str>, rettype: Type, intrinsic: IntrinsicType) -> Self {
         Context {
             variables: vec![],
             blocks: vec![],
@@ -119,10 +119,7 @@ pub struct Ins {
 
 impl Ins {
     pub fn new(retvar: usize, typed: InsType) -> Self {
-        Ins {
-            retvar,
-            typed
-        }
+        Ins { retvar, typed }
     }
 
     pub fn retvar(&self) -> Option<usize> {
@@ -141,14 +138,13 @@ impl Ins {
         }
     }
 
-    pub fn rename_var_by<T>(&mut self,
-            do_phi: bool,
-            mut swap: T) where T: FnMut(usize) -> usize {
+    pub fn rename_var_by<T>(&mut self, do_phi: bool, mut swap: T)
+    where
+        T: FnMut(usize) -> usize,
+    {
         let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
         let new_typed = match old_typed {
-            InsType::LoadVar(x) => {
-                InsType::LoadVar(swap(x))
-            }
+            InsType::LoadVar(x) => InsType::LoadVar(swap(x)),
             InsType::Call { name, mut args } => {
                 for arg in &mut args {
                     let oldvar = *arg;
@@ -156,9 +152,7 @@ impl Ins {
                 }
                 InsType::Call { name, args }
             }
-            InsType::Return(x) => {
-                InsType::Return(swap(x))
-            }
+            InsType::Return(x) => InsType::Return(swap(x)),
             InsType::Phi { mut vars } => {
                 if do_phi {
                     for arg in &mut vars {
@@ -168,33 +162,36 @@ impl Ins {
                 }
                 InsType::Phi { vars }
             }
-            InsType::Add((x, y)) => { InsType::Add((swap(x), swap(y))) },
-            InsType::Sub((x, y)) => { InsType::Sub((swap(x), swap(y))) },
-            InsType::Mul((x, y)) => { InsType::Mul((swap(x), swap(y))) },
-            InsType::Div((x, y)) => { InsType::Div((swap(x), swap(y))) },
-            InsType::Lt((x, y))  => { InsType::Lt ((swap(x), swap(y))) },
-            InsType::Gt((x, y))  => { InsType::Gt ((swap(x), swap(y))) },
-            InsType::Lte((x, y)) => { InsType::Lte((swap(x), swap(y))) },
-            InsType::Gte((x, y)) => { InsType::Gte((swap(x), swap(y))) },
-            InsType::IfJmp { condvar, iftrue, iffalse } => {
-                InsType::IfJmp { condvar: swap(condvar), iftrue, iffalse }
-            }
+            InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
+            InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
+            InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
+            InsType::Div((x, y)) => InsType::Div((swap(x), swap(y))),
+            InsType::Lt((x, y)) => InsType::Lt((swap(x), swap(y))),
+            InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
+            InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
+            InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
+            InsType::IfJmp {
+                condvar,
+                iftrue,
+                iffalse,
+            } => InsType::IfJmp {
+                condvar: swap(condvar),
+                iftrue,
+                iffalse,
+            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
     }
 
     pub fn rename_var(&mut self, do_phi: bool, oldvar: usize, newvar: usize) {
-        self.rename_var_by(do_phi, |var| {
-            if var == oldvar {
-                newvar
-            } else {
-                var
-            }
-        })
+        self.rename_var_by(do_phi, |var| if var == oldvar { newvar } else { var })
     }
 
-    pub fn each_used_var<T>(&self, mut callback: T) where T: FnMut(usize) {
+    pub fn each_used_var<T>(&self, mut callback: T)
+    where
+        T: FnMut(usize),
+    {
         match &self.typed {
             InsType::LoadVar(x) => {
                 callback(*x);
@@ -212,14 +209,38 @@ impl Ins {
                     callback(*arg);
                 }
             }
-            InsType::Add((x, y)) => { callback(*x); callback(*y); },
-            InsType::Sub((x, y)) => { callback(*x); callback(*y); },
-            InsType::Mul((x, y)) => { callback(*x); callback(*y); },
-            InsType::Div((x, y)) => { callback(*x); callback(*y); },
-            InsType::Lt((x, y))  => { callback(*x); callback(*y); },
-            InsType::Gt((x, y))  => { callback(*x); callback(*y); },
-            InsType::Lte((x, y)) => { callback(*x); callback(*y); },
-            InsType::Gte((x, y)) => { callback(*x); callback(*y); },
+            InsType::Add((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Sub((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Mul((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Div((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Lt((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Gt((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Lte((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Gte((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
             InsType::IfJmp { condvar, .. } => {
                 callback(*condvar);
             }
@@ -246,8 +267,13 @@ pub enum InsType {
     LoadArg(usize),
     LoadI32(i32),
     LoadString(Rc<str>),
-    Phi { vars: Vec<usize> },
-    Call { name: Rc<FunctionName>, args: Vec<usize> },
+    Phi {
+        vars: Vec<usize>,
+    },
+    Call {
+        name: Rc<FunctionName>,
+        args: Vec<usize>,
+    },
     Return(usize),
     Exit,
     Add((usize, usize)),
@@ -258,40 +284,40 @@ pub enum InsType {
     Gt((usize, usize)),
     Lte((usize, usize)),
     Gte((usize, usize)),
-    IfJmp { condvar: usize, iftrue: usize, iffalse: usize },
+    IfJmp {
+        condvar: usize,
+        iftrue: usize,
+        iffalse: usize,
+    },
     Jmp(usize),
 }
 
 impl InsType {
     pub fn is_jmp(&self) -> bool {
         match self {
-            InsType::IfJmp { .. } |
-            InsType::Jmp(_) |
-            InsType::Return(_) => true,
+            InsType::IfJmp { .. } | InsType::Jmp(_) | InsType::Return(_) => true,
             _ => false,
         }
     }
 
     pub fn is_const(&self) -> bool {
         match self {
-            InsType::LoadNil |
-            InsType::LoadArg(_) |
-            InsType::LoadI32(_) |
-            InsType::LoadString(_) => true,
+            InsType::LoadNil
+            | InsType::LoadArg(_)
+            | InsType::LoadI32(_)
+            | InsType::LoadString(_) => true,
             _ => false,
         }
     }
 
-    pub fn has_side_effects(&self) -> bool  {
+    pub fn has_side_effects(&self) -> bool {
         match self {
-            InsType::Call { .. } |
-            InsType::Return(_) |
-            InsType::Exit => true,
+            InsType::Call { .. } | InsType::Return(_) | InsType::Exit => true,
             _ => false,
         }
     }
 
-    pub fn is_return(&self) -> bool  {
+    pub fn is_return(&self) -> bool {
         match self {
             InsType::Return(_) => true,
             _ => false,
@@ -306,13 +332,18 @@ pub struct FunctionName {
 }
 
 impl ToString for FunctionName {
-    fn to_string(&self)  -> String {
+    fn to_string(&self) -> String {
         let mut string = self.name.clone().to_string() + "(";
-        string += &self.arg_types.iter().map(|typed| {
-            let mut string = String::new();
-            write!(&mut string, "{:?}", typed).unwrap();
-            string
-        }).collect::<Vec<String>>().join(", ");
+        string += &self
+            .arg_types
+            .iter()
+            .map(|typed| {
+                let mut string = String::new();
+                write!(&mut string, "{:?}", typed).unwrap();
+                string
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
         string += ")";
         string
     }
@@ -336,28 +367,24 @@ impl Type {
             (left, right) if left == right => left.clone(),
             (Type::NoReturn, right) => right.clone(),
             (left, Type::NoReturn) => left.clone(),
-            (Type::Union(set_left), Type::Union(set_right)) => Type::Union(
-                Rc::new({
-                    let lset: &BTreeSet<Type> = set_left.borrow();
-                    let rset: &BTreeSet<Type> = set_right.borrow();
-                    lset.bitand(rset)
-                })),
-            (Type::Union(set), right) => Type::Union(
-                Rc::new({
-                    let bbset: &BTreeSet<Type> = set.borrow();
-                    let mut bset = bbset.clone();
-                    bset.insert(right.clone());
-                    bset
-                })),
-            (left, Type::Union(set)) => Type::Union(
-                Rc::new({
-                    let bbset: &BTreeSet<Type> = set.borrow();
-                    let mut bset = bbset.clone();
-                    bset.insert(left.clone());
-                    bset
-                })),
-            (left, right) => Type::Union(
-                Rc::new(btreeset!{ left.clone(), right.clone() })),
+            (Type::Union(set_left), Type::Union(set_right)) => Type::Union(Rc::new({
+                let lset: &BTreeSet<Type> = set_left.borrow();
+                let rset: &BTreeSet<Type> = set_right.borrow();
+                lset.bitand(rset)
+            })),
+            (Type::Union(set), right) => Type::Union(Rc::new({
+                let bbset: &BTreeSet<Type> = set.borrow();
+                let mut bset = bbset.clone();
+                bset.insert(right.clone());
+                bset
+            })),
+            (left, Type::Union(set)) => Type::Union(Rc::new({
+                let bbset: &BTreeSet<Type> = set.borrow();
+                let mut bset = bbset.clone();
+                bset.insert(left.clone());
+                bset
+            })),
+            (left, right) => Type::Union(Rc::new(btreeset! { left.clone(), right.clone() })),
         }
     }
 }

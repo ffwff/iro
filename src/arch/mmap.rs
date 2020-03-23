@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::rc::Rc;
 use crate::arch::context::*;
 use crate::ssa::isa::FunctionName;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct Mmap {
@@ -41,33 +41,41 @@ impl Mmap {
         let mut context_locs = HashMap::new();
         let mut placement = 0usize;
         for (name, context) in contexts {
-            std::intrinsics::copy_nonoverlapping(context.code.as_ptr(),
-                bytes.add(placement), context.code.len());
+            std::intrinsics::copy_nonoverlapping(
+                context.code.as_ptr(),
+                bytes.add(placement),
+                context.code.len(),
+            );
             context_locs.insert(name.clone(), placement);
             placement += context.code.len();
         }
         for (name, context) in contexts {
             let cur_context_loc = *context_locs.get(name).unwrap();
             for (label, func_name) in &context.func_relocation {
-                let mut dist =
-                    *context_locs.get(func_name).unwrap() as i64 -
-                    (cur_context_loc as i64 + *label as i64);
+                let mut dist = *context_locs.get(func_name).unwrap() as i64
+                    - (cur_context_loc as i64 + *label as i64);
                 if dist < 0 {
                     dist = 0x1_0000_0000i64 + dist;
                 }
                 dist -= 4i64;
                 let le_bytes = (dist as u32).to_le_bytes();
                 for (i, byte) in le_bytes.iter().enumerate() {
-                    bytes.add(cur_context_loc + label + i).write_unaligned(*byte);
+                    bytes
+                        .add(cur_context_loc + label + i)
+                        .write_unaligned(*byte);
                 }
             }
         }
-        libc::mprotect(bytes as *mut libc::c_void, size, libc::PROT_EXEC | libc::PROT_READ);
+        libc::mprotect(
+            bytes as *mut libc::c_void,
+            size,
+            libc::PROT_EXEC | libc::PROT_READ,
+        );
 
         Ok(Mmap {
             contents: bytes as *const u8,
             size,
-            context_locs
+            context_locs,
         })
     }
 
@@ -77,9 +85,10 @@ impl Mmap {
             arg_types: vec![],
         });
         let main_offset = self.context_locs[&main_name];
-        let func = std::mem::transmute::<_, (extern "C" fn() -> i64)>(self.contents.add(main_offset));
+        let func =
+            std::mem::transmute::<_, (extern "C" fn() -> i64)>(self.contents.add(main_offset));
         func()
-    }   
+    }
 }
 
 impl Drop for Mmap {

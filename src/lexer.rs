@@ -33,10 +33,10 @@ pub enum Tok {
     Comma,
     Colon,
     Newline,
-    Int { value : i64 },
-    Identifier { value : String },
-    String { value : String },
-    Attribute { value : String },
+    Int { value: i64 },
+    Identifier { value: String },
+    String { value: String },
+    Attribute { value: String },
 }
 
 pub type Spanned<T> = (usize, T, usize);
@@ -75,7 +75,7 @@ macro_rules! mod_op {
                 $self.last_char = peek;
             }
         }
-        return Some(Ok(($idx0, $x, $idx0)))
+        return Some(Ok(($idx0, $x, $idx0)));
     }};
 }
 
@@ -87,7 +87,7 @@ impl<'input> Iterator for Lexer<'input> {
             let curr_char = self.bump();
             // println!("char: {:?}", curr_char);
             match curr_char {
-                Some((idx0, ch @ '0'..='9'))  => {
+                Some((idx0, ch @ '0'..='9')) => {
                     let mut value = ch.to_digit(10).unwrap() as i64;
                     let mut idx1 = idx0;
                     loop {
@@ -98,11 +98,11 @@ impl<'input> Iterator for Lexer<'input> {
                             }
                             ch => {
                                 self.last_char = ch;
-                                break
-                            },
+                                break;
+                            }
                         }
                     }
-                    return Some(Ok((idx0, Tok::Int { value }, idx1)))
+                    return Some(Ok((idx0, Tok::Int { value }, idx1)));
                 }
 
                 Some((idx0, '=')) => mod_op!(self, idx0, Tok::Asg, Tok::Equ),
@@ -145,7 +145,7 @@ impl<'input> Iterator for Lexer<'input> {
                         "or" => Tok::Or,
                         _ => Tok::Identifier { value: string },
                     };
-                    return Some(Ok((idx0, value, idx1)))
+                    return Some(Ok((idx0, value, idx1)));
                 }
 
                 Some((idx0, '"')) => {
@@ -161,13 +161,11 @@ impl<'input> Iterator for Lexer<'input> {
                             Some((_, ch)) => {
                                 idx1 += 1;
                                 string.push(ch);
-                            },
-                            None => {
-                                return Some(Err(Error::UnexpectedEof))
                             }
+                            None => return Some(Err(Error::UnexpectedEof)),
                         }
                     }
-                    return Some(Ok((idx0, Tok::String { value: string }, idx1)))
+                    return Some(Ok((idx0, Tok::String { value: string }, idx1)));
                 }
 
                 Some((idx0, '@')) => {
@@ -187,11 +185,9 @@ impl<'input> Iterator for Lexer<'input> {
                                     }
                                 }
                             }
-                            return Some(Ok((idx0, Tok::Attribute { value: string }, idx1)))
-                        },
-                        _other => {
-                            unimplemented!()
+                            return Some(Ok((idx0, Tok::Attribute { value: string }, idx1)));
                         }
+                        _other => unimplemented!(),
                     }
                 }
 
@@ -200,16 +196,16 @@ impl<'input> Iterator for Lexer<'input> {
                     let mut idx1 = idx0;
                     loop {
                         match self.chars.next() {
-                            Some((_, '\n')) => { idx1 += 1 }
-                            Some((_, ch)) if ch.is_whitespace() => { idx1 += 1 }
+                            Some((_, '\n')) => idx1 += 1,
+                            Some((_, ch)) if ch.is_whitespace() => idx1 += 1,
                             ch => {
                                 self.last_char = ch;
-                                break
+                                break;
                             }
                         }
                     }
-                    return Some(Ok((idx0, Tok::Newline, idx1)))
-                },
+                    return Some(Ok((idx0, Tok::Newline, idx1)));
+                }
                 Some((_, ch)) if ch.is_whitespace() => continue,
                 Some(other) => return Some(Err(Error::UnexpectedCharacter(other))),
             }

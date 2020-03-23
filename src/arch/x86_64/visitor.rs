@@ -1,8 +1,8 @@
+use crate::arch::context;
+use crate::arch::x86_64::{encoder, isa};
+use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
-use crate::arch::context;
-use crate::arch::x86_64::{isa, encoder};
-use crate::ssa::isa::*;
 
 static ARG_REGS: [isa::Reg; 6] = [
     isa::Reg::Rdi,
@@ -69,7 +69,12 @@ impl FuncContextVisitor {
         Ok(isa_contexts)
     }
 
-    pub fn visit_context(&mut self, context: &Context, name: &Rc<FunctionName>, contexts: &FuncContexts) {
+    pub fn visit_context(
+        &mut self,
+        context: &Context,
+        name: &Rc<FunctionName>,
+        contexts: &FuncContexts,
+    ) {
         if context.intrinsic != IntrinsicType::None {
             return self.visit_intrinsic(context);
         }
@@ -94,14 +99,19 @@ impl FuncContextVisitor {
     }
 
     fn get_register_for_var(&mut self, arg: usize) -> isa::Operand {
-        self.constant_operands.get(&arg).cloned()
+        self.constant_operands
+            .get(&arg)
+            .cloned()
             .unwrap_or(isa::Operand::UndeterminedMapping(arg))
     }
 
-    pub fn visit_ins(&mut self,
-                     ins: &Ins,
-                     isa_ins: &mut Vec<isa::Ins>,
-                     context: &Context, _contexts: &FuncContexts) {
+    pub fn visit_ins(
+        &mut self,
+        ins: &Ins,
+        isa_ins: &mut Vec<isa::Ins>,
+        context: &Context,
+        _contexts: &FuncContexts,
+    ) {
         dbg_println!("ins: {:#?}", ins);
         match &ins.typed {
             InsType::Nop => (),
@@ -111,21 +121,22 @@ impl FuncContextVisitor {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
                         dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
                         src: self.get_register_for_var(*arg),
-                    })
+                    }),
                 });
-            },
+            }
             InsType::LoadArg(arg) => {
                 assert_eq!(&context.variables[*arg], &Type::I32);
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
                         dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
                         src: isa::Operand::Register(ARG_REGS[*arg]),
-                    })
+                    }),
                 });
-            },
+            }
             InsType::LoadI32(x) => {
-                self.constant_operands.insert(ins.retvar().unwrap(), isa::Operand::U32(*x as u32));
-            },
+                self.constant_operands
+                    .insert(ins.retvar().unwrap(), isa::Operand::U32(*x as u32));
+            }
             InsType::Call { name, args } => {
                 for (idx, &arg) in args.iter().enumerate() {
                     assert_eq!(&context.variables[arg], &Type::I32);
@@ -133,36 +144,38 @@ impl FuncContextVisitor {
                     isa_ins.push(isa::Ins {
                         typed: isa::InsType::Clobber {
                             reg,
-                            except_for_var: Some(arg)
-                        }
+                            except_for_var: Some(arg),
+                        },
                     });
                     isa_ins.push(isa::Ins {
                         typed: isa::InsType::MovI32(isa::TwoOperands {
                             dest: isa::Operand::Register(reg),
                             src: self.get_register_for_var(arg),
-                        })
+                        }),
                     });
                 }
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Clobber {
                         reg: isa::Reg::Rax,
                         except_for_var: None,
-                    }
+                    },
                 });
-                isa_ins.push(isa::Ins { typed: isa::InsType::Call(name.clone()) });
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Call(name.clone()),
+                });
                 for (idx, _) in args.iter().enumerate() {
                     isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Unclobber(ARG_REGS[idx])
+                        typed: isa::InsType::Unclobber(ARG_REGS[idx]),
                     });
                 }
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
                         dest: self.get_register_for_var(ins.retvar().unwrap()),
                         src: isa::Operand::Register(isa::Reg::Rax),
-                    })
+                    }),
                 });
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Unclobber(isa::Reg::Rax)
+                    typed: isa::InsType::Unclobber(isa::Reg::Rax),
                 });
             }
             InsType::Return(x) => {
@@ -170,40 +183,47 @@ impl FuncContextVisitor {
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
                         dest: isa::Operand::Register(isa::Reg::Rax),
-                        src: self.get_register_for_var(*x)
-                    })
+                        src: self.get_register_for_var(*x),
+                    }),
                 });
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Ret
+                    typed: isa::InsType::Ret,
                 });
             }
             InsType::Exit => {
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Ret
+                    typed: isa::InsType::Ret,
                 });
             }
-            InsType::IfJmp { condvar, iftrue, iffalse } => {
+            InsType::IfJmp {
+                condvar,
+                iftrue,
+                iffalse,
+            } => {
                 match isa_ins.last() {
-                    Some(isa::Ins { typed: isa::InsType::Lt(threeops) }) |
-                    Some(isa::Ins { typed: isa::InsType::Gt(threeops) })
-                        if threeops.dest == *condvar => {
+                    Some(isa::Ins {
+                        typed: isa::InsType::Lt(threeops),
+                    })
+                    | Some(isa::Ins {
+                        typed: isa::InsType::Gt(threeops),
+                    }) if threeops.dest == *condvar => {
                         let threeops = threeops.clone();
                         let last = isa_ins.pop().unwrap();
                         isa_ins.push(isa::Ins {
                             typed: isa::InsType::CmpI32(isa::TwoOperands {
                                 dest: self.get_register_for_var(threeops.left),
-                                src: self.get_register_for_var(threeops.right)
-                            })
+                                src: self.get_register_for_var(threeops.right),
+                            }),
                         });
                         isa_ins.push(isa::Ins {
                             typed: match last.typed {
                                 isa::InsType::Lt(_) => isa::InsType::Jlt(*iftrue),
                                 isa::InsType::Gt(_) => isa::InsType::Jgt(*iftrue),
-                                _ => unreachable!()
-                            }
+                                _ => unreachable!(),
+                            },
                         });
                         isa_ins.push(isa::Ins {
-                            typed: isa::InsType::Jmp(*iffalse)
+                            typed: isa::InsType::Jmp(*iffalse),
                         });
                         return;
                     }
@@ -213,13 +233,13 @@ impl FuncContextVisitor {
                     typed: isa::InsType::IfJmp {
                         condvar: isa::Operand::UndeterminedMapping(*condvar),
                         iftrue: *iftrue,
-                        iffalse: *iffalse
-                    }
+                        iffalse: *iffalse,
+                    },
                 });
             }
             InsType::Jmp(x) => {
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Jmp(*x)
+                    typed: isa::InsType::Jmp(*x),
                 });
             }
             InsType::Lt((x, y)) => {
@@ -229,7 +249,7 @@ impl FuncContextVisitor {
                     right: *y,
                 };
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Lt(operands)
+                    typed: isa::InsType::Lt(operands),
                 });
             }
             InsType::Gt((x, y)) => {
@@ -239,13 +259,13 @@ impl FuncContextVisitor {
                     right: *y,
                 };
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Gt(operands)
+                    typed: isa::InsType::Gt(operands),
                 });
             }
-            InsType::Add((x, y)) |
-            InsType::Sub((x, y)) |
-            InsType::Mul((x, y)) |
-            InsType::Div((x, y)) => {
+            InsType::Add((x, y))
+            | InsType::Sub((x, y))
+            | InsType::Mul((x, y))
+            | InsType::Div((x, y)) => {
                 let left = &context.variables[*x];
                 let right = &context.variables[*y];
                 match (left, right) {
@@ -254,14 +274,14 @@ impl FuncContextVisitor {
                         isa_ins.push(isa::Ins {
                             typed: isa::InsType::MovI32(isa::TwoOperands {
                                 dest: dest.clone(),
-                                src: self.get_register_for_var(*x)
-                            })
+                                src: self.get_register_for_var(*x),
+                            }),
                         });
                         isa_ins.push(isa::Ins {
                             typed: {
                                 let operands = isa::TwoOperands {
                                     dest: dest.clone(),
-                                    src: self.get_register_for_var(*y)
+                                    src: self.get_register_for_var(*y),
                                 };
                                 match &ins.typed {
                                     InsType::Add(_) => isa::InsType::AddI32(operands),
@@ -270,13 +290,13 @@ impl FuncContextVisitor {
                                     InsType::Div(_) => isa::InsType::DivI32(operands),
                                     _ => unreachable!(),
                                 }
-                            }
+                            },
                         });
                     }
                     (_, _) => unimplemented!(),
                 }
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 
@@ -293,16 +313,14 @@ impl FuncContextVisitor {
             let mut deallocation: Vec<(usize, usize)> = vec![];
             // Infer lifetimes for each variable
             for (idx, ins) in isa_block.ins.iter().enumerate().rev() {
-                ins.each_used_var(true, |var| {
-                    match var {
-                        isa::Operand::UndeterminedMapping(var) => {
-                            if !variable_factored.contains(&var) {
-                                deallocation.push((idx, *var));
-                                variable_factored.insert(*var);
-                            }
-                        },
-                        _ => (),
+                ins.each_used_var(true, |var| match var {
+                    isa::Operand::UndeterminedMapping(var) => {
+                        if !variable_factored.contains(&var) {
+                            deallocation.push((idx, *var));
+                            variable_factored.insert(*var);
+                        }
                     }
+                    _ => (),
                 });
             }
 
@@ -317,7 +335,10 @@ impl FuncContextVisitor {
             for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
                 dbg_println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
                 match &ins.typed {
-                    isa::InsType::Clobber { reg, except_for_var } => {
+                    isa::InsType::Clobber {
+                        reg,
+                        except_for_var,
+                    } => {
                         if unused_regs.contains(&reg) {
                             unused_regs.remove_item(&reg);
                         } else {
@@ -332,8 +353,8 @@ impl FuncContextVisitor {
                                         body.push(isa::Ins {
                                             typed: isa::InsType::MovI32(isa::TwoOperands {
                                                 dest: isa::Operand::Register(newreg),
-                                                src: isa::Operand::Register(*reg)
-                                            })
+                                                src: isa::Operand::Register(*reg),
+                                            }),
                                         });
                                         vdata.0 = Some(newreg);
                                     } else {
@@ -341,7 +362,7 @@ impl FuncContextVisitor {
                                             typed: isa::InsType::MovI32(isa::TwoOperands {
                                                 dest: isa::Operand::UndeterminedMapping(*var),
                                                 src: isa::Operand::Register(*reg),
-                                            })
+                                            }),
                                         });
                                         to_remove = Some(*var);
                                     }
@@ -358,7 +379,7 @@ impl FuncContextVisitor {
                         unused_regs.push(*reg);
                         continue;
                     }
-                    _ => ()
+                    _ => (),
                 }
                 ins.rename_var_by(false, |var| {
                     dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
@@ -369,7 +390,7 @@ impl FuncContextVisitor {
                                 (Some(reg), _) => {
                                     *var = isa::Operand::Register(reg);
                                     reg
-                                },
+                                }
                                 (None, _) => {
                                     // The variable used to store this node has previously
                                     // been clobbered, so hopefully we can retrieve
@@ -378,12 +399,12 @@ impl FuncContextVisitor {
                                     body.push(isa::Ins {
                                         typed: isa::InsType::MovI32(isa::TwoOperands {
                                             dest: isa::Operand::Register(reg),
-                                            src: var.clone()
-                                        })
+                                            src: var.clone(),
+                                        }),
                                     });
                                     maybe_reg.0 = Some(reg);
                                     reg
-                                },
+                                }
                             }
                         } else if let Some(reg) = unused_regs.pop() {
                             // Unspill the local variable if it's used in the precceding blocks
@@ -392,8 +413,8 @@ impl FuncContextVisitor {
                                 body.push(isa::Ins {
                                     typed: isa::InsType::MovI32(isa::TwoOperands {
                                         dest: isa::Operand::Register(reg),
-                                        src: var.clone()
-                                    })
+                                        src: var.clone(),
+                                    }),
                                 });
                             }
                             *var = isa::Operand::Register(reg);
@@ -431,7 +452,7 @@ impl FuncContextVisitor {
                         typed: isa::InsType::MovI32(isa::TwoOperands {
                             dest: isa::Operand::UndeterminedMapping(*var),
                             src: isa::Operand::Register(reg),
-                        })
+                        }),
                     });
                     unused_regs.push(reg);
                 }
@@ -444,7 +465,13 @@ impl FuncContextVisitor {
             new_isa_block.ins.append(&mut postlude);
 
             dbg_println!("free vars {:?}", unused_regs);
-            dbg_println!("dealloc: {:#?}\n{:#?}\n{:#?}\n{:#?}", deallocation, isa_block, cblock, new_isa_block);
+            dbg_println!(
+                "dealloc: {:#?}\n{:#?}\n{:#?}\n{:#?}",
+                deallocation,
+                isa_block,
+                cblock,
+                new_isa_block
+            );
             // panic!("...");
         }
     }
@@ -458,34 +485,37 @@ impl FuncContextVisitor {
         for block in blocks.iter_mut() {
             for ins in &mut block.ins {
                 if let Some(size) = ins.typed.mov_size() {
-                    ins.rename_var_by(true, |var| {
-                        match var.clone() {
-                            isa::Operand::UndeterminedMapping(mapping) => {
-                                let disp = if let Some(offset) = map_to_stack_offset.get(&mapping) {
-                                    *offset
-                                } else {
-                                    let offset = alloc;
-                                    map_to_stack_offset.insert(mapping, offset);
-                                    alloc += size as u32;
-                                    offset
-                                };
-                                *var = isa::Operand::Memory {
-                                    disp: -(disp as i32) + stack_offset,
-                                    base: isa::Reg::Rbp,
-                                };
-                            }
-                            isa::Operand::Memory { base: isa::Reg::Rsp, .. } |
-                            isa::Operand::Memory { base: isa::Reg::Rbp, .. }
-                                => {
-                                stack_used = true;
-                            }
-                            isa::Operand::Register(reg) => {
-                                if CALLEE_SAVED.contains(&reg) {
-                                    save_regs.insert(reg);
-                                }
-                            }
-                            _ => (),
+                    ins.rename_var_by(true, |var| match var.clone() {
+                        isa::Operand::UndeterminedMapping(mapping) => {
+                            let disp = if let Some(offset) = map_to_stack_offset.get(&mapping) {
+                                *offset
+                            } else {
+                                let offset = alloc;
+                                map_to_stack_offset.insert(mapping, offset);
+                                alloc += size as u32;
+                                offset
+                            };
+                            *var = isa::Operand::Memory {
+                                disp: -(disp as i32) + stack_offset,
+                                base: isa::Reg::Rbp,
+                            };
                         }
+                        isa::Operand::Memory {
+                            base: isa::Reg::Rsp,
+                            ..
+                        }
+                        | isa::Operand::Memory {
+                            base: isa::Reg::Rbp,
+                            ..
+                        } => {
+                            stack_used = true;
+                        }
+                        isa::Operand::Register(reg) => {
+                            if CALLEE_SAVED.contains(&reg) {
+                                save_regs.insert(reg);
+                            }
+                        }
+                        _ => (),
                     });
                 }
             }
@@ -493,12 +523,15 @@ impl FuncContextVisitor {
         if alloc != 0 || stack_used {
             let save_regs: Vec<isa::Reg> = save_regs.iter().cloned().collect();
             if let Some(block) = blocks.first_mut() {
-                block.ins.insert(0, isa::Ins {
-                    typed: isa::InsType::Enter {
-                        local_size: alloc,
-                        save_regs: save_regs.clone(),
-                    }
-                });
+                block.ins.insert(
+                    0,
+                    isa::Ins {
+                        typed: isa::InsType::Enter {
+                            local_size: alloc,
+                            save_regs: save_regs.clone(),
+                        },
+                    },
+                );
             }
             if save_regs.is_empty() {
                 for block in blocks.iter_mut() {
@@ -517,29 +550,30 @@ impl FuncContextVisitor {
 
     pub fn remove_unnecessary_movs(&mut self, blocks: &mut Vec<isa::Block>) {
         for block in blocks {
-            block.ins.retain(|ins| {
-                match &ins.typed {
-                    isa::InsType::MovI32(operands) => {
-                        if operands.dest == operands.src {
-                            false
-                        } else {
-                            true
-                        }
-                    },
-                    _ => true,
+            block.ins.retain(|ins| match &ins.typed {
+                isa::InsType::MovI32(operands) => {
+                    if operands.dest == operands.src {
+                        false
+                    } else {
+                        true
+                    }
                 }
+                _ => true,
             })
         }
     }
 
     pub fn remove_unnecessary_jmps(&mut self, blocks: &mut Vec<isa::Block>) {
         for (idx, block) in blocks.iter_mut().enumerate() {
-            if let Some(target) = block.ins.last().map(|last| {
-                match &last.typed {
+            if let Some(target) = block
+                .ins
+                .last()
+                .map(|last| match &last.typed {
                     isa::InsType::Jmp(x) => Some(*x),
-                    _ => None
-                }
-            }).flatten() {
+                    _ => None,
+                })
+                .flatten()
+            {
                 if target == idx + 1 {
                     block.ins.pop();
                 }
