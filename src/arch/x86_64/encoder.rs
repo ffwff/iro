@@ -240,7 +240,7 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
                 }
             }
         }
-        (Operand::Register(left), right) => dest.code.push(0b11_000_000 | (left as u8)),
+        (Operand::Register(left), right) if right.is_lit() => dest.code.push(0b11_000_000 | (left as u8)),
         _ => unimplemented!(),
     }
 }
