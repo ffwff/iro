@@ -148,7 +148,7 @@ pub enum InsType {
         save_regs: Vec<Reg>,
     },
     Clobber(Vec<(Reg, Option<usize>)>),
-    Unclobber(Reg),
+    Unclobber(Vec<Reg>),
     Gt(VirtualThreeOperands),
     Lt(VirtualThreeOperands),
     Gte(VirtualThreeOperands),

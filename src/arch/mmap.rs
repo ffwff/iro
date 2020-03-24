@@ -79,9 +79,10 @@ impl Mmap {
         })
     }
 
-    pub unsafe fn execute(&self, function: &Rc<FunctionName>) -> i64 {
-        let offset = self.context_locs[function];
-        let func = std::mem::transmute::<_, (extern "C" fn() -> i64)>(self.contents.add(offset));
+    pub unsafe fn execute(&self, function: &Rc<FunctionName>) {
+        let offset = self.contents.add(self.context_locs[function]);
+        dbg_println!("execute {:p}", offset);
+        let func = std::mem::transmute::<_, (extern "sysv64" fn())>(offset);
         func()
     }
 }
