@@ -170,6 +170,9 @@ impl Codegen {
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
                 isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Clobber(vec![ (isa::Reg::Rax, Some(*x)) ]),
+                });
+                isa_ins.push(isa::Ins {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
                         dest: isa::Operand::Register(isa::Reg::Rax),
                         src: self.get_register_for_var(*x),
