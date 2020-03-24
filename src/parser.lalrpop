@@ -66,16 +66,13 @@ DefStatement: NodeBox = {
     },
 };
 
-DefArgumentList: Vec<(Rc<str>, Option<NodeBox>)> = {
+DefArgumentList: Vec<(Rc<str>, Option<TypeId>)> = {
     "(" <args:Comma<DefArgument>> ")" => args
 };
 
-DefArgument: (Rc<str>, Option<NodeBox>) = {
-    <id:Identifier> => {
-        (Rc::from(id), None)
-    },
-    <id:Identifier> ":" <ty:Type> => {
-        (Rc::from(id), Some(ty))
+DefArgument: (Rc<str>, Option<TypeId>) = {
+    <id:Identifier> <type_specifier:TypeSpecifier?> => {
+        (Rc::from(id), type_specifier)
     },
 };
 
@@ -184,8 +181,12 @@ Literal: Value = {
 };
 
 // Types
-Type: NodeBox = {
-    <Identifier> => NodeBox::new(TypeId::Identifier(Rc::from(<>))),
+Type: TypeId = {
+    <Identifier> => TypeId::new(TypeIdData::Identifier(Rc::from(<>))),
+};
+
+TypeSpecifier: TypeId = {
+    ":" <Type> => <>,
 };
 
 

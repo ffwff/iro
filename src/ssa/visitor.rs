@@ -13,6 +13,7 @@ use std::rc::Rc;
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Rc<DefStatement>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
+    pub types: HashMap<Rc<str>, Type>,
 }
 
 impl TopLevelInfo {
@@ -20,6 +21,12 @@ impl TopLevelInfo {
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
+            types: hashmap![
+                Rc::from("Nil") => Type::Nil,
+                Rc::from("I32") => Type::I32,
+                Rc::from("Float") => Type::Float,
+                Rc::from("String") => Type::String,
+            ],
         }
     }
 }
@@ -156,6 +163,20 @@ impl Visitor for SSAVisitor {
                 outerstmts.push(expr);
             }
         }
+        
+        {
+            let top_level_rcc = self.top_level.inner().clone();
+            let top_level_rc: &RefCell<TopLevelInfo> = top_level_rcc.borrow();
+            let top_level: &TopLevelInfo = &top_level_rc.borrow();
+            for (id, defstmt_rc) in &top_level.defstmts {
+                let defstmt: &DefStatement = defstmt_rc.borrow();
+                for (arg, typed) in &defstmt.args {
+                    if let Some(typed) = typed {
+                        self.visit_typeid(&typed);
+                    }
+                }
+            }
+        }
 
         self.context.new_block();
         self.envs.push(Env::new());
@@ -170,6 +191,15 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult {
+        for ((arg, declared_typed), typed) in n.args.iter().zip(self.context.args.iter()) {
+            let maybe_declared_rc = declared_typed.as_ref().unwrap();
+            let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
+            if let Some(declared_typed) = maybe_declared {
+                if *declared_typed != *typed {
+                    return Err(Error::InvalidArguments);
+                }
+            }
+        }
         {
             let mut env = Env::new();
             for (idx, (name, _)) in n.args.iter().enumerate() {
@@ -469,7 +499,7 @@ impl Visitor for SSAVisitor {
                         let visitor = RefCell::new(Some({
                             let func_context = Context::with_args(id.clone(), arg_types);
                             let mut visitor =
-                                SSAVisitor::with_context(func_context, self.top_level.clone());
+                            SSAVisitor::with_context(func_context, self.top_level.clone());
                             visitor.visit_defstmt(defstmt.borrow())?;
                             (func_name.clone(), visitor)
                         }));
@@ -622,7 +652,19 @@ impl Visitor for SSAVisitor {
         }
     }
 
-    fn visit_typeid(&mut self, _n: &TypeId) -> VisitorResult {
-        unimplemented!()
+    fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult {
+        match &n.data {
+            TypeIdData::Identifier(id) => {
+                self.top_level.with(|top_level| {
+                    if let Some(typed) = top_level.types.get(id) {
+                        n.typed.replace(Some(typed.clone()));
+                        Ok(())
+                    } else {
+                        Err(Error::InternalError)
+                    }
+                })
+            }
+            _ => unimplemented!()
+        }
     }
 }

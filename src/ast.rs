@@ -1,9 +1,8 @@
 use std::borrow::Borrow;
-use std::cell::Cell;
+use std::cell::{RefCell, Cell};
 use std::fmt;
 use std::rc::Rc;
-
-use crate::ssa::isa::IntrinsicType;
+use crate::ssa::isa::{Type, IntrinsicType};
 use downcast_rs::Downcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,13 +124,28 @@ impl Node for Value {
 }
 
 #[derive(Debug)]
-pub enum TypeId {
-    Identifier(Rc<str>),
+pub struct TypeId {
+    pub data: TypeIdData,
+    pub typed: RefCell<Option<Type>>,
 }
 
 impl Node for TypeId {
     debuggable!();
     visitable!(visit_typeid);
+}
+
+impl TypeId {
+    pub fn new(data: TypeIdData) -> Self {
+        Self {
+            data,
+            typed: RefCell::new(None)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TypeIdData {
+    Identifier(Rc<str>),
 }
 
 #[derive(Debug)]
@@ -221,7 +235,7 @@ impl Node for CallExpr {
 #[derive(Debug)]
 pub struct DefStatement {
     pub id: Rc<str>,
-    pub args: Vec<(Rc<str>, Option<NodeBox>)>,
+    pub args: Vec<(Rc<str>, Option<TypeId>)>,
     pub exprs: Vec<NodeBox>,
     pub attrs: Option<Vec<AttributeValue>>,
     pub intrinsic: Cell<IntrinsicType>,
