@@ -195,11 +195,12 @@ impl Visitor for SSAVisitor {
 
     fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult {
         for ((arg, declared_typed), typed) in n.args.iter().zip(self.context.args.iter()) {
-            let maybe_declared_rc = declared_typed.as_ref().unwrap();
-            let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
-            if let Some(declared_typed) = maybe_declared {
-                if *declared_typed != *typed {
-                    return Err(Error::InvalidArguments);
+            if let Some(maybe_declared_rc) = declared_typed.as_ref() {
+                let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
+                if let Some(declared_typed) = maybe_declared {
+                    if *declared_typed != *typed {
+                        return Err(Error::InvalidArguments);
+                    }
                 }
             }
         }
@@ -464,6 +465,12 @@ impl Visitor for SSAVisitor {
                     if let Some(maybe_context) = top_level.func_contexts.get(&func_name) {
                         if let Some(context) = maybe_context {
                             Ok(Some(context.rettype.clone()))
+                        } else if let Some(defstmt) = top_level.defstmts.get(id) {
+                            if let Some(declared_typed) = defstmt.return_type.as_ref() {
+                                Ok(declared_typed.typed.borrow().clone())
+                            } else {
+                                Err(Error::CannotInfer)
+                            }
                         } else {
                             Err(Error::CannotInfer)
                         }

@@ -191,9 +191,15 @@ impl Codegen {
                 match isa_ins.last() {
                     Some(isa::Ins {
                         typed: isa::InsType::Lt(threeops),
-                    })
-                    | Some(isa::Ins {
+                    }) |
+                    Some(isa::Ins {
                         typed: isa::InsType::Gt(threeops),
+                    }) |
+                    Some(isa::Ins {
+                        typed: isa::InsType::Lte(threeops),
+                    }) |
+                    Some(isa::Ins {
+                        typed: isa::InsType::Gte(threeops),
                     }) if threeops.dest == *condvar => {
                         let threeops = threeops.clone();
                         let last = isa_ins.pop().unwrap();
@@ -235,6 +241,34 @@ impl Codegen {
                                     });
                                 }
                             }
+                            isa::InsType::Lte(_) => {
+                                if *iftrue == block_idx + 1 {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jgt(*iffalse),
+                                    });
+                                } else {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jle(*iftrue),
+                                    });
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jmp(*iffalse),
+                                    });
+                                }
+                            }
+                            isa::InsType::Gte(_) => {
+                                if *iftrue == block_idx + 1 {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jlt(*iffalse),
+                                    });
+                                } else {
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jge(*iftrue),
+                                    });
+                                    isa_ins.push(isa::Ins {
+                                        typed: isa::InsType::Jmp(*iffalse),
+                                    });
+                                }
+                            }
                             _ => unreachable!(),
                         }
                         return;
@@ -254,25 +288,32 @@ impl Codegen {
                     typed: isa::InsType::Jmp(*x),
                 });
             }
-            InsType::Lt((x, y)) => {
+            InsType::Lt((x, y)) |
+            InsType::Gt((x, y)) |
+            InsType::Lte((x, y)) |
+            InsType::Gte((x, y)) => {
                 let operands = isa::VirtualThreeOperands {
                     dest: ins.retvar().unwrap(),
                     left: *x,
                     right: *y,
                 };
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Lt(operands),
-                });
-            }
-            InsType::Gt((x, y)) => {
-                let operands = isa::VirtualThreeOperands {
-                    dest: ins.retvar().unwrap(),
-                    left: *x,
-                    right: *y,
-                };
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Gt(operands),
-                });
+                isa_ins.push(
+                    match &ins.typed {
+                        InsType::Lt(_) => isa::Ins {
+                            typed: isa::InsType::Lt(operands),
+                        },
+                        InsType::Lte(_) => isa::Ins {
+                            typed: isa::InsType::Lte(operands),
+                        },
+                        InsType::Gt(_) => isa::Ins {
+                            typed: isa::InsType::Gt(operands),
+                        },
+                        InsType::Gte(_) => isa::Ins {
+                            typed: isa::InsType::Gte(operands),
+                        },
+                        _ => unreachable!(),
+                    }
+                );
             }
             InsType::Add((x, y))
             | InsType::Sub((x, y))

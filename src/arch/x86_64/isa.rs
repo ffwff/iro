@@ -151,6 +151,8 @@ pub enum InsType {
     Unclobber(Reg),
     Gt(VirtualThreeOperands),
     Lt(VirtualThreeOperands),
+    Gte(VirtualThreeOperands),
+    Lte(VirtualThreeOperands),
     IfJmp {
         condvar: Operand,
         iftrue: usize,
