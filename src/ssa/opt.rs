@@ -2,6 +2,7 @@ use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::BitXor;
 
+// NOTE: we assume each block is labelled according to DFS order
 pub fn build_graph_and_rename_vars(context: &mut Context) {
     let mut defsites: Vec<BTreeSet<usize>> =
         (0..context.variables.len()).map(|_| btreeset![]).collect();
@@ -68,23 +69,22 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
         // Build the post-order traversal array
         let mut rpo = Vec::with_capacity(context.blocks.len());
         {
-            let mut visited = btreeset![];
             fn walk(
                 node: usize,
                 context: &Context,
                 post_order: &mut Vec<usize>,
-                visited: &mut BTreeSet<usize>,
             ) {
-                visited.insert(node);
                 let block = &context.blocks[node];
                 for succ in &block.succs {
-                    if !visited.contains(succ) {
-                        walk(*succ, context, post_order, visited);
+                    // Since this is a DFS tree, all non-looping descendents
+                    // must have larger indices that its parent
+                    if *succ > node {
+                        walk(*succ, context, post_order);
                     }
                 }
                 post_order.push(node);
             }
-            walk(0, &context, &mut rpo, &mut visited);
+            walk(0, &context, &mut rpo);
         }
 
         let rpo_ordering: Vec<usize> = {
