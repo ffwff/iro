@@ -53,11 +53,11 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             }
             (Operand::Memory { .. }, Operand::Register(_)) => {
                 dest.code.push(0x89);
-                modrm(dest, ops.src.clone(), ops.dest.clone());
+                modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
             (_, _) => {
                 dest.code.push(0x8B);
-                modrm(dest, ops.dest.clone(), ops.src.clone());
+                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
         InsType::AddI32(ops) => match (&ops.dest, &ops.src) {
@@ -65,45 +65,64 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
                     dest.code.push(0x83);
-                    modrm(dest, ops.dest.clone(), ops.src.clone());
+                    modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
                     dest.code.push(*n as u8);
                 } else {
                     dest.code.push(0x81);
-                    modrm(dest, ops.dest.clone(), ops.src.clone());
+                    modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
             (_, _) => {
                 dest.code.push(0x01);
-                modrm(dest, ops.dest.clone(), ops.src.clone());
+                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
-        InsType::SubI32(ops) => {
-            dest.code.push(0x29);
-            modrm(dest, ops.dest.clone(), ops.src.clone());
-        }
-        InsType::MulI32(ops) => {
-            dest.code.push(0x0F);
-            dest.code.push(0xAF);
-            modrm(dest, ops.dest.clone(), ops.src.clone());
-        }
+        InsType::SubI32(ops) => match (&ops.dest, &ops.src) {
+            (Operand::Register(left), Operand::U32(n)) => {
+                assert!((*left as u8) <= 0b111);
+                if *n <= 0xFF {
+                    dest.code.push(0x83);
+                    modrm(dest, ops.dest.clone(), ops.src.clone(), 0b101);
+                    dest.code.push(*n as u8);
+                } else {
+                    dest.code.push(0x81);
+                    modrm(dest, ops.dest.clone(), ops.src.clone(), 0b101);
+                    dest.code.extend_from_slice(&n.to_le_bytes());
+                }
+            }
+            (_, _) => {
+                dest.code.push(0x29);
+                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
+            }
+        },
+        InsType::MulI32(ops) => match (&ops.dest, &ops.src) {
+            (Operand::Register(left), Operand::U32(n)) => {
+                unimplemented!();
+            }
+            (_, _) => {
+                dest.code.push(0x0F);
+                dest.code.push(0xAF);
+                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
+            }
+        },
         InsType::DivI32(_ops) => unimplemented!(),
         InsType::CmpI32 { ops, .. } => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
                     dest.code.push(0x83);
-                    modrm(dest, ops.dest.clone(), ops.src.clone());
+                    modrm(dest, ops.dest.clone(), ops.src.clone(), 0b111);
                     dest.code.push(*n as u8);
                 } else {
                     dest.code.push(0x81);
-                    modrm(dest, ops.dest.clone(), ops.src.clone());
+                    modrm(dest, ops.dest.clone(), ops.src.clone(), 0b111);
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
             (_, _) => {
                 dest.code.push(0x39);
-                modrm(dest, ops.dest.clone(), ops.src.clone());
+                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
         InsType::Jmp(branch) => {
@@ -208,7 +227,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     dbg_println!(" => {:02x?}", dest.code);
 }
 
-fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
+fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand, extension: u8) {
     match (odest, osrc) {
         (Operand::Register(left), Operand::Register(right))
             if (left as u8) <= 0b111 && (right as u8) <= 0b111 =>
@@ -216,7 +235,8 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
             dest.code
                 .push(0b11_000_000 | ((left as u8) << 3) | (right as u8))
         }
-        (Operand::Register(reg), Operand::Memory { disp, base }) => {
+        (Operand::Register(reg), Operand::Memory { disp, base })
+            if (reg as u8) <= 0b111 => {
             if -127 <= disp && disp <= 127 {
                 dest.code
                     .push(0b01_000_000 | ((reg as u8) << 3) | (base as u8));
@@ -236,8 +256,8 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand) {
                 }
             }
         }
-        (Operand::Register(left), right) if right.is_lit() => {
-            dest.code.push(0b11_000_000 | (left as u8))
+        (Operand::Register(left), right) if (left as u8) <= 0b111 && right.is_lit() => {
+            dest.code.push(0b11_000_000 | (extension << 3) | (left as u8))
         }
         _ => unimplemented!(),
     }
