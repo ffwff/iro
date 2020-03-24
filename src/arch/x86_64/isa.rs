@@ -147,10 +147,7 @@ pub enum InsType {
     LeaveAndRet {
         save_regs: Vec<Reg>,
     },
-    Clobber {
-        reg: Reg,
-        except_for_var: Option<usize>,
-    },
+    Clobber(Vec<(Reg, Option<usize>)>),
     Unclobber(Reg),
     Gt(VirtualThreeOperands),
     Lt(VirtualThreeOperands),

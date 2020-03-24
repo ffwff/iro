@@ -133,15 +133,11 @@ impl FuncContextVisitor {
                     .insert(ins.retvar().unwrap(), isa::Operand::U32(*x as u32));
             }
             InsType::Call { name, args } => {
+                let mut clobbers = vec![];
                 for (idx, &arg) in args.iter().enumerate() {
                     assert_eq!(&context.variables[arg], &Type::I32);
                     let reg = ARG_REGS[idx];
-                    isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Clobber {
-                            reg,
-                            except_for_var: Some(arg),
-                        },
-                    });
+                    clobbers.push((reg, Some(arg)));
                     isa_ins.push(isa::Ins {
                         typed: isa::InsType::MovI32(isa::TwoOperands {
                             dest: isa::Operand::Register(reg),
@@ -149,11 +145,9 @@ impl FuncContextVisitor {
                         }),
                     });
                 }
+                clobbers.push((isa::Reg::Rax, None));
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Clobber {
-                        reg: isa::Reg::Rax,
-                        except_for_var: None,
-                    },
+                    typed: isa::InsType::Clobber(clobbers),
                 });
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Call(name.clone()),
@@ -369,13 +363,12 @@ impl FuncContextVisitor {
         for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
             dbg_println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
             match &ins.typed {
-                isa::InsType::Clobber {
-                    reg,
-                    except_for_var,
-                } => {
-                    if unused_regs.contains(&reg) {
+                isa::InsType::Clobber(clobbers) => {
+                    dbg_println!("clobbering: {:#?}", clobbers);
+                    for (reg, _) in clobbers {
                         unused_regs.remove_item(&reg);
-                    } else {
+                    }
+                    for (reg, except_for_var) in clobbers {
                         let mut to_remove = None;
                         for (var, vdata) in &mut var_to_reg {
                             if vdata.0 == Some(*reg) {
@@ -404,6 +397,7 @@ impl FuncContextVisitor {
                             }
                         }
                         if let Some(to_remove) = to_remove {
+                            dbg_println!(" => removing var {}", to_remove);
                             var_to_reg.remove(&to_remove);
                         }
                     }

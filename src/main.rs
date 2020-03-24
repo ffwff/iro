@@ -12,13 +12,14 @@ fn main() {
     let ast = utils::parse_input(
         "
     def f(a,b)
-        if a > 5
-            return b + 5
-        else
-            return b - 5
-        end
+        return a + b
     end
-    f(1,2)
+    def g(a)
+        return a
+    end
+    let x = g(10)
+    let y = g(20)
+    f(x,y)
     ",
     )
     .unwrap();
