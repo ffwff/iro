@@ -1,6 +1,7 @@
 use crate::ast;
 use crate::ast::*;
 use crate::ssa::env::Env;
+use crate::ssa::isa;
 use crate::ssa::isa::*;
 use crate::utils::RcWrapper;
 use std::borrow::Borrow;
@@ -11,7 +12,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Rc<DefStatement>>,
-    pub func_contexts: FuncContexts,
+    pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
 }
 
 impl TopLevelInfo {
@@ -65,18 +66,22 @@ impl SSAVisitor {
         self.context
     }
 
-    pub fn into_func_contexts(self) -> Result<FuncContexts, ()> {
+    pub fn into_program(self) -> Result<isa::Program, ()> {
         if let Ok(top_level) = self.top_level.try_unwrap() {
             let context = self.context;
             let mut func_contexts = top_level.func_contexts;
-            func_contexts.insert(
-                Rc::new(FunctionName {
-                    name: context.name.clone(),
-                    arg_types: vec![],
-                }),
-                Some(context),
-            );
-            Ok(func_contexts)
+            let entry = Rc::new(FunctionName {
+                name: context.name.clone(),
+                arg_types: vec![],
+            });
+            func_contexts.insert(entry.clone(), Some(context));
+            Ok(isa::Program {
+                contexts: func_contexts
+                    .into_iter()
+                    .map(|(key, value)| (key, value.unwrap()))
+                    .collect(),
+                entry,
+            })
         } else {
             Err(())
         }
@@ -123,7 +128,7 @@ impl SSAVisitor {
 }
 
 impl Visitor for SSAVisitor {
-    fn visit_program(&mut self, n: &Program) -> VisitorResult {
+    fn visit_program(&mut self, n: &ast::Program) -> VisitorResult {
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
@@ -421,7 +426,7 @@ impl Visitor for SSAVisitor {
                         if let Some(context) = maybe_context {
                             Ok(Some(context.rettype.clone()))
                         } else {
-                            Ok(Some(Type::NoReturn))
+                            Err(Error::CannotInfer)
                         }
                     } else if let Some(_) = top_level.defstmts.get(id) {
                         Ok(None)

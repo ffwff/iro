@@ -24,7 +24,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
             }
             match &ins.typed {
                 InsType::Nop => false,
-                InsType::Return(_) => {
+                InsType::Return(_) | InsType::Exit => {
                     jumped = true;
                     true
                 }
@@ -268,6 +268,9 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
         }
     } else {
         let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
+        if mapping.is_empty() {
+            return;
+        }
         let block = &mut context.blocks[0];
         for ins in &mut block.ins {
             ins.rename_var_by(true, |var| mapping[var].unwrap());

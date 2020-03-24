@@ -1,0 +1,7 @@
+def f(x)
+    if x > 5
+        return x + 10
+    end
+    return x
+end
+f(10)

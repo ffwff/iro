@@ -349,7 +349,11 @@ impl ToString for FunctionName {
     }
 }
 
-pub type FuncContexts = HashMap<Rc<FunctionName>, Option<Context>>;
+#[derive(Debug, Clone)]
+pub struct Program {
+    pub contexts: HashMap<Rc<FunctionName>, Context>,
+    pub entry: Rc<FunctionName>,
+}
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum Type {

@@ -43,23 +43,22 @@ pub enum Error {
     None,
 }
 
-pub struct FuncContextVisitor {
+pub struct Codegen {
     unflattened_code: HashMap<Rc<FunctionName>, Vec<isa::Block>>,
     constant_operands: BTreeMap<usize, isa::Operand>,
 }
 
-impl FuncContextVisitor {
+impl Codegen {
     pub fn new() -> Self {
-        FuncContextVisitor {
+        Codegen {
             unflattened_code: HashMap::new(),
             constant_operands: BTreeMap::new(),
         }
     }
 
-    pub fn process(&mut self, contexts: &FuncContexts) -> Result<context::Contexts, Error> {
-        dbg_println!("processing {:#?}", contexts);
-        for (name, context) in contexts {
-            let context = context.as_ref().unwrap();
+    pub fn process(&mut self, program: &Program) -> Result<context::Contexts, Error> {
+        dbg_println!("processing {:#?}", program);
+        for (name, context) in &program.contexts {
             self.visit_context(&context, &name);
         }
         let mut isa_contexts = context::Contexts::new();
@@ -318,13 +317,7 @@ impl FuncContextVisitor {
     }
 
     pub fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
-        self.allocate_registers_for_block(
-            0,
-            blocks,
-            context,
-            ALLOC_REGS.to_vec(),
-            BTreeMap::new(),
-        );
+        self.allocate_registers_for_block(0, blocks, context, ALLOC_REGS.to_vec(), BTreeMap::new());
     }
 
     fn allocate_registers_for_block(
