@@ -14,6 +14,7 @@ pub enum Error {
     UnknownIdentifier(Rc<str>),
     NotEnoughArguments,
     InvalidArguments,
+    InvalidReturnType,
 }
 
 pub type VisitorResult = Result<(), Error>;
@@ -237,6 +238,7 @@ pub struct DefStatement {
     pub id: Rc<str>,
     pub args: Vec<(Rc<str>, Option<TypeId>)>,
     pub exprs: Vec<NodeBox>,
+    pub return_type: Option<TypeId>,
     pub attrs: Option<Vec<AttributeValue>>,
     pub intrinsic: Cell<IntrinsicType>,
 }

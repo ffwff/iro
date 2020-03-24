@@ -1,0 +1,4 @@
+def f : I32
+    return "A"
+end
+f()

@@ -172,8 +172,11 @@ impl Visitor for SSAVisitor {
                 let defstmt: &DefStatement = defstmt_rc.borrow();
                 for (arg, typed) in &defstmt.args {
                     if let Some(typed) = typed {
-                        self.visit_typeid(&typed);
+                        self.visit_typeid(&typed)?;
                     }
+                }
+                if let Some(typed) = defstmt.return_type.as_ref() {
+                    self.visit_typeid(&typed)?;
                 }
             }
         }
@@ -215,6 +218,12 @@ impl Visitor for SSAVisitor {
         }
         if !self.has_direct_return && self.context.rettype != Type::NoReturn {
             self.context.rettype = self.context.rettype.unify(&Type::Nil);
+        }
+        if let Some(declared_typed) = n.return_type.as_ref() {
+            let maybe_declared: &Option<Type> = &declared_typed.typed.borrow();
+            if maybe_declared.clone().unwrap() != self.context.rettype {
+                return Err(Error::InvalidReturnType);
+            }
         }
         Ok(())
     }

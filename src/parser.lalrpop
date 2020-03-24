@@ -55,11 +55,16 @@ AttributeValue: AttributeValue = {
 
 // Function definitions
 DefStatement: NodeBox = {
-    <attrs:AttributeList?> "def" <id:Identifier> <args:DefArgumentList?> NL+ <exprs:Expr*> "end" => {
+    <attrs:AttributeList?> "def"
+        <id:Identifier>
+        <args:DefArgumentList?>
+        <return_type:TypeSpecifier?>
+    NL+ <exprs:Expr*> "end" => {
         NodeBox::new(DefStatement {
             id: Rc::from(id),
             args: args.unwrap_or_else(|| vec![]),
             exprs,
+            return_type,
             attrs,
             intrinsic: Cell::new(IntrinsicType::None)
         })
