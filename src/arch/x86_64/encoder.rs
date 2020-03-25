@@ -193,7 +193,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.push(0x50 + (reg as u8));
                 } else {
                     dest.code.push(0x41);
-                    dest.code.push(0x50 + (reg as u8) - 0b111);
+                    dest.code.push(0x50 + (reg as u8) - 0b1000);
                 }
             }
             // push rbp
@@ -227,7 +227,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.push(0x58 + (reg as u8));
                 } else {
                     dest.code.push(0x41);
-                    dest.code.push(0x58 + (reg as u8) - 0b111);
+                    dest.code.push(0x58 + (reg as u8) - 0b1000);
                 }
             }
             // ret

@@ -31,11 +31,17 @@ static ALLOC_REGS: [isa::Reg; 14] = [
 ];
 
 static CALLEE_SAVED: [isa::Reg; 5] = [
-    isa::Reg::Rbx,
-    isa::Reg::R12,
-    isa::Reg::R13,
-    isa::Reg::R14,
     isa::Reg::R15,
+    isa::Reg::R14,
+    isa::Reg::R13,
+    isa::Reg::R12,
+    isa::Reg::Rbx,
+];
+
+static CALLER_SAVED: [isa::Reg; 3] = [
+    isa::Reg::R11,
+    isa::Reg::R10,
+    isa::Reg::Rax,
 ];
 
 #[derive(Debug, Clone)]
@@ -132,7 +138,8 @@ impl Codegen {
                     .insert(ins.retvar().unwrap(), isa::Operand::U32(*x as u32));
             }
             InsType::Call { name, args } => {
-                let mut clobbers = vec![];
+                let mut clobbers: Vec<(isa::Reg, Option<usize>)> =
+                    CALLER_SAVED.iter().map(|reg| (*reg, None)).collect();
                 for (idx, &reg) in ARG_REGS.iter().enumerate() {
                     if let Some(arg) = args.get(idx).cloned() {
                         assert_eq!(&context.variables[idx], &Type::I32);
@@ -416,7 +423,7 @@ impl Codegen {
                         unused_regs.remove_item(&reg);
                     }
                     for (reg, except_for_var) in clobbers {
-                        let mut to_remove = None;
+                        let mut to_remove_reg = None;
                         for (var, vdata) in &mut var_to_reg {
                             if vdata.0 == Some(*reg) {
                                 if Some(*var) == *except_for_var {
@@ -425,19 +432,30 @@ impl Codegen {
                                 if vdata.0.is_none() {
                                     break;
                                 }
-                                body.push(isa::Ins {
-                                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                                        dest: isa::Operand::UndeterminedMapping(*var),
-                                        src: isa::Operand::Register(*reg),
-                                    }),
-                                });
-                                to_remove = Some(*var);
+                                if let Some(newreg) = unused_regs.pop() {
+                                    body.push(isa::Ins {
+                                        typed: isa::InsType::MovI32(isa::TwoOperands {
+                                            dest: isa::Operand::Register(newreg), 
+                                            src: isa::Operand::Register(*reg),
+                                        }),
+                                    });
+                                    vdata.0.replace(newreg);
+                                } else {
+                                    body.push(isa::Ins {
+                                        typed: isa::InsType::MovI32(isa::TwoOperands {
+                                            dest: isa::Operand::UndeterminedMapping(*var),
+                                            src: isa::Operand::Register(*reg),
+                                        }),
+                                    });
+                                    to_remove_reg = Some(*var);
+                                }
                                 break;
                             }
                         }
-                        if let Some(to_remove) = to_remove {
-                            dbg_println!(" => removing var {} {:?}", to_remove, var_to_reg[&to_remove].0);
-                            let var_ref = var_to_reg.get_mut(&to_remove).unwrap();
+                        if let Some(to_remove_reg) = to_remove_reg {
+                            dbg_println!(" => moving var {} ({:?}) to stack",
+                                to_remove_reg, var_to_reg[&to_remove_reg].0);
+                            let var_ref = var_to_reg.get_mut(&to_remove_reg).unwrap();
                             var_ref.0.take();
                         }
                     }
@@ -597,6 +615,7 @@ impl Codegen {
                         isa::Operand::Register(reg) => {
                             if CALLEE_SAVED.contains(&reg) {
                                 save_regs.insert(reg);
+                                stack_used = true;
                             }
                         }
                         _ => (),
