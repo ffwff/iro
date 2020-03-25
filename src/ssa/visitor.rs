@@ -163,14 +163,14 @@ impl Visitor for SSAVisitor {
                 outerstmts.push(expr);
             }
         }
-        
+
         {
             let top_level_rcc = self.top_level.inner().clone();
             let top_level_rc: &RefCell<TopLevelInfo> = top_level_rcc.borrow();
             let top_level: &TopLevelInfo = &top_level_rc.borrow();
-            for (id, defstmt_rc) in &top_level.defstmts {
+            for (_, defstmt_rc) in &top_level.defstmts {
                 let defstmt: &DefStatement = defstmt_rc.borrow();
-                for (arg, typed) in &defstmt.args {
+                for (_, typed) in &defstmt.args {
                     if let Some(typed) = typed {
                         self.visit_typeid(&typed)?;
                     }
@@ -194,7 +194,7 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult {
-        for ((arg, declared_typed), typed) in n.args.iter().zip(self.context.args.iter()) {
+        for ((_arg, declared_typed), typed) in n.args.iter().zip(self.context.args.iter()) {
             if let Some(maybe_declared_rc) = declared_typed.as_ref() {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
                 if let Some(declared_typed) = maybe_declared {
@@ -515,7 +515,7 @@ impl Visitor for SSAVisitor {
                         let visitor = RefCell::new(Some({
                             let func_context = Context::with_args(id.clone(), arg_types);
                             let mut visitor =
-                            SSAVisitor::with_context(func_context, self.top_level.clone());
+                                SSAVisitor::with_context(func_context, self.top_level.clone());
                             visitor.visit_defstmt(defstmt.borrow())?;
                             (func_name.clone(), visitor)
                         }));
@@ -670,17 +670,15 @@ impl Visitor for SSAVisitor {
 
     fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult {
         match &n.data {
-            TypeIdData::Identifier(id) => {
-                self.top_level.with(|top_level| {
-                    if let Some(typed) = top_level.types.get(id) {
-                        n.typed.replace(Some(typed.clone()));
-                        Ok(())
-                    } else {
-                        Err(Error::InternalError)
-                    }
-                })
-            }
-            _ => unimplemented!()
+            TypeIdData::Identifier(id) => self.top_level.with(|top_level| {
+                if let Some(typed) = top_level.types.get(id) {
+                    n.typed.replace(Some(typed.clone()));
+                    Ok(())
+                } else {
+                    Err(Error::InternalError)
+                }
+            }),
+            _ => unimplemented!(),
         }
     }
 }

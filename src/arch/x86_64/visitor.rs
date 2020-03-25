@@ -38,10 +38,7 @@ static CALLEE_SAVED: [isa::Reg; 5] = [
     isa::Reg::Rbx,
 ];
 
-static CALLER_SAVED: [isa::Reg; 2] = [
-    isa::Reg::R11,
-    isa::Reg::R10,
-];
+static CALLER_SAVED: [isa::Reg; 2] = [isa::Reg::R11, isa::Reg::R10];
 
 static RETURN_REG: isa::Reg = isa::Reg::Rax;
 
@@ -170,7 +167,9 @@ impl Codegen {
                 });
                 {
                     isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Unclobber(clobbers.into_iter().map(|(var, _)| var).collect()),
+                        typed: isa::InsType::Unclobber(
+                            clobbers.into_iter().map(|(var, _)| var).collect(),
+                        ),
                     });
                     // FIXME: calculate return types
                     isa_ins.push(isa::Ins {
@@ -180,14 +179,14 @@ impl Codegen {
                         }),
                     });
                     isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Unclobber(vec![ RETURN_REG ]),
+                        typed: isa::InsType::Unclobber(vec![RETURN_REG]),
                     });
                 }
             }
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Clobber(vec![ (isa::Reg::Rax, Some(*x)) ]),
+                    typed: isa::InsType::Clobber(vec![(isa::Reg::Rax, Some(*x))]),
                 });
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::MovI32(isa::TwoOperands {
@@ -212,14 +211,14 @@ impl Codegen {
                 match isa_ins.last() {
                     Some(isa::Ins {
                         typed: isa::InsType::Lt(threeops),
-                    }) |
-                    Some(isa::Ins {
+                    })
+                    | Some(isa::Ins {
                         typed: isa::InsType::Gt(threeops),
-                    }) |
-                    Some(isa::Ins {
+                    })
+                    | Some(isa::Ins {
                         typed: isa::InsType::Lte(threeops),
-                    }) |
-                    Some(isa::Ins {
+                    })
+                    | Some(isa::Ins {
                         typed: isa::InsType::Gte(threeops),
                     }) if threeops.dest == *condvar => {
                         let threeops = threeops.clone();
@@ -309,32 +308,30 @@ impl Codegen {
                     typed: isa::InsType::Jmp(*x),
                 });
             }
-            InsType::Lt((x, y)) |
-            InsType::Gt((x, y)) |
-            InsType::Lte((x, y)) |
-            InsType::Gte((x, y)) => {
+            InsType::Lt((x, y))
+            | InsType::Gt((x, y))
+            | InsType::Lte((x, y))
+            | InsType::Gte((x, y)) => {
                 let operands = isa::VirtualThreeOperands {
                     dest: ins.retvar().unwrap(),
                     left: *x,
                     right: *y,
                 };
-                isa_ins.push(
-                    match &ins.typed {
-                        InsType::Lt(_) => isa::Ins {
-                            typed: isa::InsType::Lt(operands),
-                        },
-                        InsType::Lte(_) => isa::Ins {
-                            typed: isa::InsType::Lte(operands),
-                        },
-                        InsType::Gt(_) => isa::Ins {
-                            typed: isa::InsType::Gt(operands),
-                        },
-                        InsType::Gte(_) => isa::Ins {
-                            typed: isa::InsType::Gte(operands),
-                        },
-                        _ => unreachable!(),
-                    }
-                );
+                isa_ins.push(match &ins.typed {
+                    InsType::Lt(_) => isa::Ins {
+                        typed: isa::InsType::Lt(operands),
+                    },
+                    InsType::Lte(_) => isa::Ins {
+                        typed: isa::InsType::Lte(operands),
+                    },
+                    InsType::Gt(_) => isa::Ins {
+                        typed: isa::InsType::Gt(operands),
+                    },
+                    InsType::Gte(_) => isa::Ins {
+                        typed: isa::InsType::Gte(operands),
+                    },
+                    _ => unreachable!(),
+                });
             }
             InsType::Add((x, y))
             | InsType::Sub((x, y))
@@ -409,7 +406,7 @@ impl Codegen {
                         if let Some(set) = deallocation.get_mut(&idx) {
                             set.insert(*var);
                         } else {
-                            deallocation.insert(idx, btreeset![ *var ]);
+                            deallocation.insert(idx, btreeset![*var]);
                         }
                         variable_factored.insert(*var);
                     }
@@ -422,7 +419,13 @@ impl Codegen {
         let mut body = vec![];
         let mut postlude = vec![];
         for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
-            dbg_println!("!!! {:#?} {:?} {:?} {:?}", ins, unused_regs, var_to_reg, deallocation);
+            dbg_println!(
+                "!!! {:#?} {:?} {:?} {:?}",
+                ins,
+                unused_regs,
+                var_to_reg,
+                deallocation
+            );
             match &ins.typed {
                 isa::InsType::Clobber(clobbers) => {
                     dbg_println!("clobbering: {:#?}", clobbers);
@@ -448,7 +451,7 @@ impl Codegen {
                                 if let Some(newreg) = unused_regs.pop() {
                                     body.push(isa::Ins {
                                         typed: isa::InsType::MovI32(isa::TwoOperands {
-                                            dest: isa::Operand::Register(newreg), 
+                                            dest: isa::Operand::Register(newreg),
                                             src: isa::Operand::Register(*reg),
                                         }),
                                     });
@@ -466,8 +469,11 @@ impl Codegen {
                             }
                         }
                         if let Some(to_remove_reg) = to_remove_reg {
-                            dbg_println!(" => moving var {} ({:?})",
-                                to_remove_reg, var_to_reg[&to_remove_reg].0);
+                            dbg_println!(
+                                " => moving var {} ({:?})",
+                                to_remove_reg,
+                                var_to_reg[&to_remove_reg].0
+                            );
                             let var_ref = var_to_reg.get_mut(&to_remove_reg).unwrap();
                             var_ref.0.take();
                         } else if let Some(to_remove_var) = to_remove_var {
@@ -654,7 +660,9 @@ impl Codegen {
             for block in blocks.iter_mut() {
                 if let Some(last) = block.ins.last_mut() {
                     if last.typed.is_ret() {
-                        last.typed = isa::InsType::LeaveAndRet { save_regs: save_regs.clone() };
+                        last.typed = isa::InsType::LeaveAndRet {
+                            save_regs: save_regs.clone(),
+                        };
                     }
                 }
             }

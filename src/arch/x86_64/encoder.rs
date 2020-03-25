@@ -76,8 +76,8 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
-            (Operand::Memory { .. }, Operand::Register(_)) |
-            (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
+            (Operand::Memory { .. }, Operand::Register(_))
+            | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
                 rex_prefix(dest, ops.src.clone(), ops.dest.clone());
                 dest.code.push(0x01);
@@ -97,8 +97,8 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
-            (Operand::Memory { .. }, Operand::Register(_)) |
-            (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
+            (Operand::Memory { .. }, Operand::Register(_))
+            | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
                 unimplemented!()
                 // dest.code.push(0x29);
@@ -106,14 +106,12 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             }
         },
         InsType::MulI32(ops) => match (&ops.dest, &ops.src) {
-            (Operand::Register(left), Operand::U32(n)) => {
+            (Operand::Register(_left), Operand::U32(_n)) => {
                 unimplemented!();
             }
-            (Operand::Memory { .. }, Operand::Register(_)) |
-            (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
-            (_, _) => {
-                unimplemented!()
-            }
+            (Operand::Memory { .. }, Operand::Register(_))
+            | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
+            (_, _) => unimplemented!(),
         },
         InsType::DivI32(_ops) => unimplemented!(),
         InsType::CmpI32 { ops, .. } => match (&ops.dest, &ops.src) {
@@ -129,8 +127,8 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
-            (Operand::Memory { .. }, Operand::Register(_)) |
-            (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
+            (Operand::Memory { .. }, Operand::Register(_))
+            | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
                 dest.code.push(0x39);
                 modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
@@ -248,17 +246,24 @@ fn modrm_normalize_reg(reg: u8) -> u8 {
 
 fn rex_prefix(dest: &mut context::Context, odest: Operand, osrc: Operand) {
     match (odest, osrc) {
-        (Operand::Register(left), Operand::Register(right)) |
-        (Operand::Register(left), Operand::Memory { disp: _, base: right }) =>
-        if (left as u8) > 0b111 || (right as u8) > 0b111 {
-            let mut rex_form = 0b0100_0000;
-            if (left as u8) > 0b111 {
-                rex_form |= 0b100;
+        (Operand::Register(left), Operand::Register(right))
+        | (
+            Operand::Register(left),
+            Operand::Memory {
+                disp: _,
+                base: right,
+            },
+        ) => {
+            if (left as u8) > 0b111 || (right as u8) > 0b111 {
+                let mut rex_form = 0b0100_0000;
+                if (left as u8) > 0b111 {
+                    rex_form |= 0b100;
+                }
+                if (right as u8) > 0b111 {
+                    rex_form |= 0b001;
+                }
+                dest.code.push(rex_form);
             }
-            if (right as u8) > 0b111 {
-                rex_form |= 0b001;
-            }
-            dest.code.push(rex_form);
         }
         (_, _) => (),
     }
@@ -266,29 +271,29 @@ fn rex_prefix(dest: &mut context::Context, odest: Operand, osrc: Operand) {
 
 fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand, extension: u8) {
     match (odest, osrc) {
-        (Operand::Register(left), Operand::Register(right)) =>
-        {
-            dest.code
-                .push(0b11_000_000 |
-                      (modrm_normalize_reg(left as u8) << 3) |
-                      modrm_normalize_reg(right as u8))
-        }
+        (Operand::Register(left), Operand::Register(right)) => dest.code.push(
+            0b11_000_000
+                | (modrm_normalize_reg(left as u8) << 3)
+                | modrm_normalize_reg(right as u8),
+        ),
         (Operand::Register(reg), Operand::Memory { disp, base }) => {
             if -127 <= disp && disp <= 127 {
-                dest.code
-                    .push(0b01_000_000 |
-                         (modrm_normalize_reg(reg as u8)  << 3) |
-                         modrm_normalize_reg(base as u8));
+                dest.code.push(
+                    0b01_000_000
+                        | (modrm_normalize_reg(reg as u8) << 3)
+                        | modrm_normalize_reg(base as u8),
+                );
                 if disp < 0 {
                     dest.code.push((0x100 + disp) as u8);
                 } else {
                     dest.code.push(disp as u8);
                 }
             } else {
-                dest.code
-                    .push(0b10_000_000 |
-                         (modrm_normalize_reg(reg as u8)  << 3) |
-                         modrm_normalize_reg(base as u8));
+                dest.code.push(
+                    0b10_000_000
+                        | (modrm_normalize_reg(reg as u8) << 3)
+                        | modrm_normalize_reg(base as u8),
+                );
                 if disp < 0 {
                     dest.code
                         .extend_from_slice(&(0x1_0000_0000i64 - (disp as i64)).to_le_bytes());
@@ -297,9 +302,9 @@ fn modrm(dest: &mut context::Context, odest: Operand, osrc: Operand, extension: 
                 }
             }
         }
-        (Operand::Register(left), right) if right.is_lit() => {
-            dest.code.push(0b11_000_000 | (extension << 3) | modrm_normalize_reg(left as u8))
-        }
+        (Operand::Register(left), right) if right.is_lit() => dest
+            .code
+            .push(0b11_000_000 | (extension << 3) | modrm_normalize_reg(left as u8)),
         _ => unimplemented!(),
     }
 }

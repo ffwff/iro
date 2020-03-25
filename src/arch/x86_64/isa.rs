@@ -26,7 +26,7 @@ impl Ins {
                     callback(&ops.dest);
                 }
             }
-            | InsType::Clobber(clobbers) => {
+            InsType::Clobber(clobbers) => {
                 for (reg, _) in clobbers {
                     let operand = Operand::Register(*reg);
                     callback(&operand);

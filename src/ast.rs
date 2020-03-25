@@ -1,9 +1,9 @@
+use crate::ssa::isa::{IntrinsicType, Type};
+use downcast_rs::Downcast;
 use std::borrow::Borrow;
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
-use crate::ssa::isa::{Type, IntrinsicType};
-use downcast_rs::Downcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -139,7 +139,7 @@ impl TypeId {
     pub fn new(data: TypeIdData) -> Self {
         Self {
             data,
-            typed: RefCell::new(None)
+            typed: RefCell::new(None),
         }
     }
 }

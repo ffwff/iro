@@ -69,11 +69,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
         // Build the post-order traversal array
         let mut rpo = Vec::with_capacity(context.blocks.len());
         {
-            fn walk(
-                node: usize,
-                context: &Context,
-                post_order: &mut Vec<usize>,
-            ) {
+            fn walk(node: usize, context: &Context, post_order: &mut Vec<usize>) {
                 let block = &context.blocks[node];
                 for succ in &block.succs {
                     // Since this is a DFS tree, all non-looping descendents
