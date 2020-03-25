@@ -38,11 +38,12 @@ static CALLEE_SAVED: [isa::Reg; 5] = [
     isa::Reg::Rbx,
 ];
 
-static CALLER_SAVED: [isa::Reg; 3] = [
+static CALLER_SAVED: [isa::Reg; 2] = [
     isa::Reg::R11,
     isa::Reg::R10,
-    isa::Reg::Rax,
 ];
+
+static RETURN_REG: isa::Reg = isa::Reg::Rax;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -149,9 +150,12 @@ impl Codegen {
                     }
                 }
                 // FIXME: check for no return/struct returns
-                clobbers.push((isa::Reg::Rax, None));
                 isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Clobber(clobbers),
+                    typed: isa::InsType::Clobber({
+                        let mut clobbers = clobbers.clone();
+                        clobbers.push((RETURN_REG, None));
+                        clobbers
+                    }),
                 });
                 for (&arg, &reg) in args.iter().zip(ARG_REGS.iter()) {
                     isa_ins.push(isa::Ins {
@@ -164,18 +168,21 @@ impl Codegen {
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Call(name.clone()),
                 });
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Unclobber(ARG_REGS.to_vec()),
-                });
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                        dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
-                        src: isa::Operand::Register(isa::Reg::Rax),
-                    }),
-                });
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Unclobber(vec![ isa::Reg::Rax ]),
-                });
+                {
+                    isa_ins.push(isa::Ins {
+                        typed: isa::InsType::Unclobber(clobbers.into_iter().map(|(var, _)| var).collect()),
+                    });
+                    // FIXME: calculate return types
+                    isa_ins.push(isa::Ins {
+                        typed: isa::InsType::MovI32(isa::TwoOperands {
+                            dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
+                            src: isa::Operand::Register(RETURN_REG),
+                        }),
+                    });
+                    isa_ins.push(isa::Ins {
+                        typed: isa::InsType::Unclobber(vec![ RETURN_REG ]),
+                    });
+                }
             }
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
@@ -422,15 +429,21 @@ impl Codegen {
                     for (reg, _) in clobbers {
                         unused_regs.remove_item(&reg);
                     }
+                    let mut set = deallocation.get_mut(&idx);
                     for (reg, except_for_var) in clobbers {
                         let mut to_remove_reg = None;
+                        let mut to_remove_var = None;
                         for (var, vdata) in &mut var_to_reg {
                             if vdata.0 == Some(*reg) {
                                 if Some(*var) == *except_for_var {
                                     break;
                                 }
-                                if vdata.0.is_none() {
-                                    break;
+                                if let Some(set) = set.as_mut() {
+                                    if set.remove(&var) {
+                                        dbg_println!("dealloc from clobber {:?}", var);
+                                        to_remove_var = Some(*var);
+                                        break;
+                                    }
                                 }
                                 if let Some(newreg) = unused_regs.pop() {
                                     body.push(isa::Ins {
@@ -453,10 +466,12 @@ impl Codegen {
                             }
                         }
                         if let Some(to_remove_reg) = to_remove_reg {
-                            dbg_println!(" => moving var {} ({:?}) to stack",
+                            dbg_println!(" => moving var {} ({:?})",
                                 to_remove_reg, var_to_reg[&to_remove_reg].0);
                             let var_ref = var_to_reg.get_mut(&to_remove_reg).unwrap();
                             var_ref.0.take();
+                        } else if let Some(to_remove_var) = to_remove_var {
+                            var_to_reg.remove(&to_remove_var);
                         }
                     }
                     continue;
