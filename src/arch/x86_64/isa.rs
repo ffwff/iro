@@ -186,7 +186,25 @@ impl Ins {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Block {
     pub ins: Vec<Ins>,
+}
+
+impl std::fmt::Debug for Block {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.debug_list()
+            .entries(self.ins.iter().map(|ins| InsPrettifier { ins }))
+            .finish()
+    }
+}
+
+struct InsPrettifier<'a> {
+    pub(self) ins: &'a Ins,
+}
+
+impl<'a> std::fmt::Debug for InsPrettifier<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.ins)
+    }
 }
