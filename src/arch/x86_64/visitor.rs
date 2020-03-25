@@ -142,12 +142,9 @@ impl Codegen {
                         clobbers.push((reg, None));
                     }
                 }
+                clobbers.push((RETURN_REG, None));
                 // FIXME: check for no return/struct returns
-                isa_ins.push(isa::Ins::Clobber({
-                    let mut clobbers = clobbers.clone();
-                    clobbers.push((RETURN_REG, None));
-                    clobbers
-                }));
+                isa_ins.push(isa::Ins::Clobber(clobbers.clone()));
                 for (&arg, &reg) in args.iter().zip(ARG_REGS.iter()) {
                     isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
                         dest: isa::Operand::Register(reg),
@@ -163,7 +160,6 @@ impl Codegen {
                     dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
                     src: isa::Operand::Register(RETURN_REG),
                 }));
-                isa_ins.push(isa::Ins::Unclobber(vec![(RETURN_REG, None)]));
             }
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
@@ -413,7 +409,8 @@ impl Codegen {
                 }
                 _ => (),
             }
-            ins.rename_var_by(false, |var| {
+            let is_mov = ins.is_mov();
+            ins.rename_var_by(false, |var, other_operand| {
                 dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
                 dbg_println!("  => {:?}", unused_regs);
                 if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
@@ -434,7 +431,21 @@ impl Codegen {
                                 maybe_reg.0 = Some(reg);
                             }
                         }
-                    } else if let Some(reg) = unused_regs.pop() {
+                    } else {
+                        if unused_regs.is_empty() {
+                            // save one of the vars to stack
+                            unimplemented!();
+                        }
+                        let mut reg = None;
+                        if is_mov {
+                            if let isa::Operand::Register(other_reg) = other_operand {
+                                if unused_regs.remove_item(&other_reg).is_some() {
+                                    dbg_println!("using other operand: {:?}", other_reg);
+                                    reg = Some(*other_reg);
+                                }
+                            }
+                        }
+                        let reg = reg.unwrap_or_else(|| unused_regs.pop().unwrap());
                         // Unspill the local variable if it's used in the precceding blocks
                         if cblock.vars_in.contains(&mapping) {
                             // FIXME: correct mov type pls
@@ -445,9 +456,6 @@ impl Codegen {
                         }
                         *var = isa::Operand::Register(reg);
                         var_to_reg.insert(mapping, (Some(reg), idx));
-                    } else {
-                        // save one of the vars to stack
-                        unimplemented!()
                     }
                     if let Some(set) = deallocation.get_mut(&idx) {
                         if set.remove(&mapping) {
@@ -524,7 +532,7 @@ impl Codegen {
         for block in blocks.iter_mut() {
             for ins in &mut block.ins {
                 if let Some(size) = ins.mov_size() {
-                    ins.rename_var_by(true, |var| match var.clone() {
+                    ins.rename_var_by(true, |var, _| match var.clone() {
                         isa::Operand::UndeterminedMapping(mapping) => {
                             let disp = if let Some(offset) = map_to_stack_offset.get(&mapping) {
                                 *offset

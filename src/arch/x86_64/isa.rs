@@ -106,21 +106,17 @@ impl Ins {
     where
         T: FnMut(&Operand),
     {
-        match self {
-            Ins::MovI32(ops)
-            | Ins::AddI32(ops)
-            | Ins::SubI32(ops)
-            | Ins::MulI32(ops)
-            | Ins::DivI32(ops)
-            | Ins::CmpI32 { ops, .. } => {
-                if dest_first {
-                    callback(&ops.dest);
-                    callback(&ops.src);
-                } else {
-                    callback(&ops.src);
-                    callback(&ops.dest);
-                }
+        if let Some(ops) = self.get_two_operands() {
+            if dest_first {
+                callback(&ops.dest);
+                callback(&ops.src);
+            } else {
+                callback(&ops.src);
+                callback(&ops.dest);
             }
+            return;
+        }
+        match self {
             Ins::Clobber(clobbers) | Ins::Unclobber(clobbers) => {
                 for (reg, _) in clobbers {
                     let operand = Operand::Register(*reg);
@@ -133,24 +129,16 @@ impl Ins {
 
     pub fn rename_var_by<T>(&mut self, dest_first: bool, mut callback: T)
     where
-        T: FnMut(&mut Operand),
+        T: FnMut(&mut Operand, &mut Operand),
     {
-        match self {
-            Ins::MovI32(ops)
-            | Ins::AddI32(ops)
-            | Ins::SubI32(ops)
-            | Ins::MulI32(ops)
-            | Ins::DivI32(ops)
-            | Ins::CmpI32 { ops, .. } => {
-                if dest_first {
-                    callback(&mut ops.dest);
-                    callback(&mut ops.src);
-                } else {
-                    callback(&mut ops.src);
-                    callback(&mut ops.dest);
-                }
+        if let Some(ops) = self.get_two_operands_mut() {
+            if dest_first {
+                callback(&mut ops.dest, &mut ops.src);
+                callback(&mut ops.src, &mut ops.dest);
+            } else {
+                callback(&mut ops.src, &mut ops.dest);
+                callback(&mut ops.dest, &mut ops.src);
             }
-            _ => (),
         }
     }
 
@@ -178,8 +166,37 @@ impl Ins {
         }
     }
 
+    pub fn get_two_operands<'a>(&'a self) -> Option<&'a TwoOperands> {
+        match self {
+            Ins::MovI32(ops)
+            | Ins::AddI32(ops)
+            | Ins::SubI32(ops)
+            | Ins::MulI32(ops)
+            | Ins::DivI32(ops)
+            | Ins::CmpI32 { ops, .. } => Some(ops),
+            _ => None,
+        }
+    }
+
+    pub fn get_two_operands_mut<'a>(&'a mut self) -> Option<&'a mut TwoOperands> {
+        match self {
+            Ins::MovI32(ops)
+            | Ins::AddI32(ops)
+            | Ins::SubI32(ops)
+            | Ins::MulI32(ops)
+            | Ins::DivI32(ops)
+            | Ins::CmpI32 { ops, .. } => Some(ops),
+            _ => None,
+        }
+    }
+
+    pub fn is_mov(&self) -> bool {
+        self.mov_size().is_some()
+    }
+
     pub fn mov_size(&self) -> Option<usize> {
         match self {
+            Ins::MovI64(_) => Some(8),
             Ins::MovI32(_) => Some(4),
             _ => None,
         }
