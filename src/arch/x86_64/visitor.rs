@@ -165,23 +165,21 @@ impl Codegen {
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Call(name.clone()),
                 });
-                {
-                    isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Unclobber(
-                            clobbers.into_iter().map(|(var, _)| var).collect(),
-                        ),
-                    });
-                    // FIXME: calculate return types
-                    isa_ins.push(isa::Ins {
-                        typed: isa::InsType::MovI32(isa::TwoOperands {
-                            dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
-                            src: isa::Operand::Register(RETURN_REG),
-                        }),
-                    });
-                    isa_ins.push(isa::Ins {
-                        typed: isa::InsType::Unclobber(vec![RETURN_REG]),
-                    });
-                }
+                // We store the clobbered values in Unclobber to extend the lifetime of the variables
+                // until the end of the call instruction
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Unclobber(clobbers.clone()),
+                });
+                // FIXME: calculate return types
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::MovI32(isa::TwoOperands {
+                        dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
+                        src: isa::Operand::Register(RETURN_REG),
+                    }),
+                });
+                isa_ins.push(isa::Ins {
+                    typed: isa::InsType::Unclobber(vec![(RETURN_REG, None)]),
+                });
             }
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
@@ -482,8 +480,8 @@ impl Codegen {
                     }
                     continue;
                 }
-                isa::InsType::Unclobber(regs) => {
-                    for reg in regs {
+                isa::InsType::Unclobber(clobbers) => {
+                    for (reg, _) in clobbers {
                         debug_assert!(!unused_regs.contains(reg));
                         unused_regs.push(*reg);
                     }

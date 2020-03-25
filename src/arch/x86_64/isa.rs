@@ -26,7 +26,8 @@ impl Ins {
                     callback(&ops.dest);
                 }
             }
-            InsType::Clobber(clobbers) => {
+            InsType::Clobber(clobbers)
+            | InsType::Unclobber(clobbers) => {
                 for (reg, _) in clobbers {
                     let operand = Operand::Register(*reg);
                     callback(&operand);
@@ -154,7 +155,7 @@ pub enum InsType {
         save_regs: Vec<Reg>,
     },
     Clobber(Vec<(Reg, Option<usize>)>),
-    Unclobber(Vec<Reg>),
+    Unclobber(Vec<(Reg, Option<usize>)>),
     Gt(VirtualThreeOperands),
     Lt(VirtualThreeOperands),
     Gte(VirtualThreeOperands),
