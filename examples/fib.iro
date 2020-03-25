@@ -1,8 +1,8 @@
 def fib(n): I32
     if n <= 1
-        return n
+        return 1
     end
     return fib(n-1) + fib(n-2)
 end
 
-fib(9)
+fib(46)

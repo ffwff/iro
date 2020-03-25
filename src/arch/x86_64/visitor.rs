@@ -137,20 +137,23 @@ impl Codegen {
                     if let Some(arg) = args.get(idx).cloned() {
                         assert_eq!(&context.variables[idx], &Type::I32);
                         clobbers.push((reg, Some(arg)));
-                        isa_ins.push(isa::Ins {
-                            typed: isa::InsType::MovI32(isa::TwoOperands {
-                                dest: isa::Operand::Register(reg),
-                                src: self.get_register_for_var(arg),
-                            }),
-                        });
                     } else {
                         clobbers.push((reg, None));
                     }
                 }
+                // FIXME: check for no return/struct returns
                 clobbers.push((isa::Reg::Rax, None));
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Clobber(clobbers),
                 });
+                for (&arg, &reg) in args.iter().zip(ARG_REGS.iter()) {
+                    isa_ins.push(isa::Ins {
+                        typed: isa::InsType::MovI32(isa::TwoOperands {
+                            dest: isa::Operand::Register(reg),
+                            src: self.get_register_for_var(arg),
+                        }),
+                    });
+                }
                 isa_ins.push(isa::Ins {
                     typed: isa::InsType::Call(name.clone()),
                 });
@@ -378,16 +381,22 @@ impl Codegen {
     ) {
         let cblock = &context.blocks[node];
         let mut isa_block = std::mem::replace(&mut blocks[node], isa::Block { ins: vec![] });
-        let mut variable_factored: BTreeSet<usize> = btreeset![];
-        // A vector of (ins index, variable) which maps the position in the block.ins
-        // to the variable being deallocated
-        let mut deallocation: Vec<(usize, usize)> = vec![];
+        // We defer despilling of the output variables to cleanup stage
+        // or when we run out of variables
+        let mut variable_factored: BTreeSet<usize> = cblock.vars_out.clone();
+        // A map of (ins index, variable set) which maps instruction indices
+        // to the variables deallocated at that timestep
+        let mut deallocation: BTreeMap<usize, BTreeSet<usize>> = btreemap![];
         // Infer lifetimes for each variable
         for (idx, ins) in isa_block.ins.iter().enumerate().rev() {
             ins.each_used_var(true, |var| match var {
                 isa::Operand::UndeterminedMapping(var) => {
                     if !variable_factored.contains(&var) {
-                        deallocation.push((idx, *var));
+                        if let Some(set) = deallocation.get_mut(&idx) {
+                            set.insert(*var);
+                        } else {
+                            deallocation.insert(idx, btreeset![ *var ]);
+                        }
                         variable_factored.insert(*var);
                     }
                 }
@@ -399,7 +408,7 @@ impl Codegen {
         let mut body = vec![];
         let mut postlude = vec![];
         for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
-            dbg_println!("!!! {:#?} {:?} {:?}", ins, var_to_reg, deallocation);
+            dbg_println!("!!! {:#?} {:?} {:?} {:?}", ins, unused_regs, var_to_reg, deallocation);
             match &ins.typed {
                 isa::InsType::Clobber(clobbers) => {
                     dbg_println!("clobbering: {:#?}", clobbers);
@@ -447,11 +456,10 @@ impl Codegen {
                 dbg_println!(" => {:?} {:?} {:?}", var, var_to_reg, deallocation);
                 dbg_println!("  => {:?}", unused_regs);
                 if let isa::Operand::UndeterminedMapping(mapping) = var.clone() {
-                    let _reg = if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
+                    if let Some(maybe_reg) = var_to_reg.get_mut(&mapping) {
                         match maybe_reg.clone() {
                             (Some(reg), _) => {
                                 *var = isa::Operand::Register(reg);
-                                reg
                             }
                             (None, _) => {
                                 // The variable used to store this node has previously
@@ -465,7 +473,6 @@ impl Codegen {
                                     }),
                                 });
                                 maybe_reg.0 = Some(reg);
-                                reg
                             }
                         }
                     } else if let Some(reg) = unused_regs.pop() {
@@ -481,20 +488,14 @@ impl Codegen {
                         }
                         *var = isa::Operand::Register(reg);
                         var_to_reg.insert(mapping, (Some(reg), idx));
-                        reg
                     } else {
                         // save one of the vars to stack
                         unimplemented!()
-                    };
-                    if let Some((didx, dvar)) = deallocation.last() {
-                        if idx == *didx && mapping == *dvar {
-                            deallocation.pop();
-                            let (reg, _) = var_to_reg[&mapping];
-                            // We defer despilling of the output variables to cleanup stage
-                            // or when we run out of variables
-                            if !cblock.vars_out.contains(&mapping) {
-                                unused_regs.push(reg.unwrap());
-                            }
+                    }
+                    if let Some(set) = deallocation.get_mut(&idx) {
+                        if set.remove(&mapping) {
+                            let (reg, _) = var_to_reg.remove(&mapping).unwrap();
+                            unused_regs.push(reg.unwrap());
                         }
                     }
                 }
@@ -616,17 +617,12 @@ impl Codegen {
                     },
                 );
             }
-            if save_regs.is_empty() {
-                for block in blocks.iter_mut() {
-                    if let Some(last) = block.ins.last_mut() {
-                        if last.typed.is_ret() {
-                            last.typed = isa::InsType::LeaveAndRet { save_regs: vec![] };
-                        }
+            for block in blocks.iter_mut() {
+                if let Some(last) = block.ins.last_mut() {
+                    if last.typed.is_ret() {
+                        last.typed = isa::InsType::LeaveAndRet { save_regs: save_regs.clone() };
                     }
                 }
-            } else {
-                dbg_println!("{:#?}", save_regs);
-                unimplemented!()
             }
         }
     }

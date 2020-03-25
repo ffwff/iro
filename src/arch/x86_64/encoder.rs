@@ -57,12 +57,6 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 dest.code.push(0x89);
                 modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
-            (Operand::Register(_), Operand::Memory { .. }) => {
-                dbg_println!("reg<-mem");
-                rex_prefix(dest, ops.dest.clone(), ops.src.clone());
-                dest.code.push(0x89);
-                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
-            }
             (_, _) => {
                 rex_prefix(dest, ops.dest.clone(), ops.src.clone());
                 dest.code.push(0x8B);
