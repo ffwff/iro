@@ -1,6 +1,6 @@
 use crate::arch::context;
 use crate::arch::x86_64::isa;
-use isa::{InsType, Operand};
+use isa::{Ins, Operand};
 
 use crate::arch::context::RelativeRelocation;
 
@@ -43,9 +43,9 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
 
 fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     dbg_println!("encoding insn: {:#?}", ins);
-    match &ins.typed {
-        InsType::MovI64(_ops) => unimplemented!(),
-        InsType::MovI32(ops) => match (&ops.dest, &ops.src) {
+    match &ins {
+        Ins::MovI64(_ops) => unimplemented!(),
+        Ins::MovI32(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 dest.code.push(0xB8 + *left as u8);
@@ -63,7 +63,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
-        InsType::AddI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::AddI32(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
@@ -84,7 +84,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
         },
-        InsType::SubI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::SubI32(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
@@ -105,7 +105,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 // modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
-        InsType::MulI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::MulI32(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(_left), Operand::U32(_n)) => {
                 unimplemented!();
             }
@@ -113,8 +113,8 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => unimplemented!(),
         },
-        InsType::DivI32(_ops) => unimplemented!(),
-        InsType::CmpI32 { ops, .. } => match (&ops.dest, &ops.src) {
+        Ins::DivI32(_ops) => unimplemented!(),
+        Ins::CmpI32 { ops, .. } => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
@@ -134,7 +134,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
-        InsType::Jmp(branch) => {
+        Ins::Jmp(branch) => {
             dest.code.push(0xE9);
             let len = dest.code.len();
             dest.code.push(0x0);
@@ -146,16 +146,13 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 branch: *branch,
             });
         }
-        InsType::Jgt(branch)
-        | InsType::Jlt(branch)
-        | InsType::Jge(branch)
-        | InsType::Jle(branch) => {
+        Ins::Jgt(branch) | Ins::Jlt(branch) | Ins::Jge(branch) | Ins::Jle(branch) => {
             dest.code.push(0x0F);
-            match &ins.typed {
-                InsType::Jgt(_) => dest.code.push(0x8F),
-                InsType::Jlt(_) => dest.code.push(0x8C),
-                InsType::Jge(_) => dest.code.push(0x8D),
-                InsType::Jle(_) => dest.code.push(0x8E),
+            match &ins {
+                Ins::Jgt(_) => dest.code.push(0x8F),
+                Ins::Jlt(_) => dest.code.push(0x8C),
+                Ins::Jge(_) => dest.code.push(0x8D),
+                Ins::Jle(_) => dest.code.push(0x8E),
                 _ => unreachable!(),
             }
             let len = dest.code.len();
@@ -168,7 +165,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 branch: *branch,
             });
         }
-        InsType::Call(name) => {
+        Ins::Call(name) => {
             dest.code.push(0xE8);
             let len = dest.code.len();
             for _ in 0..4 {
@@ -177,11 +174,11 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             dest.code.push(0x90); // this nop is a HACK to make relocation easier
             dest.func_relocation.push((len, name.clone()));
         }
-        InsType::Ret => {
+        Ins::Ret => {
             dest.code.push(0xC3);
         }
-        InsType::Push(_op) => unimplemented!(),
-        InsType::Enter {
+        Ins::Push(_op) => unimplemented!(),
+        Ins::Enter {
             local_size,
             save_regs,
         } => {
@@ -216,7 +213,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 }
             }
         }
-        InsType::LeaveAndRet { save_regs } => {
+        Ins::LeaveAndRet { save_regs } => {
             // leave
             dest.code.push(0xC9);
             // pop all the save regs

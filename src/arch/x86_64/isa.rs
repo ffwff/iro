@@ -1,72 +1,6 @@
 use crate::ssa::isa::FunctionName;
 use std::rc::Rc;
 
-#[derive(Clone)]
-pub struct Ins {
-    pub typed: InsType,
-}
-
-impl Ins {
-    pub fn each_used_var<T>(&self, dest_first: bool, mut callback: T)
-    where
-        T: FnMut(&Operand),
-    {
-        match &self.typed {
-            InsType::MovI32(ops)
-            | InsType::AddI32(ops)
-            | InsType::SubI32(ops)
-            | InsType::MulI32(ops)
-            | InsType::DivI32(ops)
-            | InsType::CmpI32 { ops, .. } => {
-                if dest_first {
-                    callback(&ops.dest);
-                    callback(&ops.src);
-                } else {
-                    callback(&ops.src);
-                    callback(&ops.dest);
-                }
-            }
-            InsType::Clobber(clobbers)
-            | InsType::Unclobber(clobbers) => {
-                for (reg, _) in clobbers {
-                    let operand = Operand::Register(*reg);
-                    callback(&operand);
-                }
-            }
-            _ => (),
-        }
-    }
-
-    pub fn rename_var_by<T>(&mut self, dest_first: bool, mut callback: T)
-    where
-        T: FnMut(&mut Operand),
-    {
-        match &mut self.typed {
-            InsType::MovI32(ops)
-            | InsType::AddI32(ops)
-            | InsType::SubI32(ops)
-            | InsType::MulI32(ops)
-            | InsType::DivI32(ops)
-            | InsType::CmpI32 { ops, .. } => {
-                if dest_first {
-                    callback(&mut ops.dest);
-                    callback(&mut ops.src);
-                } else {
-                    callback(&mut ops.src);
-                    callback(&mut ops.dest);
-                }
-            }
-            _ => (),
-        }
-    }
-}
-
-impl std::fmt::Debug for Ins {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.typed)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Reg {
@@ -128,7 +62,7 @@ pub struct VirtualThreeOperands {
 }
 
 #[derive(Debug, Clone)]
-pub enum InsType {
+pub enum Ins {
     MovI64(TwoOperands),
     MovI32(TwoOperands),
     AddI32(TwoOperands),
@@ -167,14 +101,62 @@ pub enum InsType {
     },
 }
 
-impl InsType {
+impl Ins {
+    pub fn each_used_var<T>(&self, dest_first: bool, mut callback: T)
+    where
+        T: FnMut(&Operand),
+    {
+        match self {
+            Ins::MovI32(ops)
+            | Ins::AddI32(ops)
+            | Ins::SubI32(ops)
+            | Ins::MulI32(ops)
+            | Ins::DivI32(ops)
+            | Ins::CmpI32 { ops, .. } => {
+                if dest_first {
+                    callback(&ops.dest);
+                    callback(&ops.src);
+                } else {
+                    callback(&ops.src);
+                    callback(&ops.dest);
+                }
+            }
+            Ins::Clobber(clobbers) | Ins::Unclobber(clobbers) => {
+                for (reg, _) in clobbers {
+                    let operand = Operand::Register(*reg);
+                    callback(&operand);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    pub fn rename_var_by<T>(&mut self, dest_first: bool, mut callback: T)
+    where
+        T: FnMut(&mut Operand),
+    {
+        match self {
+            Ins::MovI32(ops)
+            | Ins::AddI32(ops)
+            | Ins::SubI32(ops)
+            | Ins::MulI32(ops)
+            | Ins::DivI32(ops)
+            | Ins::CmpI32 { ops, .. } => {
+                if dest_first {
+                    callback(&mut ops.dest);
+                    callback(&mut ops.src);
+                } else {
+                    callback(&mut ops.src);
+                    callback(&mut ops.dest);
+                }
+            }
+            _ => (),
+        }
+    }
+
     pub fn is_jmp(&self) -> bool {
         match self {
-            InsType::Jmp(_)
-            | InsType::Jgt(_)
-            | InsType::Jlt(_)
-            | InsType::Jge(_)
-            | InsType::Jle(_) => true,
+            Ins::Jmp(_) | Ins::Jgt(_) | Ins::Jlt(_) | Ins::Jge(_) | Ins::Jle(_) => true,
             _ => false,
         }
     }
@@ -184,21 +166,21 @@ impl InsType {
             return true;
         }
         match self {
-            InsType::CmpI32 { is_postlude, .. } => *is_postlude,
+            Ins::CmpI32 { is_postlude, .. } => *is_postlude,
             _ => false,
         }
     }
 
     pub fn is_ret(&self) -> bool {
         match self {
-            InsType::Ret => true,
+            Ins::Ret => true,
             _ => false,
         }
     }
 
     pub fn mov_size(&self) -> Option<usize> {
         match self {
-            InsType::MovI32(_) => Some(4),
+            Ins::MovI32(_) => Some(4),
             _ => None,
         }
     }

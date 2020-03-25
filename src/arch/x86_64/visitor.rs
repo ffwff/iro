@@ -115,21 +115,17 @@ impl Codegen {
             InsType::Nop => (),
             InsType::LoadVar(arg) => {
                 assert_eq!(&context.variables[*arg], &Type::I32);
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                        dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
-                        src: self.get_register_for_var(*arg),
-                    }),
-                });
+                isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
+                    dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
+                    src: self.get_register_for_var(*arg),
+                }));
             }
             InsType::LoadArg(arg) => {
                 assert_eq!(&context.variables[*arg], &Type::I32);
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                        dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
-                        src: isa::Operand::Register(ARG_REGS[*arg]),
-                    }),
-                });
+                isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
+                    dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
+                    src: isa::Operand::Register(ARG_REGS[*arg]),
+                }));
             }
             InsType::LoadI32(x) => {
                 self.constant_operands
@@ -147,59 +143,39 @@ impl Codegen {
                     }
                 }
                 // FIXME: check for no return/struct returns
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Clobber({
-                        let mut clobbers = clobbers.clone();
-                        clobbers.push((RETURN_REG, None));
-                        clobbers
-                    }),
-                });
+                isa_ins.push(isa::Ins::Clobber({
+                    let mut clobbers = clobbers.clone();
+                    clobbers.push((RETURN_REG, None));
+                    clobbers
+                }));
                 for (&arg, &reg) in args.iter().zip(ARG_REGS.iter()) {
-                    isa_ins.push(isa::Ins {
-                        typed: isa::InsType::MovI32(isa::TwoOperands {
-                            dest: isa::Operand::Register(reg),
-                            src: self.get_register_for_var(arg),
-                        }),
-                    });
+                    isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
+                        dest: isa::Operand::Register(reg),
+                        src: self.get_register_for_var(arg),
+                    }));
                 }
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Call(name.clone()),
-                });
+                isa_ins.push(isa::Ins::Call(name.clone()));
                 // We store the clobbered values in Unclobber to extend the lifetime of the variables
                 // until the end of the call instruction
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Unclobber(clobbers.clone()),
-                });
+                isa_ins.push(isa::Ins::Unclobber(clobbers.clone()));
                 // FIXME: calculate return types
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                        dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
-                        src: isa::Operand::Register(RETURN_REG),
-                    }),
-                });
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Unclobber(vec![(RETURN_REG, None)]),
-                });
+                isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
+                    dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
+                    src: isa::Operand::Register(RETURN_REG),
+                }));
+                isa_ins.push(isa::Ins::Unclobber(vec![(RETURN_REG, None)]));
             }
             InsType::Return(x) => {
                 assert_eq!(&context.variables[*x], &Type::I32);
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Clobber(vec![(isa::Reg::Rax, Some(*x))]),
-                });
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                        dest: isa::Operand::Register(isa::Reg::Rax),
-                        src: self.get_register_for_var(*x),
-                    }),
-                });
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Ret,
-                });
+                isa_ins.push(isa::Ins::Clobber(vec![(isa::Reg::Rax, Some(*x))]));
+                isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
+                    dest: isa::Operand::Register(isa::Reg::Rax),
+                    src: self.get_register_for_var(*x),
+                }));
+                isa_ins.push(isa::Ins::Ret);
             }
             InsType::Exit => {
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Ret,
-                });
+                isa_ins.push(isa::Ins::Ret);
             }
             InsType::IfJmp {
                 condvar,
@@ -207,84 +183,52 @@ impl Codegen {
                 iffalse,
             } => {
                 match isa_ins.last() {
-                    Some(isa::Ins {
-                        typed: isa::InsType::Lt(threeops),
-                    })
-                    | Some(isa::Ins {
-                        typed: isa::InsType::Gt(threeops),
-                    })
-                    | Some(isa::Ins {
-                        typed: isa::InsType::Lte(threeops),
-                    })
-                    | Some(isa::Ins {
-                        typed: isa::InsType::Gte(threeops),
-                    }) if threeops.dest == *condvar => {
+                    Some(isa::Ins::Lt(threeops))
+                    | Some(isa::Ins::Gt(threeops))
+                    | Some(isa::Ins::Lte(threeops))
+                    | Some(isa::Ins::Gte(threeops))
+                        if threeops.dest == *condvar =>
+                    {
                         let threeops = threeops.clone();
                         let last = isa_ins.pop().unwrap();
-                        isa_ins.push(isa::Ins {
-                            typed: isa::InsType::CmpI32 {
-                                ops: isa::TwoOperands {
-                                    dest: self.get_register_for_var(threeops.left),
-                                    src: self.get_register_for_var(threeops.right),
-                                },
-                                is_postlude: true,
+                        isa_ins.push(isa::Ins::CmpI32 {
+                            ops: isa::TwoOperands {
+                                dest: self.get_register_for_var(threeops.left),
+                                src: self.get_register_for_var(threeops.right),
                             },
+                            is_postlude: true,
                         });
-                        match last.typed {
-                            isa::InsType::Lt(_) => {
+                        match last {
+                            isa::Ins::Lt(_) => {
                                 if *iftrue == block_idx + 1 {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jge(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jge(*iffalse));
                                 } else {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jlt(*iftrue),
-                                    });
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jmp(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jlt(*iftrue));
+                                    isa_ins.push(isa::Ins::Jmp(*iffalse));
                                 }
                             }
-                            isa::InsType::Gt(_) => {
+                            isa::Ins::Gt(_) => {
                                 if *iftrue == block_idx + 1 {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jle(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jle(*iffalse));
                                 } else {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jgt(*iftrue),
-                                    });
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jmp(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jgt(*iftrue));
+                                    isa_ins.push(isa::Ins::Jmp(*iffalse));
                                 }
                             }
-                            isa::InsType::Lte(_) => {
+                            isa::Ins::Lte(_) => {
                                 if *iftrue == block_idx + 1 {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jgt(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jgt(*iffalse));
                                 } else {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jle(*iftrue),
-                                    });
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jmp(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jle(*iftrue));
+                                    isa_ins.push(isa::Ins::Jmp(*iffalse));
                                 }
                             }
-                            isa::InsType::Gte(_) => {
+                            isa::Ins::Gte(_) => {
                                 if *iftrue == block_idx + 1 {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jlt(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jlt(*iffalse));
                                 } else {
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jge(*iftrue),
-                                    });
-                                    isa_ins.push(isa::Ins {
-                                        typed: isa::InsType::Jmp(*iffalse),
-                                    });
+                                    isa_ins.push(isa::Ins::Jge(*iftrue));
+                                    isa_ins.push(isa::Ins::Jmp(*iffalse));
                                 }
                             }
                             _ => unreachable!(),
@@ -293,18 +237,14 @@ impl Codegen {
                     }
                     _ => (),
                 }
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::IfJmp {
-                        condvar: isa::Operand::UndeterminedMapping(*condvar),
-                        iftrue: *iftrue,
-                        iffalse: *iffalse,
-                    },
+                isa_ins.push(isa::Ins::IfJmp {
+                    condvar: isa::Operand::UndeterminedMapping(*condvar),
+                    iftrue: *iftrue,
+                    iffalse: *iffalse,
                 });
             }
             InsType::Jmp(x) => {
-                isa_ins.push(isa::Ins {
-                    typed: isa::InsType::Jmp(*x),
-                });
+                isa_ins.push(isa::Ins::Jmp(*x));
             }
             InsType::Lt((x, y))
             | InsType::Gt((x, y))
@@ -316,18 +256,10 @@ impl Codegen {
                     right: *y,
                 };
                 isa_ins.push(match &ins.typed {
-                    InsType::Lt(_) => isa::Ins {
-                        typed: isa::InsType::Lt(operands),
-                    },
-                    InsType::Lte(_) => isa::Ins {
-                        typed: isa::InsType::Lte(operands),
-                    },
-                    InsType::Gt(_) => isa::Ins {
-                        typed: isa::InsType::Gt(operands),
-                    },
-                    InsType::Gte(_) => isa::Ins {
-                        typed: isa::InsType::Gte(operands),
-                    },
+                    InsType::Lt(_) => isa::Ins::Lt(operands),
+                    InsType::Gt(_) => isa::Ins::Gt(operands),
+                    InsType::Lte(_) => isa::Ins::Lte(operands),
+                    InsType::Gte(_) => isa::Ins::Gte(operands),
                     _ => unreachable!(),
                 });
             }
@@ -340,26 +272,22 @@ impl Codegen {
                 match (left, right) {
                     (Type::I32, Type::I32) => {
                         let dest = isa::Operand::UndeterminedMapping(ins.retvar().unwrap());
-                        isa_ins.push(isa::Ins {
-                            typed: isa::InsType::MovI32(isa::TwoOperands {
+                        isa_ins.push(isa::Ins::MovI32(isa::TwoOperands {
+                            dest: dest.clone(),
+                            src: self.get_register_for_var(*x),
+                        }));
+                        isa_ins.push({
+                            let operands = isa::TwoOperands {
                                 dest: dest.clone(),
-                                src: self.get_register_for_var(*x),
-                            }),
-                        });
-                        isa_ins.push(isa::Ins {
-                            typed: {
-                                let operands = isa::TwoOperands {
-                                    dest: dest.clone(),
-                                    src: self.get_register_for_var(*y),
-                                };
-                                match &ins.typed {
-                                    InsType::Add(_) => isa::InsType::AddI32(operands),
-                                    InsType::Sub(_) => isa::InsType::SubI32(operands),
-                                    InsType::Mul(_) => isa::InsType::MulI32(operands),
-                                    InsType::Div(_) => isa::InsType::DivI32(operands),
-                                    _ => unreachable!(),
-                                }
-                            },
+                                src: self.get_register_for_var(*y),
+                            };
+                            match &ins.typed {
+                                InsType::Add(_) => isa::Ins::AddI32(operands),
+                                InsType::Sub(_) => isa::Ins::SubI32(operands),
+                                InsType::Mul(_) => isa::Ins::MulI32(operands),
+                                InsType::Div(_) => isa::Ins::DivI32(operands),
+                                _ => unreachable!(),
+                            }
                         });
                     }
                     (_, _) => unimplemented!(),
@@ -424,8 +352,8 @@ impl Codegen {
                 var_to_reg,
                 deallocation
             );
-            match &ins.typed {
-                isa::InsType::Clobber(clobbers) => {
+            match &ins {
+                isa::Ins::Clobber(clobbers) => {
                     dbg_println!("clobbering: {:#?}", clobbers);
                     for (reg, _) in clobbers {
                         unused_regs.remove_item(&reg);
@@ -447,20 +375,16 @@ impl Codegen {
                                     }
                                 }
                                 if let Some(newreg) = unused_regs.pop() {
-                                    body.push(isa::Ins {
-                                        typed: isa::InsType::MovI32(isa::TwoOperands {
-                                            dest: isa::Operand::Register(newreg),
-                                            src: isa::Operand::Register(*reg),
-                                        }),
-                                    });
+                                    body.push(isa::Ins::MovI32(isa::TwoOperands {
+                                        dest: isa::Operand::Register(newreg),
+                                        src: isa::Operand::Register(*reg),
+                                    }));
                                     vdata.0.replace(newreg);
                                 } else {
-                                    body.push(isa::Ins {
-                                        typed: isa::InsType::MovI32(isa::TwoOperands {
-                                            dest: isa::Operand::UndeterminedMapping(*var),
-                                            src: isa::Operand::Register(*reg),
-                                        }),
-                                    });
+                                    body.push(isa::Ins::MovI32(isa::TwoOperands {
+                                        dest: isa::Operand::UndeterminedMapping(*var),
+                                        src: isa::Operand::Register(*reg),
+                                    }));
                                     to_remove_reg = Some(*var);
                                 }
                                 break;
@@ -480,7 +404,7 @@ impl Codegen {
                     }
                     continue;
                 }
-                isa::InsType::Unclobber(clobbers) => {
+                isa::Ins::Unclobber(clobbers) => {
                     for (reg, _) in clobbers {
                         debug_assert!(!unused_regs.contains(reg));
                         unused_regs.push(*reg);
@@ -503,12 +427,10 @@ impl Codegen {
                                 // been clobbered, so hopefully we can retrieve
                                 // the clobbered register again
                                 let reg = unused_regs.pop().unwrap();
-                                body.push(isa::Ins {
-                                    typed: isa::InsType::MovI32(isa::TwoOperands {
-                                        dest: isa::Operand::Register(reg),
-                                        src: var.clone(),
-                                    }),
-                                });
+                                body.push(isa::Ins::MovI32(isa::TwoOperands {
+                                    dest: isa::Operand::Register(reg),
+                                    src: var.clone(),
+                                }));
                                 maybe_reg.0 = Some(reg);
                             }
                         }
@@ -516,12 +438,10 @@ impl Codegen {
                         // Unspill the local variable if it's used in the precceding blocks
                         if cblock.vars_in.contains(&mapping) {
                             // FIXME: correct mov type pls
-                            body.push(isa::Ins {
-                                typed: isa::InsType::MovI32(isa::TwoOperands {
-                                    dest: isa::Operand::Register(reg),
-                                    src: var.clone(),
-                                }),
-                            });
+                            body.push(isa::Ins::MovI32(isa::TwoOperands {
+                                dest: isa::Operand::Register(reg),
+                                src: var.clone(),
+                            }));
                         }
                         *var = isa::Operand::Register(reg);
                         var_to_reg.insert(mapping, (Some(reg), idx));
@@ -537,7 +457,7 @@ impl Codegen {
                     }
                 }
             });
-            if ins.typed.is_postlude() {
+            if ins.is_postlude() {
                 postlude.push(ins.clone());
             } else {
                 body.push(ins.clone());
@@ -550,12 +470,10 @@ impl Codegen {
             if let Some(reg) = reg.clone() {
                 if cblock.vars_out.contains(&var) {
                     if cblock.vars_in.contains(&var) {
-                        body.push(isa::Ins {
-                            typed: isa::InsType::MovI32(isa::TwoOperands {
-                                dest: isa::Operand::UndeterminedMapping(*var),
-                                src: isa::Operand::Register(reg),
-                            }),
-                        });
+                        body.push(isa::Ins::MovI32(isa::TwoOperands {
+                            dest: isa::Operand::UndeterminedMapping(*var),
+                            src: isa::Operand::Register(reg),
+                        }));
                         unused_regs.push(reg);
                     } else {
                         new_var_to_reg.insert(*var, (Some(reg), 0));
@@ -605,7 +523,7 @@ impl Codegen {
         let mut save_regs = BTreeSet::new();
         for block in blocks.iter_mut() {
             for ins in &mut block.ins {
-                if let Some(size) = ins.typed.mov_size() {
+                if let Some(size) = ins.mov_size() {
                     ins.rename_var_by(true, |var| match var.clone() {
                         isa::Operand::UndeterminedMapping(mapping) => {
                             let disp = if let Some(offset) = map_to_stack_offset.get(&mapping) {
@@ -647,18 +565,16 @@ impl Codegen {
             if let Some(block) = blocks.first_mut() {
                 block.ins.insert(
                     0,
-                    isa::Ins {
-                        typed: isa::InsType::Enter {
-                            local_size: alloc + (stack_offset as u32),
-                            save_regs: save_regs.clone(),
-                        },
+                    isa::Ins::Enter {
+                        local_size: alloc + (stack_offset as u32),
+                        save_regs: save_regs.clone(),
                     },
                 );
             }
             for block in blocks.iter_mut() {
                 if let Some(last) = block.ins.last_mut() {
-                    if last.typed.is_ret() {
-                        last.typed = isa::InsType::LeaveAndRet {
+                    if last.is_ret() {
+                        *last = isa::Ins::LeaveAndRet {
                             save_regs: save_regs.clone(),
                         };
                     }
@@ -669,8 +585,8 @@ impl Codegen {
 
     pub fn remove_unnecessary_movs(&mut self, blocks: &mut Vec<isa::Block>) {
         for block in blocks {
-            block.ins.retain(|ins| match &ins.typed {
-                isa::InsType::MovI32(operands) => {
+            block.ins.retain(|ins| match &ins {
+                isa::Ins::MovI32(operands) => {
                     if operands.dest == operands.src {
                         false
                     } else {
@@ -687,8 +603,8 @@ impl Codegen {
             if let Some(target) = block
                 .ins
                 .last()
-                .map(|last| match &last.typed {
-                    isa::InsType::Jmp(x) => Some(*x),
+                .map(|last| match &last {
+                    isa::Ins::Jmp(x) => Some(*x),
                     _ => None,
                 })
                 .flatten()
