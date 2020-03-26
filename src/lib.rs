@@ -19,5 +19,5 @@ pub mod utils;
 pub mod arch;
 pub mod ast;
 pub mod lexer;
-pub mod ssa;
 pub mod runtime;
+pub mod ssa;

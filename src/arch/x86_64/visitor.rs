@@ -1,6 +1,7 @@
 use crate::arch::context;
 use crate::arch::x86_64::{encoder, isa};
 use crate::ssa::isa::*;
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
@@ -66,35 +67,21 @@ impl Codegen {
         for (name, context) in &program.contexts {
             self.visit_context(&context, &name, &mut isa_contexts);
         }
-        if let Some(main) = self.unflattened_code.get_mut(&FunctionName {
-            name: Rc::from("main"),
-            arg_types: vec![]
-        }) {
-            if let Some(block) = main.first_mut() {
-                block.ins.insert(0, isa::Ins::InlineBytes(vec![
-                    // push rsp
-                    0x54,
-                    // push qword [rsp]
-                    0xff, 0x34, 0x24,
-                    // and rsp, -0x10
-                    0x48, 0x83, 0xe4, 0xf0,
-                ]));
-                block.ins.push(isa::Ins::InlineBytes(vec![
-                    // mov rsp, qword [rsp + 8]
-                    0x48, 0x8b, 0x64, 0x24, 0x08,
-                    // ret
-                    0xc3,
-                ]));
-            }
-        }
         for (name, context) in &self.unflattened_code {
-            isa_contexts.insert(name.clone(), context::Function::Context(encoder::encode_blocks(&context)));
+            isa_contexts.insert(
+                name.clone(),
+                context::Function::Context(encoder::encode_blocks(&context)),
+            );
         }
         Ok(isa_contexts)
     }
 
-    pub fn visit_context(&mut self,
-        context: &Context, name: &Rc<FunctionName>, isa_contexts: &mut context::Contexts) {
+    pub fn visit_context(
+        &mut self,
+        context: &Context,
+        name: &Rc<FunctionName>,
+        isa_contexts: &mut context::Contexts,
+    ) {
         if self.visit_intrinsic(context, name, isa_contexts) {
             return;
         }
@@ -111,7 +98,7 @@ impl Codegen {
         }
         dbg_println!("---\nbefore: {:#?}\n===", blocks);
         self.allocate_registers(&mut blocks, context);
-        self.setup_stack_and_locals(&mut blocks);
+        self.setup_stack_and_locals(&mut blocks, context);
         self.remove_unnecessary_movs(&mut blocks);
         self.remove_unnecessary_jmps(&mut blocks);
         dbg_println!("after: {:#?}\n---", blocks);
@@ -199,6 +186,9 @@ impl Codegen {
                     }));
                 }
             }
+            InsType::Exit => {
+                isa_ins.push(isa::Ins::Ret);
+            }
             InsType::Return(x) => {
                 isa_ins.push(isa::Ins::Clobber(vec![(isa::Reg::Rax, Some(*x))]));
                 isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
@@ -226,7 +216,10 @@ impl Codegen {
                             ops: isa::TwoOperands {
                                 dest: self.get_register_for_var(threeops.left),
                                 src: self.get_register_for_var(threeops.right),
-                                size: Codegen::type_to_operand_size(&context.variables[*condvar]).unwrap(),
+                                size: Codegen::type_to_operand_size(
+                                    &context.variables[threeops.left],
+                                )
+                                .unwrap(),
                             },
                             is_postlude: true,
                         });
@@ -302,8 +295,7 @@ impl Codegen {
                 let left = &context.variables[*x];
                 let right = &context.variables[*y];
                 match (left, right) {
-                    (Type::I32, Type::I32) |
-                    (Type::I64, Type::I64) => {
+                    (Type::I32, Type::I32) | (Type::I64, Type::I64) => {
                         let dest = isa::Operand::UndeterminedMapping(ins.retvar().unwrap());
                         isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                             dest: dest.clone(),
@@ -328,16 +320,18 @@ impl Codegen {
                     (_, _) => unimplemented!(),
                 }
             }
-            InsType::Exit => (),
             _ => unimplemented!(),
         }
     }
 
-    pub fn visit_intrinsic(&mut self, context: &Context, name: &Rc<FunctionName>, isa_contexts: &mut context::Contexts) -> bool {
+    pub fn visit_intrinsic(
+        &mut self,
+        context: &Context,
+        name: &Rc<FunctionName>,
+        isa_contexts: &mut context::Contexts,
+    ) -> bool {
         match context.intrinsic {
-            IntrinsicType::None => {
-                false
-            }
+            IntrinsicType::None => false,
             IntrinsicType::Extern(generic) => {
                 isa_contexts.insert(name.clone(), context::Function::Extern(generic.clone()));
                 true
@@ -422,14 +416,20 @@ impl Codegen {
                                     body.push(isa::Ins::Mov(isa::TwoOperands {
                                         dest: isa::Operand::Register(newreg),
                                         src: isa::Operand::Register(*reg),
-                                        size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
+                                        size: Codegen::type_to_operand_size(
+                                            &context.variables[*var],
+                                        )
+                                        .unwrap(),
                                     }));
                                     vdata.0.replace(newreg);
                                 } else {
                                     body.push(isa::Ins::Mov(isa::TwoOperands {
                                         dest: isa::Operand::UndeterminedMapping(*var),
                                         src: isa::Operand::Register(*reg),
-                                        size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
+                                        size: Codegen::type_to_operand_size(
+                                            &context.variables[*var],
+                                        )
+                                        .unwrap(),
                                     }));
                                     to_remove_reg = Some(*var);
                                 }
@@ -476,7 +476,10 @@ impl Codegen {
                                 body.push(isa::Ins::Mov(isa::TwoOperands {
                                     dest: isa::Operand::Register(reg),
                                     src: var.clone(),
-                                    size: Codegen::type_to_operand_size(&context.variables[mapping]).unwrap(),
+                                    size: Codegen::type_to_operand_size(
+                                        &context.variables[mapping],
+                                    )
+                                    .unwrap(),
                                 }));
                                 maybe_reg.0 = Some(reg);
                             }
@@ -502,7 +505,8 @@ impl Codegen {
                             body.push(isa::Ins::Mov(isa::TwoOperands {
                                 dest: isa::Operand::Register(reg),
                                 src: var.clone(),
-                                size: Codegen::type_to_operand_size(&context.variables[mapping]).unwrap(),
+                                size: Codegen::type_to_operand_size(&context.variables[mapping])
+                                    .unwrap(),
                             }));
                         }
                         *var = isa::Operand::Register(reg);
@@ -576,12 +580,20 @@ impl Codegen {
         }
     }
 
-    pub fn setup_stack_and_locals(&mut self, blocks: &mut Vec<isa::Block>) {
+    pub fn setup_stack_and_locals(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
         dbg_println!("stacks for: {:#?}", blocks);
         let mut map_to_stack_offset = BTreeMap::new();
         let stack_offset = 8; // skip 1 dword value for saved rbp
         let mut alloc = 0u32;
         let mut stack_used = false;
+        let mut is_main = {
+            let name: &str = context.name.borrow();
+            if name == "main" {
+                true
+            } else {
+                false
+            }
+        };
         let mut save_regs = BTreeSet::new();
         for block in blocks.iter_mut() {
             for ins in &mut block.ins {
@@ -622,16 +634,31 @@ impl Codegen {
                 }
             }
         }
-        if alloc != 0 || stack_used {
+        if alloc != 0 || stack_used || is_main {
             let save_regs: Vec<isa::Reg> = save_regs.iter().cloned().collect();
             if let Some(block) = blocks.first_mut() {
-                block.ins.insert(
-                    0,
-                    isa::Ins::Enter {
-                        local_size: alloc + (stack_offset as u32),
-                        save_regs: save_regs.clone(),
-                    },
-                );
+                if is_main {
+                    let mut prelude = vec![
+                        isa::Ins::Enter {
+                            local_size: alloc + (stack_offset as u32) + 16,
+                            save_regs: save_regs.clone(),
+                        },
+                        isa::Ins::InlineBytes(vec![
+                            // and rsp, -0x10
+                            0x48, 0x83, 0xe4, 0xf0,
+                        ]),
+                    ];
+                    prelude.append(&mut block.ins);
+                    block.ins = prelude;
+                } else {
+                    block.ins.insert(
+                        0,
+                        isa::Ins::Enter {
+                            local_size: alloc + (stack_offset as u32),
+                            save_regs: save_regs.clone(),
+                        },
+                    );
+                }
             }
             for block in blocks.iter_mut() {
                 if let Some(last) = block.ins.last_mut() {

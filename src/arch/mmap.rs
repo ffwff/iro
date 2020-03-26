@@ -103,7 +103,7 @@ impl Mmap {
 
     pub unsafe fn execute(&self, function: &Rc<FunctionName>) -> Result<(), ()> {
         if let Some(ptr) = self.context_locs.get(function) {
-            dbg_println!("execute {:p}",*ptr);
+            dbg_println!("execute {:p}", *ptr);
             let func = std::mem::transmute::<*const libc::c_void, (extern "sysv64" fn())>(*ptr);
             Ok(func())
         } else {

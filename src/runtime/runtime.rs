@@ -1,6 +1,6 @@
+use crate::runtime::functions;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use crate::runtime::functions;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GenericFunction(pub *const libc::c_void);
@@ -29,7 +29,5 @@ impl RuntimeData {
 }
 
 lazy_static! {
-    pub static ref RUNTIME: Mutex<RuntimeData> = unsafe {
-        Mutex::new(RuntimeData::new())
-    };
+    pub static ref RUNTIME: Mutex<RuntimeData> = unsafe { Mutex::new(RuntimeData::new()) };
 }

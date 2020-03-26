@@ -206,7 +206,7 @@ impl Visitor for SSAVisitor {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
                 if let Some(declared_typed) = maybe_declared {
                     if *declared_typed != *typed {
-                        return Err(Error::InvalidArguments);
+                        return Err(Error::IncompatibleType);
                     }
                 }
             }
@@ -339,6 +339,11 @@ impl Visitor for SSAVisitor {
         let treturn = check_direct_return!(self, {
             n.cond.visit(self)?;
             condvar = self.last_retvar().unwrap();
+            if let Some(last_retvar) = self.last_retvar() {
+                if self.context.variables[last_retvar] != Type::Bool {
+                    return Err(Error::IncompatibleType);
+                }
+            }
             if !n.exprs.is_empty() {
                 iftrue_start = Some(self.context.new_block());
                 for node in &n.exprs {
@@ -621,7 +626,7 @@ impl Visitor for SSAVisitor {
                     return Err(Error::IncompatibleType);
                 }
                 let retvar = self.context.insert_var(match op {
-                    BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => Type::I32,
+                    BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => Type::Bool,
                     _ => self.context.variables[left].clone(),
                 });
                 self.with_block_mut(|block| {
@@ -658,9 +663,7 @@ impl Visitor for SSAVisitor {
             Value::I64(x) => {
                 let retvar = self.context.insert_var(Type::I64);
                 self.with_block_mut(|block| {
-                    block
-                        .ins
-                        .push(Ins::new(retvar, InsType::LoadI64(*x)));
+                    block.ins.push(Ins::new(retvar, InsType::LoadI64(*x)));
                 });
                 Ok(())
             }

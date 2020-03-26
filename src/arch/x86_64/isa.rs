@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use crate::ssa::isa::FunctionName;
 use crate::runtime::GenericFunction;
+use crate::ssa::isa::FunctionName;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]

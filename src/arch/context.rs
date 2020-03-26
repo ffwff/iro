@@ -1,7 +1,7 @@
+use crate::runtime::GenericFunction;
+use crate::ssa::isa::FunctionName;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::ssa::isa::FunctionName;
-use crate::runtime::GenericFunction;
 
 #[derive(Debug, Clone)]
 pub struct RelativeRelocation {

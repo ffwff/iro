@@ -111,15 +111,17 @@ impl<'input> Iterator for Lexer<'input> {
                                 match (self.chars.next(), self.chars.next()) {
                                     (Some((_, '3')), Some((_, '2'))) => {
                                         idx1 += 2;
-                                        return Some(Ok((idx0, Tok::I32 {
-                                            value: (value as i32)
-                                        }, idx1)));
+                                        return Some(Ok((
+                                            idx0,
+                                            Tok::I32 {
+                                                value: (value as i32),
+                                            },
+                                            idx1,
+                                        )));
                                     }
                                     (Some((_, '6')), Some((_, '4'))) => {
                                         idx1 += 2;
-                                        return Some(Ok((idx0, Tok::I64 {
-                                            value
-                                        }, idx1)));
+                                        return Some(Ok((idx0, Tok::I64 { value }, idx1)));
                                     }
                                     _ => {
                                         return Some(Err(Error::UnexpectedCharacter((idx1, 'i'))));

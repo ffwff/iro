@@ -1,9 +1,9 @@
+use crate::runtime::{GenericFunction, RUNTIME};
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::ops::BitAnd;
 use std::rc::Rc;
-use crate::runtime::{RUNTIME, GenericFunction};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntrinsicType {
@@ -62,7 +62,12 @@ impl Context {
         }
     }
 
-    pub fn with_intrinsics(name: Rc<str>, args: Vec<Type>, rettype: Type, intrinsic: IntrinsicType) -> Self {
+    pub fn with_intrinsics(
+        name: Rc<str>,
+        args: Vec<Type>,
+        rettype: Type,
+        intrinsic: IntrinsicType,
+    ) -> Self {
         Context {
             variables: vec![],
             blocks: vec![],
@@ -364,6 +369,7 @@ pub struct Program {
 pub enum Type {
     NoReturn,
     Nil,
+    Bool,
     I32,
     I64,
     F64,
