@@ -390,7 +390,9 @@ pub fn data_flow_analysis(context: &mut Context) {
         if state_changed {
             for &pred in &preds {
                 let block = &mut context.blocks[pred];
-                block.vars_out = vars_in.clone();
+                for &var in &vars_in {
+                    block.vars_out.insert(var);
+                }
                 worklist.push(pred);
             }
         }
