@@ -303,11 +303,24 @@ impl Codegen {
                             size: Codegen::type_to_operand_size(left).unwrap(),
                         }));
                         isa_ins.push({
-                            let operands = isa::TwoOperands {
+                            let src = self.get_register_for_var(*y);
+                            let mut operands = None;
+                            if *right == Type::I64 {
+                                if let isa::Operand::U64(n) = src {
+                                    if n <= std::u32::MAX.into() {
+                                        operands = Some(isa::TwoOperands {
+                                            dest: dest.clone(),
+                                            src: isa::Operand::U32(n as u32),
+                                            size: isa::OperandSize::I64,
+                                        });
+                                    }
+                                }
+                            }
+                            let operands = operands.unwrap_or_else(|| isa::TwoOperands {
                                 dest: dest.clone(),
-                                src: self.get_register_for_var(*y),
+                                src,
                                 size: Codegen::type_to_operand_size(left).unwrap(),
-                            };
+                            });
                             match &ins.typed {
                                 InsType::Add(_) => isa::Ins::Add(operands),
                                 InsType::Sub(_) => isa::Ins::Sub(operands),
@@ -586,7 +599,7 @@ impl Codegen {
         let stack_offset = 8; // skip 1 dword value for saved rbp
         let mut alloc = 0u32;
         let mut stack_used = false;
-        let mut is_main = {
+        let is_main = {
             let name: &str = context.name.borrow();
             if name == "main" {
                 true

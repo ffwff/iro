@@ -45,22 +45,16 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         }
         Ins::Mov(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
+                rex_prefix(dest, ops, true, false);
                 dest.code.push(0xB8 + *left as u8);
                 dest.code.extend_from_slice(&n.to_le_bytes());
             }
             (Operand::Register(left), Operand::U64(n)) => {
-                if *n < 0x1_0000_0000 {
-                    rex_prefix(dest, ops, false, false);
-                    dest.code.push(0xB8 + *left as u8);
-                    dest.code.extend_from_slice(&((*n as u32).to_le_bytes()));
-                } else {
-                    rex_prefix(dest, ops, false, true);
-                    dest.code.push(0xB8 + *left as u8);
-                    dest.code.extend_from_slice(&n.to_le_bytes());
-                }
+                rex_prefix(dest, ops, true, false);
+                dest.code.push(0xB8 + *left as u8);
+                dest.code.extend_from_slice(&n.to_le_bytes());
             }
             (Operand::Memory { .. }, Operand::Register(_)) => {
-                dbg_println!("mem<-reg");
                 rex_prefix(dest, ops, false, false);
                 dest.code.push(0x89);
                 modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
@@ -73,7 +67,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         },
         Ins::Add(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
-                assert!((*left as u8) <= 0b111);
+                rex_prefix(dest, ops, true, false);
                 if *n <= 0xFF {
                     dest.code.push(0x83);
                     modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
@@ -83,6 +77,9 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
+            }
+            (Operand::Register(left), Operand::U64(n)) => {
+                unimplemented!()
             }
             (Operand::Memory { .. }, Operand::Register(_))
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
@@ -94,7 +91,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         },
         Ins::Sub(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
-                assert!((*left as u8) <= 0b111);
+                rex_prefix(dest, ops, true, false);
                 if *n <= 0xFF {
                     dest.code.push(0x83);
                     modrm(dest, ops.dest.clone(), ops.src.clone(), 0b101);
@@ -108,9 +105,9 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             (Operand::Memory { .. }, Operand::Register(_))
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
-                unimplemented!()
-                // dest.code.push(0x29);
-                // modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
+                rex_prefix(dest, ops, false, false);
+                dest.code.push(0x29);
+                modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
         },
         Ins::Mul(ops) => match (&ops.dest, &ops.src) {
@@ -124,7 +121,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
         Ins::Div(_ops) => unimplemented!(),
         Ins::Cmp { ops, .. } => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
-                assert!((*left as u8) <= 0b111);
+                rex_prefix(dest, ops, true, false);
                 if *n <= 0xFF {
                     dest.code.push(0x83);
                     modrm(dest, ops.dest.clone(), ops.src.clone(), 0b111);
@@ -135,9 +132,13 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
+            (Operand::Register(left), Operand::U64(n)) => {
+                unimplemented!()
+            }
             (Operand::Memory { .. }, Operand::Register(_))
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
+                rex_prefix(dest, ops, false, false);
                 dest.code.push(0x39);
                 modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
@@ -260,19 +261,23 @@ fn rex_prefix(dest: &mut context::Context, ops: &TwoOperands, dest_first: bool, 
         }
     } {
         (Operand::Register(left), Operand::U32(n)) => {
+            if ops.size == OperandSize::I64 {
+                rex_form |= 0b1000;
+                has_rex_form = true;
+            }
             if (*left as u8) > 0b111 {
                 rex_form |= 0b100;
                 has_rex_form = true;
             }
         }
         (Operand::Register(left), Operand::U64(n)) => {
+            rex_form |= 0b1000;
+            has_rex_form = true;
             if (*left as u8) > 0b111 {
-                rex_form |= 0b100;
-                has_rex_form = true;
+                rex_form |= 0b001;
             }
             if rm_field {
-                rex_form |= 0b001;
-                has_rex_form = true;
+                rex_form |= 0b100;
             }
         }
         (Operand::Register(left), Operand::Register(right))
