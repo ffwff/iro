@@ -1,8 +1,9 @@
 use std::str::CharIndices;
 use unicode_xid::UnicodeXID;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Tok {
+    EOF,
     Def,
     Return,
     Let,
@@ -33,11 +34,17 @@ pub enum Tok {
     Comma,
     Colon,
     Newline,
+    At,
+    AtBracket,
+    LeftBracket,
+    RightBracket,
     Int { value: i64 },
+    Float { value: f64 },
     Identifier { value: String },
     String { value: String },
-    Attribute { value: String },
 }
+
+impl Eq for Tok {}
 
 pub type Spanned<T> = (usize, T, usize);
 
@@ -51,6 +58,7 @@ pub enum Error {
 pub struct Lexer<'input> {
     chars: CharIndices<'input>,
     last_char: Option<(usize, char)>,
+    outputted_eof: bool,
 }
 
 impl<'input> Lexer<'input> {
@@ -58,6 +66,7 @@ impl<'input> Lexer<'input> {
         Lexer {
             chars: input.char_indices(),
             last_char: None,
+            outputted_eof: false,
         }
     }
 
@@ -67,10 +76,10 @@ impl<'input> Lexer<'input> {
 }
 
 macro_rules! mod_op {
-    ($self:expr, $idx0:expr, $x:expr, $y:expr) => {{
+    ($self:expr, $idx0:expr, $x:expr, $next_char:expr, $y:expr) => {{
         let peek = $self.chars.next();
         match peek {
-            Some((idx1, '=')) => return Some(Ok(($idx0, $y, idx1))),
+            Some((idx1, $next_char)) => return Some(Ok(($idx0, $y, idx1))),
             _ => {
                 $self.last_char = peek;
             }
@@ -96,6 +105,27 @@ impl<'input> Iterator for Lexer<'input> {
                                 value = value * 10 + (ch.to_digit(10).unwrap() as i64);
                                 idx1 += 1;
                             }
+                            Some((_, '.')) => {
+                                idx1 += 1;
+                                let mut decimal = 0i64;
+                                let mut ndigits = 1.0f64;
+                                loop {
+                                    match self.chars.next() {
+                                        Some((_, ch @ '0'..='9')) => {
+                                            decimal = decimal * 10 + (ch.to_digit(10).unwrap() as i64);
+                                            idx1 += 1;
+                                            ndigits *= 10.0;
+                                        }
+                                        ch => {
+                                            self.last_char = ch;
+                                            break;
+                                        }
+                                    }
+                                }
+                                return Some(Ok((idx0, Tok::Float {
+                                    value: (value as f64) + (decimal as f64 / ndigits)
+                                }, idx1)));
+                            }
                             ch => {
                                 self.last_char = ch;
                                 break;
@@ -105,18 +135,21 @@ impl<'input> Iterator for Lexer<'input> {
                     return Some(Ok((idx0, Tok::Int { value }, idx1)));
                 }
 
-                Some((idx0, '=')) => mod_op!(self, idx0, Tok::Asg, Tok::Equ),
-                Some((idx0, '!')) => mod_op!(self, idx0, Tok::Not, Tok::Neq),
-                Some((idx0, '+')) => mod_op!(self, idx0, Tok::Add, Tok::Adds),
-                Some((idx0, '-')) => mod_op!(self, idx0, Tok::Sub, Tok::Subs),
-                Some((idx0, '*')) => mod_op!(self, idx0, Tok::Mul, Tok::Muls),
-                Some((idx0, '/')) => mod_op!(self, idx0, Tok::Div, Tok::Divs),
-                Some((idx0, '<')) => mod_op!(self, idx0, Tok::Lt, Tok::Lte),
-                Some((idx0, '>')) => mod_op!(self, idx0, Tok::Gt, Tok::Gte),
+                Some((idx0, '=')) => mod_op!(self, idx0, Tok::Asg, '=', Tok::Equ),
+                Some((idx0, '!')) => mod_op!(self, idx0, Tok::Not, '=', Tok::Neq),
+                Some((idx0, '+')) => mod_op!(self, idx0, Tok::Add, '=', Tok::Adds),
+                Some((idx0, '-')) => mod_op!(self, idx0, Tok::Sub, '=', Tok::Subs),
+                Some((idx0, '*')) => mod_op!(self, idx0, Tok::Mul, '=', Tok::Muls),
+                Some((idx0, '/')) => mod_op!(self, idx0, Tok::Div, '=', Tok::Divs),
+                Some((idx0, '<')) => mod_op!(self, idx0, Tok::Lt, '=', Tok::Lte),
+                Some((idx0, '>')) => mod_op!(self, idx0, Tok::Gt, '=', Tok::Gte),
                 Some((idx0, '(')) => return Some(Ok((idx0, Tok::LeftParen, idx0))),
                 Some((idx0, ')')) => return Some(Ok((idx0, Tok::RightParen, idx0))),
                 Some((idx0, ',')) => return Some(Ok((idx0, Tok::Comma, idx0))),
                 Some((idx0, ':')) => return Some(Ok((idx0, Tok::Colon, idx0))),
+                Some((idx0, '@')) => mod_op!(self, idx0, Tok::At, '[', Tok::AtBracket),
+                Some((idx0, '[')) => return Some(Ok((idx0, Tok::LeftBracket, idx0))),
+                Some((idx0, ']')) => return Some(Ok((idx0, Tok::RightBracket, idx0))),
 
                 Some((idx0, ch)) if UnicodeXID::is_xid_start(ch) => {
                     let mut idx1 = idx0;
@@ -168,30 +201,13 @@ impl<'input> Iterator for Lexer<'input> {
                     return Some(Ok((idx0, Tok::String { value: string }, idx1)));
                 }
 
-                Some((idx0, '@')) => {
-                    let peek = self.chars.next();
-                    match peek {
-                        Some((mut idx1, ch)) if UnicodeXID::is_xid_start(ch) => {
-                            let mut string = ch.to_string();
-                            loop {
-                                match self.chars.next() {
-                                    Some((m_idx1, ch)) if UnicodeXID::is_xid_continue(ch) => {
-                                        string.push(ch);
-                                        idx1 = m_idx1;
-                                    }
-                                    ch => {
-                                        self.last_char = ch;
-                                        break;
-                                    }
-                                }
-                            }
-                            return Some(Ok((idx0, Tok::Attribute { value: string }, idx1)));
-                        }
-                        _other => unimplemented!(),
+                None => {
+                    if self.outputted_eof {
+                        return None
                     }
-                }
-
-                None => return None,
+                    self.outputted_eof = true;
+                    return Some(Ok((0, Tok::EOF, 0)));
+                },
                 Some((idx0, '\n')) => {
                     let mut idx1 = idx0;
                     loop {

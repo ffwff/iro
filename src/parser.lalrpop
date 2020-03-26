@@ -24,28 +24,32 @@ Comma<T>: Vec<T> = {
 };
 
 // Expressions
-Expr = <StandaloneExpr> NL+;
+NLOrEOF: () = {
+    NL+ => (),
+    EOF => (),
+};
+Expr = <StandaloneExpr> NLOrEOF;
 TopLevelExpr = {
-    <DefStatement> NL+,
+    <DefStatement> NLOrEOF,
     <Expr>,
 };
 StandaloneExpr = ReturnExpr;
 
 // Attributes
 AttributeList: Vec<AttributeValue> = {
-    <items:(<AttributeValue> NL)+> => {
+    "@[" <items:(<AttributeValue> NL)+> "]" => {
         items
     }
 }
 
 AttributeValue: AttributeValue = {
-    <name:Attribute> => {
+    <name:Identifier> => {
         AttributeValue {
             name,
             args: vec![],
         }
     },
-    <name:Attribute> "(" <args:Comma<Identifier>> ")" => {
+    <name:Identifier> "(" <args:Comma<Identifier>> ")" => {
         AttributeValue {
             name,
             args,
@@ -229,10 +233,14 @@ extern {
         ")" => lexer::Tok::RightParen,
         "," => lexer::Tok::Comma,
         ":" => lexer::Tok::Colon,
+        "@" => lexer::Tok::At,
+        "@[" => lexer::Tok::AtBracket,
+        "[" => lexer::Tok::LeftBracket,
+        "]" => lexer::Tok::RightBracket,
         NL => lexer::Tok::Newline,
+        EOF => lexer::Tok::EOF,
         Int => lexer::Tok::Int { value : <i64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
         String => lexer::Tok::String { value : <String> },
-        Attribute => lexer::Tok::Attribute { value : <String> },
     }
 }
