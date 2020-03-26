@@ -3,18 +3,20 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::ops::BitAnd;
 use std::rc::Rc;
+use crate::runtime::{RUNTIME, GenericFunction};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntrinsicType {
     None,
-    Print,
+    Extern(GenericFunction),
 }
 
 impl IntrinsicType {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "print" => Some(IntrinsicType::Print),
-            _ => None,
+    pub fn from_static(s: &str) -> Option<Self> {
+        if let Some(func) = RUNTIME.lock().unwrap().funcs().get(s) {
+            Some(IntrinsicType::Extern(*func))
+        } else {
+            None
         }
     }
 }
@@ -60,12 +62,12 @@ impl Context {
         }
     }
 
-    pub fn with_intrinsics(name: Rc<str>, rettype: Type, intrinsic: IntrinsicType) -> Self {
+    pub fn with_intrinsics(name: Rc<str>, args: Vec<Type>, rettype: Type, intrinsic: IntrinsicType) -> Self {
         Context {
             variables: vec![],
             blocks: vec![],
             name,
-            args: vec![],
+            args,
             rettype,
             intrinsic,
         }

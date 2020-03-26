@@ -1,6 +1,7 @@
-use crate::ssa::isa::FunctionName;
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::ssa::isa::FunctionName;
+use crate::runtime::GenericFunction;
 
 #[derive(Debug, Clone)]
 pub struct RelativeRelocation {
@@ -18,4 +19,10 @@ pub struct Context {
     pub rel_relocation: Vec<RelativeRelocation>,
 }
 
-pub type Contexts = HashMap<Rc<FunctionName>, Context>;
+#[derive(Debug, Clone)]
+pub enum Function {
+    Context(Context),
+    Extern(GenericFunction),
+}
+
+pub type Contexts = HashMap<Rc<FunctionName>, Function>;

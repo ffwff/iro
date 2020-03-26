@@ -1,11 +1,13 @@
 #![feature(option_flattening)]
 #![feature(bind_by_move_pattern_guards)]
 #![feature(vec_remove_item)]
+#![feature(asm)]
 
 #[macro_use]
 extern crate lalrpop_util;
 lalrpop_mod!(pub parser);
-
+#[macro_use]
+extern crate lazy_static;
 #[macro_use]
 extern crate maplit;
 #[macro_use]
@@ -18,3 +20,4 @@ pub mod arch;
 pub mod ast;
 pub mod lexer;
 pub mod ssa;
+pub mod runtime;

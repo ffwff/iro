@@ -133,6 +133,18 @@ impl SSAVisitor {
     fn intrinsic_return_type(_intrinsic: IntrinsicType, _arg_types: &Vec<Type>) -> Option<Type> {
         Some(Type::Nil)
     }
+
+    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement) -> VisitorResult {
+        for (_, typed) in &defstmt.args {
+            if let Some(typed) = typed {
+                self.visit_typeid(&typed)?;
+            }
+        }
+        if let Some(typed) = defstmt.return_type.as_ref() {
+            self.visit_typeid(&typed)?;
+        }
+        Ok(())
+    }
 }
 
 impl Visitor for SSAVisitor {
@@ -143,8 +155,9 @@ impl Visitor for SSAVisitor {
                 if let Some(attrs) = &defstmt.attrs {
                     for attr in attrs {
                         match attr.name.as_ref() {
-                            "intrinsic" => {
-                                if let Some(intrinsic) = IntrinsicType::from_str(&attr.args[0]) {
+                            "Static" => {
+                                if let Some(intrinsic) = IntrinsicType::from_static(&attr.args[0]) {
+                                    self.top_level_visit_defstmt(&defstmt)?;
                                     defstmt.intrinsic.replace(intrinsic);
                                 } else {
                                     return Err(Error::InternalError);
@@ -171,14 +184,7 @@ impl Visitor for SSAVisitor {
             let top_level: &TopLevelInfo = &top_level_rc.borrow();
             for (_, defstmt_rc) in &top_level.defstmts {
                 let defstmt: &DefStatement = defstmt_rc.borrow();
-                for (_, typed) in &defstmt.args {
-                    if let Some(typed) = typed {
-                        self.visit_typeid(&typed)?;
-                    }
-                }
-                if let Some(typed) = defstmt.return_type.as_ref() {
-                    self.visit_typeid(&typed)?;
-                }
+                self.top_level_visit_defstmt(&defstmt)?;
             }
         }
 
@@ -500,6 +506,7 @@ impl Visitor for SSAVisitor {
                                 func_name.clone(),
                                 Context::with_intrinsics(
                                     id.clone(),
+                                    arg_types,
                                     rettype.clone(),
                                     defstmt.intrinsic.get(),
                                 ),

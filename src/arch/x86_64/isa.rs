@@ -1,5 +1,6 @@
-use crate::ssa::isa::FunctionName;
 use std::rc::Rc;
+use crate::ssa::isa::FunctionName;
+use crate::runtime::GenericFunction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
@@ -103,6 +104,7 @@ pub enum Ins {
     LeaveAndRet {
         save_regs: Vec<Reg>,
     },
+    InlineBytes(Vec<u8>),
     Clobber(Vec<(Reg, Option<usize>)>),
     Unclobber(Vec<(Reg, Option<usize>)>),
     Gt(VirtualThreeOperands),

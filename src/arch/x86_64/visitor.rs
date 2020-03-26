@@ -62,19 +62,41 @@ impl Codegen {
 
     pub fn process(&mut self, program: &Program) -> Result<context::Contexts, Error> {
         dbg_println!("processing {:#?}", program);
-        for (name, context) in &program.contexts {
-            self.visit_context(&context, &name);
-        }
         let mut isa_contexts = context::Contexts::new();
+        for (name, context) in &program.contexts {
+            self.visit_context(&context, &name, &mut isa_contexts);
+        }
+        if let Some(main) = self.unflattened_code.get_mut(&FunctionName {
+            name: Rc::from("main"),
+            arg_types: vec![]
+        }) {
+            if let Some(block) = main.first_mut() {
+                block.ins.insert(0, isa::Ins::InlineBytes(vec![
+                    // push rsp
+                    0x54,
+                    // push qword [rsp]
+                    0xff, 0x34, 0x24,
+                    // and rsp, -0x10
+                    0x48, 0x83, 0xe4, 0xf0,
+                ]));
+                block.ins.push(isa::Ins::InlineBytes(vec![
+                    // mov rsp, qword [rsp + 8]
+                    0x48, 0x8b, 0x64, 0x24, 0x08,
+                    // ret
+                    0xc3,
+                ]));
+            }
+        }
         for (name, context) in &self.unflattened_code {
-            isa_contexts.insert(name.clone(), encoder::encode_blocks(&context));
+            isa_contexts.insert(name.clone(), context::Function::Context(encoder::encode_blocks(&context)));
         }
         Ok(isa_contexts)
     }
 
-    pub fn visit_context(&mut self, context: &Context, name: &Rc<FunctionName>) {
-        if context.intrinsic != IntrinsicType::None {
-            return self.visit_intrinsic(context);
+    pub fn visit_context(&mut self,
+        context: &Context, name: &Rc<FunctionName>, isa_contexts: &mut context::Contexts) {
+        if self.visit_intrinsic(context, name, isa_contexts) {
+            return;
         }
         let mut blocks = vec![];
         self.constant_operands.clear();
@@ -103,10 +125,11 @@ impl Codegen {
             .unwrap_or(isa::Operand::UndeterminedMapping(arg))
     }
 
-    fn type_to_operand_size(typed: &Type) -> isa::OperandSize {
+    fn type_to_operand_size(typed: &Type) -> Option<isa::OperandSize> {
         match typed {
-            Type::I32 => isa::OperandSize::I32,
-            Type::I64 => isa::OperandSize::I64,
+            Type::Nil => None,
+            Type::I32 => Some(isa::OperandSize::I32),
+            Type::I64 => Some(isa::OperandSize::I64),
             _ => unimplemented!(),
         }
     }
@@ -125,14 +148,14 @@ impl Codegen {
                 isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                     dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
                     src: self.get_register_for_var(*arg),
-                    size: Codegen::type_to_operand_size(&context.variables[*arg]),
+                    size: Codegen::type_to_operand_size(&context.variables[*arg]).unwrap(),
                 }));
             }
             InsType::LoadArg(arg) => {
                 isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                     dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
                     src: isa::Operand::Register(ARG_REGS[*arg]),
-                    size: Codegen::type_to_operand_size(&context.variables[*arg]),
+                    size: Codegen::type_to_operand_size(&context.variables[*arg]).unwrap(),
                 }));
             }
             InsType::LoadI32(x) => {
@@ -160,7 +183,7 @@ impl Codegen {
                     isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                         dest: isa::Operand::Register(reg),
                         src: self.get_register_for_var(arg),
-                        size: Codegen::type_to_operand_size(&context.variables[arg]),
+                        size: Codegen::type_to_operand_size(&context.variables[arg]).unwrap(),
                     }));
                 }
                 isa_ins.push(isa::Ins::Call(name.clone()));
@@ -168,22 +191,21 @@ impl Codegen {
                 // until the end of the call instruction
                 isa_ins.push(isa::Ins::Unclobber(clobbers.clone()));
                 let retvar = ins.retvar().unwrap();
-                isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
-                    dest: isa::Operand::UndeterminedMapping(retvar),
-                    src: isa::Operand::Register(RETURN_REG),
-                    size: Codegen::type_to_operand_size(&context.variables[retvar]),
-                }));
+                if let Some(size) = Codegen::type_to_operand_size(&context.variables[retvar]) {
+                    isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
+                        dest: isa::Operand::UndeterminedMapping(retvar),
+                        src: isa::Operand::Register(RETURN_REG),
+                        size,
+                    }));
+                }
             }
             InsType::Return(x) => {
                 isa_ins.push(isa::Ins::Clobber(vec![(isa::Reg::Rax, Some(*x))]));
                 isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                     dest: isa::Operand::Register(isa::Reg::Rax),
                     src: self.get_register_for_var(*x),
-                    size: Codegen::type_to_operand_size(&context.variables[*x]),
+                    size: Codegen::type_to_operand_size(&context.variables[*x]).unwrap(),
                 }));
-                isa_ins.push(isa::Ins::Ret);
-            }
-            InsType::Exit => {
                 isa_ins.push(isa::Ins::Ret);
             }
             InsType::IfJmp {
@@ -204,7 +226,7 @@ impl Codegen {
                             ops: isa::TwoOperands {
                                 dest: self.get_register_for_var(threeops.left),
                                 src: self.get_register_for_var(threeops.right),
-                                size: Codegen::type_to_operand_size(&context.variables[*condvar]),
+                                size: Codegen::type_to_operand_size(&context.variables[*condvar]).unwrap(),
                             },
                             is_postlude: true,
                         });
@@ -286,13 +308,13 @@ impl Codegen {
                         isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                             dest: dest.clone(),
                             src: self.get_register_for_var(*x),
-                            size: Codegen::type_to_operand_size(left),
+                            size: Codegen::type_to_operand_size(left).unwrap(),
                         }));
                         isa_ins.push({
                             let operands = isa::TwoOperands {
                                 dest: dest.clone(),
                                 src: self.get_register_for_var(*y),
-                                size: Codegen::type_to_operand_size(left),
+                                size: Codegen::type_to_operand_size(left).unwrap(),
                             };
                             match &ins.typed {
                                 InsType::Add(_) => isa::Ins::Add(operands),
@@ -306,12 +328,21 @@ impl Codegen {
                     (_, _) => unimplemented!(),
                 }
             }
+            InsType::Exit => (),
             _ => unimplemented!(),
         }
     }
 
-    pub fn visit_intrinsic(&mut self, _context: &Context) {
-        // TODO
+    pub fn visit_intrinsic(&mut self, context: &Context, name: &Rc<FunctionName>, isa_contexts: &mut context::Contexts) -> bool {
+        match context.intrinsic {
+            IntrinsicType::None => {
+                false
+            }
+            IntrinsicType::Extern(generic) => {
+                isa_contexts.insert(name.clone(), context::Function::Extern(generic.clone()));
+                true
+            }
+        }
     }
 
     pub fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
@@ -391,14 +422,14 @@ impl Codegen {
                                     body.push(isa::Ins::Mov(isa::TwoOperands {
                                         dest: isa::Operand::Register(newreg),
                                         src: isa::Operand::Register(*reg),
-                                        size: Codegen::type_to_operand_size(&context.variables[*var]),
+                                        size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
                                     }));
                                     vdata.0.replace(newreg);
                                 } else {
                                     body.push(isa::Ins::Mov(isa::TwoOperands {
                                         dest: isa::Operand::UndeterminedMapping(*var),
                                         src: isa::Operand::Register(*reg),
-                                        size: Codegen::type_to_operand_size(&context.variables[*var]),
+                                        size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
                                     }));
                                     to_remove_reg = Some(*var);
                                 }
@@ -445,7 +476,7 @@ impl Codegen {
                                 body.push(isa::Ins::Mov(isa::TwoOperands {
                                     dest: isa::Operand::Register(reg),
                                     src: var.clone(),
-                                    size: Codegen::type_to_operand_size(&context.variables[mapping]),
+                                    size: Codegen::type_to_operand_size(&context.variables[mapping]).unwrap(),
                                 }));
                                 maybe_reg.0 = Some(reg);
                             }
@@ -471,7 +502,7 @@ impl Codegen {
                             body.push(isa::Ins::Mov(isa::TwoOperands {
                                 dest: isa::Operand::Register(reg),
                                 src: var.clone(),
-                                size: Codegen::type_to_operand_size(&context.variables[mapping]),
+                                size: Codegen::type_to_operand_size(&context.variables[mapping]).unwrap(),
                             }));
                         }
                         *var = isa::Operand::Register(reg);
@@ -503,7 +534,7 @@ impl Codegen {
                         body.push(isa::Ins::Mov(isa::TwoOperands {
                             dest: isa::Operand::UndeterminedMapping(*var),
                             src: isa::Operand::Register(reg),
-                            size: Codegen::type_to_operand_size(&context.variables[*var]),
+                            size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
                         }));
                         unused_regs.push(reg);
                     } else {

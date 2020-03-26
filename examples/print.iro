@@ -1,0 +1,5 @@
+@[Static(print_i32)]
+def print(n: I32): Nil
+end
+
+print(15)

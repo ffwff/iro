@@ -286,6 +286,9 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
 }
 
 pub fn eliminate_duplicate_consts(context: &mut Context) {
+    if context.blocks.is_empty() {
+        return;
+    }
     let mut const_to_var = HashMap::new();
     let mut mapping = BTreeMap::new();
     let mut new_ins = vec![];

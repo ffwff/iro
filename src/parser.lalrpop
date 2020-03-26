@@ -36,19 +36,19 @@ StandaloneExpr = ReturnExpr;
 
 // Attributes
 AttributeList: Vec<AttributeValue> = {
-    "@[" <items:(<AttributeValue> NL)+> "]" => {
+    <items:(<AttributeValue> NL)+> => {
         items
     }
 }
 
 AttributeValue: AttributeValue = {
-    <name:Identifier> => {
+    "@[" <name:Identifier> "]" => {
         AttributeValue {
             name,
             args: vec![],
         }
     },
-    <name:Identifier> "(" <args:Comma<Identifier>> ")" => {
+    "@[" <name:Identifier> "(" <args:Comma<Identifier>> ")" "]" => {
         AttributeValue {
             name,
             args,

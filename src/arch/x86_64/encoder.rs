@@ -34,16 +34,15 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
             context.code[relocation.label + i] = *byte;
         }
     }
-    if !context.code.is_empty() {
-        let len = ((context.code.len() - 1) | 15) + 1;
-        context.code.resize(len, 0x90);
-    }
     context
 }
 
 fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     dbg_println!("encoding insn: {:#?}", ins);
     match &ins {
+        Ins::InlineBytes(bytes) => {
+            dest.code.extend_from_slice(bytes.as_slice());
+        }
         Ins::Mov(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 dest.code.push(0xB8 + *left as u8);
