@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::rc::Rc;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::cell::Cell;
 use lalrpop_util::ParseError;
 use crate::ssa::isa::IntrinsicType;

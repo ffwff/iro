@@ -1,5 +1,5 @@
 use crate::ssa::isa::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::BitXor;
 
 // NOTE: we assume each block is labelled according to DFS order
@@ -282,6 +282,43 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
                 }
             }
         }
+    }
+}
+
+pub fn eliminate_duplicate_consts(context: &mut Context) {
+    let mut const_to_var = HashMap::new();
+    let mut mapping = BTreeMap::new();
+    let mut new_ins = vec![];
+    for block in &mut context.blocks {
+        for ins in &mut block.ins {
+            if ins.typed.is_const() {
+                let retvar = ins.retvar().unwrap();
+                let oldins = std::mem::replace(ins, Ins::new(0, InsType::Nop));
+                if let Some(mapped) = const_to_var.get(&oldins.typed) {
+                    mapping.insert(retvar, *mapped);
+                } else {
+                    new_ins.push(oldins.clone());
+                    const_to_var.insert(oldins.typed, retvar);
+                }
+            } else if let InsType::LoadVar(mapped) = ins.typed {
+                mapping.insert(ins.retvar().unwrap(), mapped);
+                ins.typed = InsType::Nop;
+            } else {
+                ins.rename_var_by(true, |var| {
+                    if let Some(mapped) = mapping.get(&var) {
+                        *mapped
+                    } else {
+                        var
+                    }
+                });
+            }
+        }
+        block.ins.retain(|ins| ins.typed != InsType::Nop);
+    }
+    {
+        let first_block = &mut context.blocks[0];
+        new_ins.append(&mut first_block.ins);
+        first_block.ins = new_ins;
     }
 }
 

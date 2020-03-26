@@ -642,7 +642,9 @@ impl Visitor for SSAVisitor {
                 if -0x7FFF_FFFF <= *x && *x <= 0x7FFF_FFFF {
                     let retvar = self.context.insert_var(Type::I32);
                     self.with_block_mut(|block| {
-                        block.ins.push(Ins::new(retvar, InsType::LoadI32(*x as i32)));
+                        block
+                            .ins
+                            .push(Ins::new(retvar, InsType::LoadI32(*x as i32)));
                     });
                     Ok(())
                 } else {

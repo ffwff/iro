@@ -111,7 +111,7 @@ impl Block {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Ins {
     retvar: usize,
     pub typed: InsType,

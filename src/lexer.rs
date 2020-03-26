@@ -112,7 +112,8 @@ impl<'input> Iterator for Lexer<'input> {
                                 loop {
                                     match self.chars.next() {
                                         Some((_, ch @ '0'..='9')) => {
-                                            decimal = decimal * 10 + (ch.to_digit(10).unwrap() as i64);
+                                            decimal =
+                                                decimal * 10 + (ch.to_digit(10).unwrap() as i64);
                                             idx1 += 1;
                                             ndigits *= 10.0;
                                         }
@@ -122,9 +123,15 @@ impl<'input> Iterator for Lexer<'input> {
                                         }
                                     }
                                 }
-                                return Some(Ok((idx0, Tok::Float {
-                                    value: f64::to_bits((value as f64) + (decimal as f64 / ndigits))
-                                }, idx1)));
+                                return Some(Ok((
+                                    idx0,
+                                    Tok::Float {
+                                        value: f64::to_bits(
+                                            (value as f64) + (decimal as f64 / ndigits),
+                                        ),
+                                    },
+                                    idx1,
+                                )));
                             }
                             ch => {
                                 self.last_char = ch;
@@ -203,11 +210,11 @@ impl<'input> Iterator for Lexer<'input> {
 
                 None => {
                     if self.outputted_eof {
-                        return None
+                        return None;
                     }
                     self.outputted_eof = true;
                     return Some(Ok((0, Tok::EOF, 0)));
-                },
+                }
                 Some((idx0, '\n')) => {
                     let mut idx1 = idx0;
                     loop {
