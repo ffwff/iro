@@ -266,6 +266,7 @@ pub enum InsType {
     LoadVar(usize),
     LoadArg(usize),
     LoadI32(i32),
+    LoadI64(i64),
     LoadF64(u64),
     LoadString(Rc<str>),
     Phi {
@@ -362,6 +363,7 @@ pub enum Type {
     NoReturn,
     Nil,
     I32,
+    I64,
     F64,
     Float,
     String,

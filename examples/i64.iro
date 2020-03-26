@@ -1,0 +1,5 @@
+def f(x)
+    return x
+end
+let x = 1000i64
+f(x)

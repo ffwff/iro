@@ -638,18 +638,23 @@ impl Visitor for SSAVisitor {
 
     fn visit_value(&mut self, n: &Value) -> VisitorResult {
         match n {
-            Value::Int(x) => {
-                if -0x7FFF_FFFF <= *x && *x <= 0x7FFF_FFFF {
-                    let retvar = self.context.insert_var(Type::I32);
-                    self.with_block_mut(|block| {
-                        block
-                            .ins
-                            .push(Ins::new(retvar, InsType::LoadI32(*x as i32)));
-                    });
-                    Ok(())
-                } else {
-                    Err(Error::InternalError)
-                }
+            Value::I32(x) => {
+                let retvar = self.context.insert_var(Type::I32);
+                self.with_block_mut(|block| {
+                    block
+                        .ins
+                        .push(Ins::new(retvar, InsType::LoadI32(*x as i32)));
+                });
+                Ok(())
+            }
+            Value::I64(x) => {
+                let retvar = self.context.insert_var(Type::I64);
+                self.with_block_mut(|block| {
+                    block
+                        .ins
+                        .push(Ins::new(retvar, InsType::LoadI64(*x)));
+                });
+                Ok(())
             }
             Value::Float(x) => {
                 let retvar = self.context.insert_var(Type::F64);

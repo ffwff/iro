@@ -41,15 +41,31 @@ impl Operand {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum OperandSize {
+    I32,
+    I64,
+}
+
+impl OperandSize {
+    pub fn size(&self) -> usize {
+        match self {
+            OperandSize::I32 => 4,
+            OperandSize::I64 => 8,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct TwoOperands {
     pub dest: Operand,
     pub src: Operand,
+    pub size: OperandSize,
 }
 
 impl std::fmt::Debug for TwoOperands {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}, {:?}", self.dest, self.src)?;
+        write!(f, "<{:?}> {:?}, {:?}", self.size, self.dest, self.src)?;
         Ok(())
     }
 }
@@ -63,13 +79,12 @@ pub struct VirtualThreeOperands {
 
 #[derive(Debug, Clone)]
 pub enum Ins {
-    MovI64(TwoOperands),
-    MovI32(TwoOperands),
-    AddI32(TwoOperands),
-    SubI32(TwoOperands),
-    MulI32(TwoOperands),
-    DivI32(TwoOperands),
-    CmpI32 {
+    Mov(TwoOperands),
+    Add(TwoOperands),
+    Sub(TwoOperands),
+    Mul(TwoOperands),
+    Div(TwoOperands),
+    Cmp {
         ops: TwoOperands,
         is_postlude: bool,
     },
@@ -154,7 +169,7 @@ impl Ins {
             return true;
         }
         match self {
-            Ins::CmpI32 { is_postlude, .. } => *is_postlude,
+            Ins::Cmp { is_postlude, .. } => *is_postlude,
             _ => false,
         }
     }
@@ -168,24 +183,24 @@ impl Ins {
 
     pub fn get_two_operands<'a>(&'a self) -> Option<&'a TwoOperands> {
         match self {
-            Ins::MovI32(ops)
-            | Ins::AddI32(ops)
-            | Ins::SubI32(ops)
-            | Ins::MulI32(ops)
-            | Ins::DivI32(ops)
-            | Ins::CmpI32 { ops, .. } => Some(ops),
+            Ins::Mov(ops)
+            | Ins::Add(ops)
+            | Ins::Sub(ops)
+            | Ins::Mul(ops)
+            | Ins::Div(ops)
+            | Ins::Cmp { ops, .. } => Some(ops),
             _ => None,
         }
     }
 
     pub fn get_two_operands_mut<'a>(&'a mut self) -> Option<&'a mut TwoOperands> {
         match self {
-            Ins::MovI32(ops)
-            | Ins::AddI32(ops)
-            | Ins::SubI32(ops)
-            | Ins::MulI32(ops)
-            | Ins::DivI32(ops)
-            | Ins::CmpI32 { ops, .. } => Some(ops),
+            Ins::Mov(ops)
+            | Ins::Add(ops)
+            | Ins::Sub(ops)
+            | Ins::Mul(ops)
+            | Ins::Div(ops)
+            | Ins::Cmp { ops, .. } => Some(ops),
             _ => None,
         }
     }
@@ -196,8 +211,7 @@ impl Ins {
 
     pub fn mov_size(&self) -> Option<usize> {
         match self {
-            Ins::MovI64(_) => Some(8),
-            Ins::MovI32(_) => Some(4),
+            Ins::Mov(ops) => Some(ops.size.size()),
             _ => None,
         }
     }

@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::str::CharIndices;
 use unicode_xid::UnicodeXID;
 
@@ -159,8 +160,8 @@ impl<'input> Iterator for Lexer<'input> {
                             }
                         }
                     }
-                    if std::i32::MIN.into() <= value && value <= std::i32::MAX.into() {
-                        return Some(Ok((idx0, Tok::I32 { value: (value as i32) }, idx1)));
+                    if let Ok(value) = value.try_into() {
+                        return Some(Ok((idx0, Tok::I32 { value }, idx1)));
                     } else {
                         return Some(Ok((idx0, Tok::I64 { value }, idx1)));
                     }

@@ -44,8 +44,7 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
 fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     dbg_println!("encoding insn: {:#?}", ins);
     match &ins {
-        Ins::MovI64(_ops) => unimplemented!(),
-        Ins::MovI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::Mov(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 dest.code.push(0xB8 + *left as u8);
@@ -63,7 +62,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
-        Ins::AddI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::Add(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
@@ -84,7 +83,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
         },
-        Ins::SubI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::Sub(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
@@ -105,7 +104,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 // modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
         },
-        Ins::MulI32(ops) => match (&ops.dest, &ops.src) {
+        Ins::Mul(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(_left), Operand::U32(_n)) => {
                 unimplemented!();
             }
@@ -113,8 +112,8 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => unimplemented!(),
         },
-        Ins::DivI32(_ops) => unimplemented!(),
-        Ins::CmpI32 { ops, .. } => match (&ops.dest, &ops.src) {
+        Ins::Div(_ops) => unimplemented!(),
+        Ins::Cmp { ops, .. } => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
                 assert!((*left as u8) <= 0b111);
                 if *n <= 0xFF {
