@@ -212,17 +212,34 @@ impl Codegen {
                     {
                         let threeops = threeops.clone();
                         let last = isa_ins.pop().unwrap();
-                        isa_ins.push(isa::Ins::Cmp {
-                            ops: isa::TwoOperands {
-                                dest: self.get_register_for_var(threeops.left),
-                                src: self.get_register_for_var(threeops.right),
-                                size: Codegen::type_to_operand_size(
-                                    &context.variables[threeops.left],
-                                )
-                                .unwrap(),
-                            },
-                            is_postlude: true,
-                        });
+                        {
+                            let dest = self.get_register_for_var(threeops.left);
+                            assert!(!dest.is_lit());
+                            let src = self.get_register_for_var(threeops.right);
+                            let mut operands = None;
+                            if context.variables[threeops.right] == Type::I64 {
+                                if let isa::Operand::U64(n) = src {
+                                    if n <= std::u32::MAX.into() {
+                                        operands = Some(isa::TwoOperands {
+                                            dest: dest.clone(),
+                                            src: isa::Operand::U32(n as u32),
+                                            size: isa::OperandSize::I64,
+                                        });
+                                    } else {
+                                        unimplemented!()
+                                    }
+                                }
+                            }
+                            let operands = operands.unwrap_or_else(|| isa::TwoOperands {
+                                dest: dest.clone(),
+                                src,
+                                size: Codegen::type_to_operand_size(&context.variables[threeops.left]).unwrap(),
+                            });
+                            isa_ins.push(isa::Ins::Cmp {
+                                ops: operands,
+                                is_postlude: true,
+                            });
+                        }
                         match last {
                             isa::Ins::Lt(_) => {
                                 if *iftrue == block_idx + 1 {
@@ -313,6 +330,8 @@ impl Codegen {
                                             src: isa::Operand::U32(n as u32),
                                             size: isa::OperandSize::I64,
                                         });
+                                    } else {
+                                        unimplemented!()
                                     }
                                 }
                             }
