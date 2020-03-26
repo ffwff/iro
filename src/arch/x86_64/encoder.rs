@@ -1,6 +1,6 @@
 use crate::arch::context;
 use crate::arch::x86_64::isa;
-use isa::{Ins, Operand};
+use isa::{Ins, Operand, OperandSize, TwoOperands};
 
 use crate::arch::context::RelativeRelocation;
 
@@ -46,18 +46,28 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     match &ins {
         Ins::Mov(ops) => match (&ops.dest, &ops.src) {
             (Operand::Register(left), Operand::U32(n)) => {
-                assert!((*left as u8) <= 0b111);
                 dest.code.push(0xB8 + *left as u8);
                 dest.code.extend_from_slice(&n.to_le_bytes());
             }
+            (Operand::Register(left), Operand::U64(n)) => {
+                if *n < 0x1_0000_0000 {
+                    rex_prefix(dest, ops, false, false);
+                    dest.code.push(0xB8 + *left as u8);
+                    dest.code.extend_from_slice(&((*n as u32).to_le_bytes()));
+                } else {
+                    rex_prefix(dest, ops, false, true);
+                    dest.code.push(0xB8 + *left as u8);
+                    dest.code.extend_from_slice(&n.to_le_bytes());
+                }
+            }
             (Operand::Memory { .. }, Operand::Register(_)) => {
                 dbg_println!("mem<-reg");
-                rex_prefix(dest, ops.src.clone(), ops.dest.clone());
+                rex_prefix(dest, ops, false, false);
                 dest.code.push(0x89);
                 modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
             (_, _) => {
-                rex_prefix(dest, ops.dest.clone(), ops.src.clone());
+                rex_prefix(dest, ops, true, false);
                 dest.code.push(0x8B);
                 modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
             }
@@ -78,7 +88,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             (Operand::Memory { .. }, Operand::Register(_))
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
-                rex_prefix(dest, ops.src.clone(), ops.dest.clone());
+                rex_prefix(dest, ops, false, false);
                 dest.code.push(0x01);
                 modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
@@ -240,8 +250,32 @@ fn modrm_normalize_reg(reg: u8) -> u8 {
     }
 }
 
-fn rex_prefix(dest: &mut context::Context, odest: Operand, osrc: Operand) {
-    match (odest, osrc) {
+fn rex_prefix(dest: &mut context::Context, ops: &TwoOperands, dest_first: bool, rm_field: bool) {
+    let mut rex_form = 0b0100_0000;
+    let mut has_rex_form = false;
+    match {
+        if dest_first {
+            (&ops.dest, &ops.src)
+        } else {
+            (&ops.src, &ops.dest)
+        }
+    } {
+        (Operand::Register(left), Operand::U32(n)) => {
+            if (*left as u8) > 0b111 {
+                rex_form |= 0b100;
+                has_rex_form = true;
+            }
+        }
+        (Operand::Register(left), Operand::U64(n)) => {
+            if (*left as u8) > 0b111 {
+                rex_form |= 0b100;
+                has_rex_form = true;
+            }
+            if rm_field {
+                rex_form |= 0b001;
+                has_rex_form = true;
+            }
+        }
         (Operand::Register(left), Operand::Register(right))
         | (
             Operand::Register(left),
@@ -250,18 +284,24 @@ fn rex_prefix(dest: &mut context::Context, odest: Operand, osrc: Operand) {
                 base: right,
             },
         ) => {
-            if (left as u8) > 0b111 || (right as u8) > 0b111 {
-                let mut rex_form = 0b0100_0000;
-                if (left as u8) > 0b111 {
+            if ops.size == OperandSize::I64 {
+                rex_form |= 0b1000;
+                has_rex_form = true;
+            }
+            if (*left as u8) > 0b111 || (*right as u8) > 0b111 {
+                if (*left as u8) > 0b111 {
                     rex_form |= 0b100;
                 }
-                if (right as u8) > 0b111 {
+                if (*right as u8) > 0b111 {
                     rex_form |= 0b001;
                 }
-                dest.code.push(rex_form);
+                has_rex_form = true;
             }
         }
         (_, _) => (),
+    }
+    if has_rex_form {
+        dest.code.push(rex_form);
     }
 }
 

@@ -24,6 +24,7 @@ impl TopLevelInfo {
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
                 Rc::from("I32") => Type::I32,
+                Rc::from("I64") => Type::I64,
                 Rc::from("Float") => Type::Float,
                 Rc::from("String") => Type::String,
             ],

@@ -41,7 +41,7 @@ impl Operand {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OperandSize {
     I32,
     I64,
