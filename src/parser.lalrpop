@@ -184,7 +184,8 @@ Term: NodeBox = {
 };
 
 Literal: Value = {
-    <Int> => Value::Int(<>.try_into().unwrap()),
+    <Int> => Value::Int(<>),
+    <Float> => Value::Float(<>),
     <String> => Value::String(Rc::from(<>)),
     <Identifier> => Value::Identifier(Rc::from(<>)),
 };
@@ -240,6 +241,7 @@ extern {
         NL => lexer::Tok::Newline,
         EOF => lexer::Tok::EOF,
         Int => lexer::Tok::Int { value : <i64> },
+        Float => lexer::Tok::Float { value : <u64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
         String => lexer::Tok::String { value : <String> },
     }

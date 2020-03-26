@@ -266,6 +266,7 @@ pub enum InsType {
     LoadVar(usize),
     LoadArg(usize),
     LoadI32(i32),
+    LoadF64(u64),
     LoadString(Rc<str>),
     Phi {
         vars: Vec<usize>,
@@ -305,6 +306,7 @@ impl InsType {
             InsType::LoadNil
             | InsType::LoadArg(_)
             | InsType::LoadI32(_)
+            | InsType::LoadF64(_)
             | InsType::LoadString(_) => true,
             _ => false,
         }
@@ -360,6 +362,7 @@ pub enum Type {
     NoReturn,
     Nil,
     I32,
+    F64,
     Float,
     String,
     Union(Rc<BTreeSet<Type>>),

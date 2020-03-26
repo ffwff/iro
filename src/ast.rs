@@ -112,8 +112,8 @@ impl Node for Program {
 
 #[derive(Debug)]
 pub enum Value {
-    Int(i32),
-    Float(f64),
+    Int(i64),
+    Float(u64),
     String(Rc<str>),
     Identifier(Rc<str>),
     Any,

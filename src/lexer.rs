@@ -39,7 +39,7 @@ pub enum Tok {
     LeftBracket,
     RightBracket,
     Int { value: i64 },
-    Float { value: f64 },
+    Float { value: u64 },
     Identifier { value: String },
     String { value: String },
 }
@@ -123,7 +123,7 @@ impl<'input> Iterator for Lexer<'input> {
                                     }
                                 }
                                 return Some(Ok((idx0, Tok::Float {
-                                    value: (value as f64) + (decimal as f64 / ndigits)
+                                    value: f64::to_bits((value as f64) + (decimal as f64 / ndigits))
                                 }, idx1)));
                             }
                             ch => {
