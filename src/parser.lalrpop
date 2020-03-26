@@ -10,7 +10,7 @@ use crate::lexer;
 grammar;
 
 pub Top : Program = {
-    NL* <TopLevelExpr*> => Program{ exprs: <> },
+    NL* <TopLevelExpr*> EOF? => Program{ exprs: <> },
 };
 
 #[inline]
@@ -183,7 +183,8 @@ Term: NodeBox = {
 };
 
 Literal: Value = {
-    <Int> => Value::Int(<>),
+    <I32> => Value::I32(<>),
+    <I64> => Value::I64(<>),
     <Float> => Value::Float(<>),
     <String> => Value::String(Rc::from(<>)),
     <Identifier> => Value::Identifier(Rc::from(<>)),
@@ -239,7 +240,8 @@ extern {
         "]" => lexer::Tok::RightBracket,
         NL => lexer::Tok::Newline,
         EOF => lexer::Tok::EOF,
-        Int => lexer::Tok::Int { value : <i64> },
+        I32 => lexer::Tok::I32 { value : <i32> },
+        I64 => lexer::Tok::I64 { value : <i64> },
         Float => lexer::Tok::Float { value : <u64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
         String => lexer::Tok::String { value : <String> },

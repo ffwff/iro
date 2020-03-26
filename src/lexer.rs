@@ -38,7 +38,8 @@ pub enum Tok {
     AtBracket,
     LeftBracket,
     RightBracket,
-    Int { value: i64 },
+    I32 { value: i32 },
+    I64 { value: i64 },
     Float { value: u64 },
     Identifier { value: String },
     String { value: String },
@@ -94,7 +95,6 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let curr_char = self.bump();
-            // println!("char: {:?}", curr_char);
             match curr_char {
                 Some((idx0, ch @ '0'..='9')) => {
                     let mut value = ch.to_digit(10).unwrap() as i64;
@@ -104,6 +104,26 @@ impl<'input> Iterator for Lexer<'input> {
                             Some((_, ch @ '0'..='9')) => {
                                 value = value * 10 + (ch.to_digit(10).unwrap() as i64);
                                 idx1 += 1;
+                            }
+                            Some((_, 'i')) => {
+                                idx1 += 1;
+                                match (self.chars.next(), self.chars.next()) {
+                                    (Some((_, '3')), Some((_, '2'))) => {
+                                        idx1 += 2;
+                                        return Some(Ok((idx0, Tok::I32 {
+                                            value: (value as i32)
+                                        }, idx1)));
+                                    }
+                                    (Some((_, '6')), Some((_, '4'))) => {
+                                        idx1 += 2;
+                                        return Some(Ok((idx0, Tok::I64 {
+                                            value
+                                        }, idx1)));
+                                    }
+                                    _ => {
+                                        return Some(Err(Error::UnexpectedCharacter((idx1, 'i'))));
+                                    }
+                                }
                             }
                             Some((_, '.')) => {
                                 idx1 += 1;
@@ -139,7 +159,11 @@ impl<'input> Iterator for Lexer<'input> {
                             }
                         }
                     }
-                    return Some(Ok((idx0, Tok::Int { value }, idx1)));
+                    if std::i32::MIN.into() <= value && value <= std::i32::MAX.into() {
+                        return Some(Ok((idx0, Tok::I32 { value: (value as i32) }, idx1)));
+                    } else {
+                        return Some(Ok((idx0, Tok::I64 { value }, idx1)));
+                    }
                 }
 
                 Some((idx0, '=')) => mod_op!(self, idx0, Tok::Asg, '=', Tok::Equ),
