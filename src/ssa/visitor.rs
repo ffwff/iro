@@ -752,7 +752,6 @@ impl Visitor for SSAVisitor {
                     Err(Error::InternalError)
                 }
             }),
-            _ => unimplemented!(),
         }
     }
 }

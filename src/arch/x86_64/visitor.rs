@@ -1,4 +1,4 @@
-use crate::arch::context;
+use crate::arch::{context, codegen};
 use crate::arch::x86_64::{encoder, isa};
 use crate::ssa::isa::*;
 use std::borrow::Borrow;
@@ -43,14 +43,26 @@ static CALLER_SAVED: [isa::Reg; 2] = [isa::Reg::R11, isa::Reg::R10];
 
 static RETURN_REG: isa::Reg = isa::Reg::Rax;
 
-#[derive(Debug, Clone)]
-pub enum Error {
-    None,
-}
-
 pub struct Codegen {
     unflattened_code: HashMap<Rc<FunctionName>, Vec<isa::Block>>,
     constant_operands: BTreeMap<usize, isa::Operand>,
+}
+
+impl codegen::Codegen for Codegen {
+    fn process(&mut self, program: &Program) -> Result<context::Contexts, codegen::Error> {
+        dbg_println!("processing {:#?}", program);
+        let mut isa_contexts = context::Contexts::new();
+        for (name, context) in &program.contexts {
+            self.visit_context(&context, &name, &mut isa_contexts)?;
+        }
+        for (name, context) in &self.unflattened_code {
+            isa_contexts.insert(
+                name.clone(),
+                context::Function::Context(encoder::encode_blocks(&context)),
+            );
+        }
+        Ok(isa_contexts)
+    }
 }
 
 impl Codegen {
@@ -61,29 +73,14 @@ impl Codegen {
         }
     }
 
-    pub fn process(&mut self, program: &Program) -> Result<context::Contexts, Error> {
-        dbg_println!("processing {:#?}", program);
-        let mut isa_contexts = context::Contexts::new();
-        for (name, context) in &program.contexts {
-            self.visit_context(&context, &name, &mut isa_contexts);
-        }
-        for (name, context) in &self.unflattened_code {
-            isa_contexts.insert(
-                name.clone(),
-                context::Function::Context(encoder::encode_blocks(&context)),
-            );
-        }
-        Ok(isa_contexts)
-    }
-
-    pub fn visit_context(
+    fn visit_context(
         &mut self,
         context: &Context,
         name: &Rc<FunctionName>,
         isa_contexts: &mut context::Contexts,
-    ) {
+    ) -> Result<(), codegen::Error> {
         if self.visit_intrinsic(context, name, isa_contexts) {
-            return;
+            return Ok(());
         }
         let mut blocks = vec![];
         self.constant_operands.clear();
@@ -91,7 +88,7 @@ impl Codegen {
             let mut isa_ins = vec![];
             dbg_println!("{:#?}", block);
             for ins in &block.ins {
-                self.visit_ins(ins, &mut isa_ins, idx, context);
+                self.visit_ins(ins, &mut isa_ins, idx, context)?;
             }
             dbg_println!("{:#?}", isa_ins);
             blocks.push(isa::Block { ins: isa_ins });
@@ -103,6 +100,7 @@ impl Codegen {
         self.remove_unnecessary_jmps(&mut blocks);
         dbg_println!("after: {:#?}\n---", blocks);
         self.unflattened_code.insert(name.clone(), blocks);
+        Ok(())
     }
 
     fn get_register_for_var(&mut self, arg: usize) -> isa::Operand {
@@ -121,13 +119,13 @@ impl Codegen {
         }
     }
 
-    pub fn visit_ins(
+    fn visit_ins(
         &mut self,
         ins: &Ins,
         isa_ins: &mut Vec<isa::Ins>,
         block_idx: usize,
         context: &Context,
-    ) {
+    ) -> Result<(), codegen::Error> {
         dbg_println!("ins: {:#?}", ins);
         match &ins.typed {
             InsType::Nop => (),
@@ -278,7 +276,7 @@ impl Codegen {
                             }
                             _ => unreachable!(),
                         }
-                        return;
+                        return Ok(());
                     }
                     _ => (),
                 }
@@ -355,11 +353,12 @@ impl Codegen {
                     (_, _) => unimplemented!(),
                 }
             }
-            _ => unimplemented!(),
+            _ => return Err(codegen::Error::InvalidOpcode),
         }
+        Ok(())
     }
 
-    pub fn visit_intrinsic(
+    fn visit_intrinsic(
         &mut self,
         context: &Context,
         name: &Rc<FunctionName>,
@@ -374,7 +373,7 @@ impl Codegen {
         }
     }
 
-    pub fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
+    fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
         self.allocate_registers_for_block(0, blocks, context, ALLOC_REGS.to_vec(), BTreeMap::new());
     }
 
@@ -615,7 +614,7 @@ impl Codegen {
         }
     }
 
-    pub fn setup_stack_and_locals(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
+    fn setup_stack_and_locals(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
         dbg_println!("stacks for: {:#?}", blocks);
         let mut map_to_stack_offset = BTreeMap::new();
         let stack_offset = 8; // skip 1 dword value for saved rbp
@@ -707,7 +706,7 @@ impl Codegen {
         }
     }
 
-    pub fn remove_unnecessary_movs(&mut self, blocks: &mut Vec<isa::Block>) {
+    fn remove_unnecessary_movs(&mut self, blocks: &mut Vec<isa::Block>) {
         for block in blocks {
             block.ins.retain(|ins| match &ins {
                 isa::Ins::Mov(operands) => {
@@ -722,7 +721,7 @@ impl Codegen {
         }
     }
 
-    pub fn remove_unnecessary_jmps(&mut self, blocks: &mut Vec<isa::Block>) {
+    fn remove_unnecessary_jmps(&mut self, blocks: &mut Vec<isa::Block>) {
         for (idx, block) in blocks.iter_mut().enumerate() {
             if let Some(target) = block
                 .ins

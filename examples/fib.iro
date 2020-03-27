@@ -1,8 +1,12 @@
-def fib(n): I32
-    if n <= 1
-        return 1
-    end
-    return fib(n-1) + fib(n-2)
+@[Static(print_i64)]
+def print(n: I64): Nil
 end
 
-fib(46)
+def fib(n): I64
+    if n <= 1
+        return 1i64
+    end
+    fib(n-1) + fib(n-2)
+end
+
+print(fib(46i64))
