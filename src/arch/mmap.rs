@@ -56,7 +56,7 @@ impl Mmap {
                     placement += context.code.len();
                 }
                 Function::Extern(generic) => {
-                    context_locs.insert(name.clone(), generic.0);
+                    context_locs.insert(name.clone(), generic.ptr());
                 }
             }
         }

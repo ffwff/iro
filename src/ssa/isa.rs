@@ -1,4 +1,4 @@
-use crate::runtime::{GenericFunction, RUNTIME};
+use crate::runtime::{GenericFunction, Runtime};
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
@@ -12,8 +12,8 @@ pub enum IntrinsicType {
 }
 
 impl IntrinsicType {
-    pub fn from_static(s: &str) -> Option<Self> {
-        if let Some(func) = RUNTIME.lock().unwrap().funcs().get(s) {
+    pub fn from_static(s: &str, runtime: &Runtime) -> Option<Self> {
+        if let Some(func) = runtime.funcs().get(s) {
             Some(IntrinsicType::Extern(*func))
         } else {
             None
@@ -363,6 +363,7 @@ impl ToString for FunctionName {
 pub struct Program {
     pub contexts: HashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
+    pub runtime: Runtime,
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

@@ -1,18 +1,24 @@
 use crate::runtime::functions;
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GenericFunction(pub *const libc::c_void);
+pub struct GenericFunction(pub(self) *const libc::c_void);
 unsafe impl Send for GenericFunction {}
 
-pub struct RuntimeData {
+impl GenericFunction {
+    pub fn ptr(&self) -> *const libc::c_void {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Runtime {
     funcs: HashMap<String, GenericFunction>,
 }
 
-impl RuntimeData {
-    pub unsafe fn new() -> Self {
-        RuntimeData {
+impl Runtime {
+    pub fn new() -> Self {
+        Runtime {
             funcs: hashmap![
                 "print_i32".to_string() => GenericFunction(functions::print_i32 as _),
                 "print_i64".to_string() => GenericFunction(functions::print_i64 as _),
@@ -24,11 +30,7 @@ impl RuntimeData {
         &self.funcs
     }
 
-    pub fn insert_func(&mut self, key: String, callback: *const libc::c_void) {
-        self.funcs.insert(key, GenericFunction(callback));
+    pub unsafe fn insert_func<S>(&mut self, string: S, generic: GenericFunction) where S: ToString {
+        self.funcs.insert(string.to_string(), generic);
     }
-}
-
-lazy_static! {
-    pub static ref RUNTIME: Mutex<RuntimeData> = unsafe { Mutex::new(RuntimeData::new()) };
 }

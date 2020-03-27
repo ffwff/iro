@@ -4,6 +4,7 @@ use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
 use crate::utils::RcWrapper;
+use crate::runtime::Runtime;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,10 +15,11 @@ pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<Rc<DefStatement>>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
+    pub runtime: Runtime,
 }
 
 impl TopLevelInfo {
-    pub fn new() -> Self {
+    pub fn new(runtime: Runtime) -> Self {
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
@@ -28,6 +30,7 @@ impl TopLevelInfo {
                 Rc::from("Float") => Type::Float,
                 Rc::from("String") => Type::String,
             ],
+            runtime,
         }
     }
 }
@@ -52,11 +55,11 @@ macro_rules! check_direct_return {
 }
 
 impl SSAVisitor {
-    pub fn new() -> Self {
+    pub fn new(runtime: Runtime) -> Self {
         Self {
             context: Context::new(Rc::from("main")),
             envs: vec![],
-            top_level: RcWrapper::new(TopLevelInfo::new()),
+            top_level: RcWrapper::new(TopLevelInfo::new(runtime)),
             has_direct_return: false,
         }
     }
@@ -89,6 +92,7 @@ impl SSAVisitor {
                     .map(|(key, value)| (key, value.unwrap()))
                     .collect(),
                 entry,
+                runtime: top_level.runtime,
             })
         } else {
             Err(())
@@ -134,7 +138,7 @@ impl SSAVisitor {
         Some(Type::Nil)
     }
 
-    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement) -> VisitorResult {
+    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement, top_level: &TopLevelInfo) -> VisitorResult {
         for (_, typed) in &defstmt.args {
             if let Some(typed) = typed {
                 self.visit_typeid(&typed)?;
@@ -147,7 +151,7 @@ impl SSAVisitor {
             for attr in attrs {
                 match attr.name.as_ref() {
                     "Static" => {
-                        if let Some(intrinsic) = IntrinsicType::from_static(&attr.args[0]) {
+                        if let Some(intrinsic) = IntrinsicType::from_static(&attr.args[0], &top_level.runtime) {
                             defstmt.intrinsic.replace(intrinsic);
                         } else {
                             return Err(Error::InternalError);
@@ -186,7 +190,7 @@ impl Visitor for SSAVisitor {
             for (_, defstmt_vec) in &top_level.defstmts {
                 for defstmt_rc in defstmt_vec {
                     let defstmt: &DefStatement = defstmt_rc.borrow();
-                    self.top_level_visit_defstmt(&defstmt)?;
+                    self.top_level_visit_defstmt(&defstmt, &top_level)?;
                 }
             }
         }
@@ -211,12 +215,6 @@ impl Visitor for SSAVisitor {
             }
             self.envs.push(env);
         }
-        for expr in &n.exprs {
-            expr.visit(self)?;
-            if self.has_direct_return {
-                break;
-            }
-        }
         if n.exprs.is_empty() {
             self.context.rettype = Type::Nil;
             let retvar = self.context.insert_var(Type::Nil);
@@ -226,7 +224,15 @@ impl Visitor for SSAVisitor {
                     Ins::new(0, InsType::Return(retvar)),
                 ]);
             });
-        } if !self.has_direct_return && self.context.rettype != Type::NoReturn {
+            return Ok(());
+        }
+        for expr in &n.exprs {
+            expr.visit(self)?;
+            if self.has_direct_return {
+                break;
+            }
+        }
+        if !self.has_direct_return && self.context.rettype != Type::NoReturn {
             if let Some(retvar) = self.last_retvar() {
                 self.context.rettype = self.context.rettype.unify(&self.context.variables[retvar]);
                 self.with_block_mut(|block| {

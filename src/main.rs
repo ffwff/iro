@@ -7,10 +7,11 @@ use iro::ast::Visitor;
 use iro::ssa::opt;
 use iro::ssa::visitor::SSAVisitor;
 use iro::utils;
+use iro::runtime::Runtime;
 
 fn parse_and_run(code: &str) {
     let ast = utils::parse_input(code).unwrap();
-    let mut visitor = SSAVisitor::new();
+    let mut visitor = SSAVisitor::new(Runtime::new());
     visitor.visit_program(&ast).unwrap();
     let mut program = visitor.into_program().unwrap();
     let ssa_pipeline = utils::Pipeline::new(
