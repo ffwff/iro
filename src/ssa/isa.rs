@@ -186,6 +186,10 @@ impl Ins {
                 iftrue,
                 iffalse,
             },
+            InsType::Cast { var, typed } => InsType::Cast {
+                var: swap(var),
+                typed,
+            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
@@ -251,6 +255,9 @@ impl Ins {
             InsType::IfJmp { condvar, .. } => {
                 callback(*condvar);
             }
+            InsType::Cast { var, .. } => {
+                callback(*var);
+            }
             _ => (),
         }
     }
@@ -293,6 +300,10 @@ pub enum InsType {
     Gt((usize, usize)),
     Lte((usize, usize)),
     Gte((usize, usize)),
+    Cast {
+        var: usize,
+        typed: Type,
+    },
     IfJmp {
         condvar: usize,
         iftrue: usize,
@@ -317,6 +328,16 @@ impl InsType {
             | InsType::LoadF64(_)
             | InsType::LoadString(_) => true,
             _ => false,
+        }
+    }
+    
+    pub fn const_cast(&self, typed: &Type) -> Option<InsType> {
+        match (self, typed) {
+            (InsType::LoadI32(_), Type::I32) => Some(self.clone()),
+            (InsType::LoadI32(n), Type::I64) => Some(InsType::LoadI64(*n as i64)),
+            (InsType::LoadI64(_), Type::I64) => Some(self.clone()),
+            (InsType::LoadI64(n), Type::I32) => Some(InsType::LoadI32(*n as i32)),
+            _ => None,
         }
     }
 
@@ -403,6 +424,13 @@ impl Type {
                 bset
             })),
             (left, right) => Type::Union(Rc::new(btreeset! { left.clone(), right.clone() })),
+        }
+    }
+
+    pub fn can_cast_to(&self, other: &Type) -> bool {
+        match (self, other) {
+            (Type::I32, Type::I64) => true,
+            _ => false,
         }
     }
 }

@@ -17,7 +17,7 @@ fn parse_and_run(code: &str) {
     let ssa_pipeline = utils::Pipeline::new(
         [
             opt::build_graph_and_rename_vars,
-            opt::eliminate_duplicate_consts,
+            opt::fold_constants,
             opt::remove_defined_never_used,
             opt::eliminate_phi,
             opt::data_flow_analysis,

@@ -656,9 +656,18 @@ impl Visitor for SSAVisitor {
                 n.left.visit(self)?;
                 let left = self.last_retvar().unwrap();
                 n.right.visit(self)?;
-                let right = self.last_retvar().unwrap();
-                dbg_println!("{:#?}", self.context);
-                if self.context.variables[left] != self.context.variables[right] {
+                let mut right = self.last_retvar().unwrap();
+                if self.context.variables[right].can_cast_to(&self.context.variables[left]) {
+                    let typed = RefCell::new(Some(self.context.variables[left].clone()));
+                    let retvar = self.context.insert_var(self.context.variables[left].clone());
+                    self.with_block_mut(move |block| {
+                        block.ins.push(Ins::new(retvar, InsType::Cast {
+                            var: right,
+                            typed: typed.replace(None).unwrap(),
+                        }));
+                    });
+                    right = retvar;
+                } else if self.context.variables[left] != self.context.variables[right] {
                     return Err(Error::IncompatibleType);
                 }
                 let retvar = self.context.insert_var(match op {
