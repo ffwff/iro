@@ -1,0 +1,25 @@
+{
+    "name": "iro",
+    "displayName": "iro",
+    "description": "",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.43.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "iro",
+            "aliases": ["Iro", "iro"],
+            "extensions": [".iro"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "iro",
+            "scopeName": "source.iro",
+            "path": "./syntaxes/iro.tmLanguage.json"
+        }]
+    }
+}
