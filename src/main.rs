@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 #[macro_use]
 extern crate maplit;
-use iro::arch::{current_codegen, mmap};
 use iro::arch::codegen::Codegen;
+use iro::arch::{current_codegen, mmap};
 use iro::ast::Visitor;
+use iro::runtime::Runtime;
 use iro::ssa::opt;
 use iro::ssa::visitor::SSAVisitor;
 use iro::utils;
-use iro::runtime::Runtime;
 
 fn parse_and_run(code: &str) {
     let ast = utils::parse_input(code).unwrap();

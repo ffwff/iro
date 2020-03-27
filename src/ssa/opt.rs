@@ -306,11 +306,11 @@ pub fn fold_constants(context: &mut Context) {
                         var_to_const.insert(retvar, oldins.typed.clone());
                         const_to_var.insert(oldins.typed, retvar);
                     }
-                },
+                }
                 InsType::LoadVar(mapped) => {
                     mapping.insert(ins.retvar().unwrap(), *mapped);
                     ins.typed = InsType::Nop;
-                },
+                }
                 InsType::Cast { var, typed } => {
                     let const_ins = var_to_const
                         .get(&var)
@@ -329,7 +329,7 @@ pub fn fold_constants(context: &mut Context) {
                             ins.typed = InsType::Nop;
                         }
                     }
-                },
+                }
                 _ => {
                     ins.rename_var_by(true, |var| {
                         if let Some(mapped) = mapping.get(&var) {

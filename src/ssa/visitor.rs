@@ -1,10 +1,10 @@
 use crate::ast;
 use crate::ast::*;
+use crate::runtime::Runtime;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
 use crate::utils::RcWrapper;
-use crate::runtime::Runtime;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -138,7 +138,11 @@ impl SSAVisitor {
         Some(Type::Nil)
     }
 
-    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement, top_level: &TopLevelInfo) -> VisitorResult {
+    fn top_level_visit_defstmt(
+        &mut self,
+        defstmt: &DefStatement,
+        top_level: &TopLevelInfo,
+    ) -> VisitorResult {
         for (_, typed) in &defstmt.args {
             if let Some(typed) = typed {
                 self.visit_typeid(&typed)?;
@@ -151,7 +155,9 @@ impl SSAVisitor {
             for attr in attrs {
                 match attr.name.as_ref() {
                     "Static" => {
-                        if let Some(intrinsic) = IntrinsicType::from_static(&attr.args[0], &top_level.runtime) {
+                        if let Some(intrinsic) =
+                            IntrinsicType::from_static(&attr.args[0], &top_level.runtime)
+                        {
                             defstmt.intrinsic.replace(intrinsic);
                         } else {
                             return Err(Error::InternalError);
@@ -175,7 +181,9 @@ impl Visitor for SSAVisitor {
                     if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
                         vec.push(defstmt_rc);
                     } else {
-                        top_level.defstmts.insert(defstmt.id.clone(), vec![ defstmt_rc ]);
+                        top_level
+                            .defstmts
+                            .insert(defstmt.id.clone(), vec![defstmt_rc]);
                     }
                 });
             } else {
@@ -513,7 +521,10 @@ impl Visitor for SSAVisitor {
                     rettype
                 } else {
                     let (defstmt, func_insert) = self.top_level.with_mut(|top_level| {
-                        let func_insert = top_level.func_contexts.insert(func_name.clone(), None).is_some();
+                        let func_insert = top_level
+                            .func_contexts
+                            .insert(func_name.clone(), None)
+                            .is_some();
                         let mut usable_defstmt = None;
                         if let Some(vec) = top_level.defstmts.get(id) {
                             for defstmt in vec {
@@ -540,7 +551,10 @@ impl Visitor for SSAVisitor {
                         // Properly compute the return type
                         if defstmt.intrinsic.get() != IntrinsicType::None {
                             if let Some(rettype) = {
-                                SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)
+                                SSAVisitor::intrinsic_return_type(
+                                    defstmt.intrinsic.get(),
+                                    &arg_types,
+                                )
                             } {
                                 let data = RefCell::new(Some((
                                     func_name.clone(),
@@ -659,12 +673,17 @@ impl Visitor for SSAVisitor {
                 let mut right = self.last_retvar().unwrap();
                 if self.context.variables[right].can_cast_to(&self.context.variables[left]) {
                     let typed = RefCell::new(Some(self.context.variables[left].clone()));
-                    let retvar = self.context.insert_var(self.context.variables[left].clone());
+                    let retvar = self
+                        .context
+                        .insert_var(self.context.variables[left].clone());
                     self.with_block_mut(move |block| {
-                        block.ins.push(Ins::new(retvar, InsType::Cast {
-                            var: right,
-                            typed: typed.replace(None).unwrap(),
-                        }));
+                        block.ins.push(Ins::new(
+                            retvar,
+                            InsType::Cast {
+                                var: right,
+                                typed: typed.replace(None).unwrap(),
+                            },
+                        ));
                     });
                     right = retvar;
                 } else if self.context.variables[left] != self.context.variables[right] {

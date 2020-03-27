@@ -330,7 +330,7 @@ impl InsType {
             _ => false,
         }
     }
-    
+
     pub fn const_cast(&self, typed: &Type) -> Option<InsType> {
         match (self, typed) {
             (InsType::LoadI32(_), Type::I32) => Some(self.clone()),

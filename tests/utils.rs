@@ -1,10 +1,11 @@
+use iro::arch::codegen::Codegen;
+use iro::arch::current_codegen;
 use iro::arch::mmap;
-use iro::arch::x86_64;
 use iro::ast::Visitor;
+use iro::runtime::Runtime;
 use iro::ssa::opt;
 use iro::ssa::visitor::SSAVisitor;
 use iro::utils;
-use iro::runtime::Runtime;
 
 pub fn parse_and_run(code: &str) {
     let ast = utils::parse_input(code).unwrap();
@@ -24,7 +25,7 @@ pub fn parse_and_run(code: &str) {
     for (_, context) in &mut program.contexts {
         ssa_pipeline.apply(context);
     }
-    let mut visitor = x86_64::visitor::Codegen::new();
+    let mut visitor = current_codegen();
     let contexts = visitor.process(&program).unwrap();
     unsafe {
         let mmap = mmap::Mmap::from_contexts(&contexts).unwrap();

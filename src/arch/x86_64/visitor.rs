@@ -1,5 +1,5 @@
-use crate::arch::{context, codegen};
 use crate::arch::x86_64::{encoder, isa};
+use crate::arch::{codegen, context};
 use crate::ssa::isa::*;
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
