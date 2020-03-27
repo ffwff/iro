@@ -78,9 +78,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
-            (Operand::Register(left), Operand::U64(n)) => {
-                unimplemented!()
-            }
+            (Operand::Register(left), Operand::U64(n)) => unimplemented!(),
             (Operand::Memory { .. }, Operand::Register(_))
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
@@ -132,9 +130,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                     dest.code.extend_from_slice(&n.to_le_bytes());
                 }
             }
-            (Operand::Register(left), Operand::U64(n)) => {
-                unimplemented!()
-            }
+            (Operand::Register(left), Operand::U64(n)) => unimplemented!(),
             (Operand::Memory { .. }, Operand::Register(_))
             | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {

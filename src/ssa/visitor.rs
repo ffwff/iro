@@ -201,16 +201,6 @@ impl Visitor for SSAVisitor {
     }
 
     fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult {
-        for ((_arg, declared_typed), typed) in n.args.iter().zip(self.context.args.iter()) {
-            if let Some(maybe_declared_rc) = declared_typed.as_ref() {
-                let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
-                if let Some(declared_typed) = maybe_declared {
-                    if *declared_typed != *typed {
-                        return Err(Error::IncompatibleType);
-                    }
-                }
-            }
-        }
         {
             let mut env = Env::new();
             for (idx, (name, _)) in n.args.iter().enumerate() {
@@ -236,7 +226,7 @@ impl Visitor for SSAVisitor {
                 self.with_block_mut(|block| {
                     block.ins.extend_from_slice(&[
                         Ins::new(retvar, InsType::LoadNil),
-                        Ins::new(0, InsType::Return(retvar))
+                        Ins::new(0, InsType::Return(retvar)),
                     ]);
                 });
             }
@@ -514,9 +504,21 @@ impl Visitor for SSAVisitor {
                         top_level.func_contexts.insert(func_name.clone(), None);
                         top_level.defstmts.get(id).cloned().unwrap()
                     });
+                    // Perform argument checks based on declared function
                     if defstmt.args.len() != arg_types.len() {
                         return Err(Error::InvalidArguments);
                     }
+                    for ((_, declared_typed), typed) in defstmt.args.iter().zip(arg_types.iter()) {
+                        if let Some(maybe_declared_rc) = declared_typed.as_ref() {
+                            let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
+                            if let Some(declared_typed) = maybe_declared {
+                                if *declared_typed != *typed {
+                                    return Err(Error::IncompatibleType);
+                                }
+                            }
+                        }
+                    }
+                    // Properly compute the return type
                     if defstmt.intrinsic.get() != IntrinsicType::None {
                         if let Some(rettype) = {
                             SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)

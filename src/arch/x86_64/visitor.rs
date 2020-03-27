@@ -233,7 +233,10 @@ impl Codegen {
                             let operands = operands.unwrap_or_else(|| isa::TwoOperands {
                                 dest: dest.clone(),
                                 src,
-                                size: Codegen::type_to_operand_size(&context.variables[threeops.left]).unwrap(),
+                                size: Codegen::type_to_operand_size(
+                                    &context.variables[threeops.left],
+                                )
+                                .unwrap(),
                             });
                             isa_ins.push(isa::Ins::Cmp {
                                 ops: operands,

@@ -1,8 +1,8 @@
 use crate::arch::context::*;
 use crate::ssa::isa::FunctionName;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::io::Error;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct Mmap {
