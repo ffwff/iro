@@ -244,6 +244,25 @@ pub struct DefStatement {
     pub intrinsic: Cell<IntrinsicType>,
 }
 
+impl DefStatement {
+    pub fn is_compatible_with_args(&self, arg_types: &Vec<Type>) -> bool {
+        if self.args.len() != arg_types.len() {
+            return false;
+        }
+        for ((_, declared_typed), typed) in self.args.iter().zip(arg_types.iter()) {
+            if let Some(maybe_declared_rc) = declared_typed.as_ref() {
+                let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
+                if let Some(declared_typed) = maybe_declared {
+                    if *declared_typed != *typed {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+}
+
 impl Node for DefStatement {
     debuggable!();
     visitable!(visit_defstmt);

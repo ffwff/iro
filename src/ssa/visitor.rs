@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct TopLevelInfo {
-    pub defstmts: HashMap<Rc<str>, Rc<DefStatement>>,
+    pub defstmts: HashMap<Rc<str>, Vec<Rc<DefStatement>>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
 }
@@ -143,6 +143,20 @@ impl SSAVisitor {
         if let Some(typed) = defstmt.return_type.as_ref() {
             self.visit_typeid(&typed)?;
         }
+        if let Some(attrs) = &defstmt.attrs {
+            for attr in attrs {
+                match attr.name.as_ref() {
+                    "Static" => {
+                        if let Some(intrinsic) = IntrinsicType::from_static(&attr.args[0]) {
+                            defstmt.intrinsic.replace(intrinsic);
+                        } else {
+                            return Err(Error::InternalError);
+                        }
+                    }
+                    _ => return Err(Error::InternalError),
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -152,26 +166,13 @@ impl Visitor for SSAVisitor {
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
-                if let Some(attrs) = &defstmt.attrs {
-                    for attr in attrs {
-                        match attr.name.as_ref() {
-                            "Static" => {
-                                if let Some(intrinsic) = IntrinsicType::from_static(&attr.args[0]) {
-                                    self.top_level_visit_defstmt(&defstmt)?;
-                                    defstmt.intrinsic.replace(intrinsic);
-                                } else {
-                                    return Err(Error::InternalError);
-                                }
-                            }
-                            _ => return Err(Error::InternalError),
-                        }
-                    }
-                }
                 self.top_level.with_mut(|top_level| {
-                    top_level.defstmts.insert(
-                        defstmt.id.clone(),
-                        expr.rc().downcast_rc::<DefStatement>().unwrap(),
-                    );
+                    let defstmt_rc = expr.rc().downcast_rc::<DefStatement>().unwrap();
+                    if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
+                        vec.push(defstmt_rc);
+                    } else {
+                        top_level.defstmts.insert(defstmt.id.clone(), vec![ defstmt_rc ]);
+                    }
                 });
             } else {
                 outerstmts.push(expr);
@@ -182,9 +183,11 @@ impl Visitor for SSAVisitor {
             let top_level_rcc = self.top_level.inner().clone();
             let top_level_rc: &RefCell<TopLevelInfo> = top_level_rcc.borrow();
             let top_level: &TopLevelInfo = &top_level_rc.borrow();
-            for (_, defstmt_rc) in &top_level.defstmts {
-                let defstmt: &DefStatement = defstmt_rc.borrow();
-                self.top_level_visit_defstmt(&defstmt)?;
+            for (_, defstmt_vec) in &top_level.defstmts {
+                for defstmt_rc in defstmt_vec {
+                    let defstmt: &DefStatement = defstmt_rc.borrow();
+                    self.top_level_visit_defstmt(&defstmt)?;
+                }
             }
         }
 
@@ -214,7 +217,16 @@ impl Visitor for SSAVisitor {
                 break;
             }
         }
-        if !self.has_direct_return && self.context.rettype != Type::NoReturn {
+        if n.exprs.is_empty() {
+            self.context.rettype = Type::Nil;
+            let retvar = self.context.insert_var(Type::Nil);
+            self.with_block_mut(|block| {
+                block.ins.extend_from_slice(&[
+                    Ins::new(retvar, InsType::LoadNil),
+                    Ins::new(0, InsType::Return(retvar)),
+                ]);
+            });
+        } if !self.has_direct_return && self.context.rettype != Type::NoReturn {
             if let Some(retvar) = self.last_retvar() {
                 self.context.rettype = self.context.rettype.unify(&self.context.variables[retvar]);
                 self.with_block_mut(|block| {
@@ -481,16 +493,10 @@ impl Visitor for SSAVisitor {
                     if let Some(maybe_context) = top_level.func_contexts.get(&func_name) {
                         if let Some(context) = maybe_context {
                             Ok(Some(context.rettype.clone()))
-                        } else if let Some(defstmt) = top_level.defstmts.get(id) {
-                            if let Some(declared_typed) = defstmt.return_type.as_ref() {
-                                Ok(declared_typed.typed.borrow().clone())
-                            } else {
-                                Err(Error::CannotInfer)
-                            }
                         } else {
-                            Err(Error::CannotInfer)
+                            Ok(None)
                         }
-                    } else if let Some(_) = top_level.defstmts.get(id) {
+                    } else if top_level.defstmts.contains_key(id) {
                         Ok(None)
                     } else {
                         Err(Error::UnknownIdentifier(id.clone()))
@@ -500,61 +506,69 @@ impl Visitor for SSAVisitor {
                 let retvar = self.context.insert_var(if let Some(rettype) = rettype {
                     rettype
                 } else {
-                    let defstmt = self.top_level.with_mut(|top_level| {
-                        top_level.func_contexts.insert(func_name.clone(), None);
-                        top_level.defstmts.get(id).cloned().unwrap()
-                    });
-                    // Perform argument checks based on declared function
-                    if defstmt.args.len() != arg_types.len() {
-                        return Err(Error::InvalidArguments);
-                    }
-                    for ((_, declared_typed), typed) in defstmt.args.iter().zip(arg_types.iter()) {
-                        if let Some(maybe_declared_rc) = declared_typed.as_ref() {
-                            let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
-                            if let Some(declared_typed) = maybe_declared {
-                                if *declared_typed != *typed {
-                                    return Err(Error::IncompatibleType);
+                    let (defstmt, func_insert) = self.top_level.with_mut(|top_level| {
+                        let func_insert = top_level.func_contexts.insert(func_name.clone(), None).is_some();
+                        let mut usable_defstmt = None;
+                        if let Some(vec) = top_level.defstmts.get(id) {
+                            for defstmt in vec {
+                                if defstmt.is_compatible_with_args(&arg_types) {
+                                    usable_defstmt = Some(defstmt.clone());
+                                    break;
                                 }
                             }
                         }
+                        (usable_defstmt, func_insert)
+                    });
+                    if defstmt.is_none() {
+                        return Err(Error::InvalidArguments);
                     }
-                    // Properly compute the return type
-                    if defstmt.intrinsic.get() != IntrinsicType::None {
-                        if let Some(rettype) = {
-                            SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)
-                        } {
-                            let data = RefCell::new(Some((
-                                func_name.clone(),
-                                Context::with_intrinsics(
-                                    id.clone(),
-                                    arg_types,
-                                    rettype.clone(),
-                                    defstmt.intrinsic.get(),
-                                ),
-                            )));
-                            self.top_level.with_mut(move |top_level| {
-                                let (func_name, context) = data.replace(None).unwrap();
-                                top_level.func_contexts.insert(func_name, Some(context));
-                            });
-                            rettype
+                    let defstmt = defstmt.unwrap();
+                    if func_insert {
+                        // The function by this name has already been declared
+                        if let Some(declared_typed) = defstmt.return_type.as_ref() {
+                            declared_typed.typed.borrow().clone().unwrap()
                         } else {
-                            return Err(Error::InternalError);
+                            return Err(Error::CannotInfer);
                         }
                     } else {
-                        let visitor = RefCell::new(Some({
-                            let func_context = Context::with_args(id.clone(), arg_types);
-                            let mut visitor =
-                                SSAVisitor::with_context(func_context, self.top_level.clone());
-                            visitor.visit_defstmt(defstmt.borrow())?;
-                            (func_name.clone(), visitor)
-                        }));
-                        self.top_level.with_mut(move |top_level| {
-                            let (func_name, visitor) = visitor.replace(None).unwrap();
-                            let context = visitor.into_context();
-                            let rettype = context.rettype.clone();
-                            top_level.func_contexts.insert(func_name, Some(context));
-                            rettype
-                        })
+                        // Properly compute the return type
+                        if defstmt.intrinsic.get() != IntrinsicType::None {
+                            if let Some(rettype) = {
+                                SSAVisitor::intrinsic_return_type(defstmt.intrinsic.get(), &arg_types)
+                            } {
+                                let data = RefCell::new(Some((
+                                    func_name.clone(),
+                                    Context::with_intrinsics(
+                                        id.clone(),
+                                        arg_types,
+                                        rettype.clone(),
+                                        defstmt.intrinsic.get(),
+                                    ),
+                                )));
+                                self.top_level.with_mut(move |top_level| {
+                                    let (func_name, context) = data.replace(None).unwrap();
+                                    top_level.func_contexts.insert(func_name, Some(context));
+                                });
+                                rettype
+                            } else {
+                                return Err(Error::InternalError);
+                            }
+                        } else {
+                            let visitor = RefCell::new(Some({
+                                let func_context = Context::with_args(id.clone(), arg_types);
+                                let mut visitor =
+                                    SSAVisitor::with_context(func_context, self.top_level.clone());
+                                visitor.visit_defstmt(defstmt.borrow())?;
+                                (func_name.clone(), visitor)
+                            }));
+                            self.top_level.with_mut(move |top_level| {
+                                let (func_name, visitor) = visitor.replace(None).unwrap();
+                                let context = visitor.into_context();
+                                let rettype = context.rettype.clone();
+                                top_level.func_contexts.insert(func_name, Some(context));
+                                rettype
+                            })
+                        }
                     }
                 });
                 {

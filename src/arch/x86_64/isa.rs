@@ -1,4 +1,3 @@
-use crate::runtime::GenericFunction;
 use crate::ssa::isa::FunctionName;
 use std::rc::Rc;
 
