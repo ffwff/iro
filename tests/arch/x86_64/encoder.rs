@@ -15,17 +15,6 @@ fn mov32_reg_reg() {
 }
 
 #[test]
-fn mov64_reg_reg() {
-    let mut context = utils::context();
-    encode_instruction(&mut context, &Ins::Mov(TwoOperands {
-        dest: Operand::Register(Reg::Rax),
-        src: Operand::Register(Reg::Rbx),
-        size: OperandSize::I64,
-    }));
-    assert_eq!(utils::objdump(&context.code), "mov rax,rbx\n");
-}
-
-#[test]
 fn mov32_reg_imm() {
     let mut context = utils::context();
     encode_instruction(&mut context, &Ins::Mov(TwoOperands {
@@ -73,6 +62,28 @@ fn mov32_r12_r8() {
         size: OperandSize::I32,
     }));
     assert_eq!(utils::objdump(&context.code), "mov r12d,r8d\n");
+}
+
+#[test]
+fn mov64_reg_reg() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Mov(TwoOperands {
+        dest: Operand::Register(Reg::Rax),
+        src: Operand::Register(Reg::Rbx),
+        size: OperandSize::I64,
+    }));
+    assert_eq!(utils::objdump(&context.code), "mov rax,rbx\n");
+}
+
+#[test]
+fn mov64_reg_imm() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Mov(TwoOperands {
+        dest: Operand::Register(Reg::Rax),
+        src: Operand::U64(0x12345678),
+        size: OperandSize::I64,
+    }));
+    assert_eq!(utils::objdump(&context.code), "movabs rax,0x12345678\n");
 }
 
 #[test]
@@ -228,4 +239,39 @@ fn cmp64_reg_reg() {
         is_postlude: false,
     });
     assert_eq!(utils::objdump(&context.code), "cmp rcx,r8\n");
+}
+
+#[test]
+fn jmp() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Jmp(0));
+    assert_eq!(utils::objdump(&context.code), "jmp 0x5\n");
+}
+
+#[test]
+fn jlt() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Jlt(0));
+    assert_eq!(utils::objdump(&context.code), "jl 0x6\n");
+}
+
+#[test]
+fn jgt() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Jgt(0));
+    assert_eq!(utils::objdump(&context.code), "jg 0x6\n");
+}
+
+#[test]
+fn jge() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Jge(0));
+    assert_eq!(utils::objdump(&context.code), "jge 0x6\n");
+}
+
+#[test]
+fn jle() {
+    let mut context = utils::context();
+    encode_instruction(&mut context, &Ins::Jle(0));
+    assert_eq!(utils::objdump(&context.code), "jle 0x6\n");
 }
