@@ -225,7 +225,21 @@ impl Visitor for SSAVisitor {
             }
         }
         if !self.has_direct_return && self.context.rettype != Type::NoReturn {
-            self.context.rettype = self.context.rettype.unify(&Type::Nil);
+            if let Some(retvar) = self.last_retvar() {
+                self.context.rettype = self.context.rettype.unify(&self.context.variables[retvar]);
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
+                });
+            } else {
+                self.context.rettype = self.context.rettype.unify(&Type::Nil);
+                let retvar = self.context.insert_var(Type::Nil);
+                self.with_block_mut(|block| {
+                    block.ins.extend_from_slice(&[
+                        Ins::new(retvar, InsType::LoadNil),
+                        Ins::new(0, InsType::Return(retvar))
+                    ]);
+                });
+            }
         }
         if let Some(declared_typed) = n.return_type.as_ref() {
             let maybe_declared: &Option<Type> = &declared_typed.typed.borrow();

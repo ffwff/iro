@@ -15,6 +15,7 @@ impl RuntimeData {
         RuntimeData {
             funcs: hashmap![
                 "print_i32".to_string() => GenericFunction(functions::print_i32 as _),
+                "print_i64".to_string() => GenericFunction(functions::print_i64 as _),
             ],
         }
     }

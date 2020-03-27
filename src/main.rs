@@ -30,7 +30,7 @@ fn parse_and_run(code: &str) {
     let contexts = visitor.process(&program).unwrap();
     unsafe {
         let mmap = mmap::Mmap::from_contexts(&contexts).unwrap();
-        mmap.execute(&program.entry);
+        mmap.execute(&program.entry).unwrap();
     }
 }
 

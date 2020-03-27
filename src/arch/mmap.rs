@@ -2,17 +2,13 @@ use crate::arch::context::*;
 use crate::ssa::isa::FunctionName;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::io::Error;
 
 #[derive(Debug, Clone)]
 pub struct Mmap {
     contents: *const u8,
     size: usize,
     context_locs: HashMap<Rc<FunctionName>, *const libc::c_void>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Error {
-    UnableToMmap,
 }
 
 const PAGE_SIZE: usize = 4096;
@@ -40,10 +36,9 @@ impl Mmap {
             (bytes as *mut u8, err)
         };
         if err != 0 {
-            return Err(Error::UnableToMmap);
+            return Err(Error::from_raw_os_error(err));
         }
         dbg_println!("bytes: {:p}", bytes);
-        // std::ptr::write_bytes(bytes, 0, PAGE_SIZE);
 
         let mut context_locs = HashMap::new();
         let mut placement = 0usize;
