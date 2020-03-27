@@ -37,7 +37,7 @@ pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
     context
 }
 
-fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
+pub fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
     dbg_println!("encoding insn: {:#?}", ins);
     match &ins {
         Ins::InlineBytes(bytes) => {
@@ -136,7 +136,7 @@ fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
             (_, _) => {
                 rex_prefix(dest, ops, false, false);
                 dest.code.push(0x39);
-                modrm(dest, ops.dest.clone(), ops.src.clone(), 0);
+                modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
             }
         },
         Ins::Jmp(branch) => {

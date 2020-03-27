@@ -30,7 +30,7 @@ impl Runtime {
         &self.funcs
     }
 
-    pub unsafe fn insert_func<S>(&mut self, string: S, generic: GenericFunction) where S: ToString {
+    pub fn insert_func<S>(&mut self, string: S, generic: GenericFunction) where S: ToString {
         self.funcs.insert(string.to_string(), generic);
     }
 }
