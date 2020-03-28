@@ -1,9 +1,13 @@
+use crate::utils::pipeline::Flow;
 use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::ops::BitXor;
 
 // NOTE: we assume each block is labelled according to DFS order
-pub fn build_graph_and_rename_vars(context: &mut Context) {
+pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
+    if context.blocks.is_empty() {
+        return Flow::Break;
+    }
+
     let mut defsites: Vec<BTreeSet<usize>> =
         (0..context.variables.len()).map(|_| btreeset![]).collect();
     let num_blocks = context.blocks.len();
@@ -265,7 +269,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
     } else {
         let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
         if mapping.is_empty() {
-            return;
+            return Flow::Continue;
         }
         let block = &mut context.blocks[0];
         for ins in &mut block.ins {
@@ -283,12 +287,12 @@ pub fn build_graph_and_rename_vars(context: &mut Context) {
             }
         }
     }
+    
+    Flow::Continue
 }
 
-pub fn fold_constants(context: &mut Context) {
-    if context.blocks.is_empty() {
-        return;
-    }
+pub fn fold_constants(context: &mut Context) -> Flow {
+    dbg_println!("before folding: {:#?}", context);
     let mut const_to_var = HashMap::new();
     let mut var_to_const = HashMap::new();
     let mut mapping = BTreeMap::new();
@@ -335,6 +339,7 @@ pub fn fold_constants(context: &mut Context) {
         }
         block.ins.retain(|ins| ins.typed != InsType::Nop);
     }
+    dbg_println!("mapping: {:#?}", mapping);
     {
         let first_block = &mut context.blocks[0];
         new_ins.append(&mut first_block.ins);
@@ -344,7 +349,7 @@ pub fn fold_constants(context: &mut Context) {
         for ins in &mut block.ins {
             match &ins.typed {
                 const_ins if const_ins.is_const() => (),
-                InsType::LoadVar(mapped) => (),
+                InsType::LoadVar(mapped) => unreachable!(),
                 InsType::Cast { var, typed } => (),
                 _ => ins.rename_var_by(true, |var| {
                     if let Some(mapped) = mapping.get(&var) {
@@ -356,37 +361,11 @@ pub fn fold_constants(context: &mut Context) {
             }
         }
     }
+    dbg_println!("after folding: {:#?}", context);
+    Flow::Continue
 }
 
-pub fn remove_defined_never_used(context: &mut Context) {
-    let mut defined: BTreeSet<usize> = BTreeSet::new();
-    let mut used: BTreeSet<usize> = BTreeSet::new();
-    for block in &mut context.blocks {
-        for ins in &block.ins {
-            if let Some(retvar) = ins.retvar() {
-                defined.insert(retvar);
-                if ins.typed.has_side_effects() {
-                    used.insert(retvar);
-                }
-            }
-            ins.each_used_var(|var| {
-                used.insert(var);
-            })
-        }
-    }
-    let to_remove = defined.bitxor(&used);
-    for block in &mut context.blocks {
-        block.ins.retain(|ins| {
-            if let Some(retvar) = ins.retvar() {
-                !to_remove.contains(&retvar)
-            } else {
-                true
-            }
-        })
-    }
-}
-
-pub fn data_flow_analysis(context: &mut Context) {
+pub fn data_flow_analysis(context: &mut Context) -> Flow {
     // Generate the initial worklist by putting returning blocks
     let mut worklist: Vec<usize> = context
         .blocks
@@ -397,54 +376,56 @@ pub fn data_flow_analysis(context: &mut Context) {
         .collect();
     dbg_println!("initial worklist: {:#?}", worklist);
 
-    while let Some(node) = worklist.pop() {
-        let mut vars_in = BTreeSet::new();
+    for block in &mut context.blocks {
         let mut vars_declared_in_this_block = BTreeSet::new();
-        // Temporarily borrow preds
-        let (preds, state_changed) = {
-            let block = &mut context.blocks[node];
-            std::mem::replace(&mut vars_in, block.vars_in.clone());
-            // Calculate input variables for this block, this will be
-            // used as output variables for preceding blocks
-            for ins in &block.ins {
-                if let Some(retvar) = ins.retvar() {
-                    vars_declared_in_this_block.insert(retvar);
-                }
-                ins.each_used_var(|var| {
-                    if !vars_declared_in_this_block.contains(&var) {
-                        vars_in.insert(var);
-                    }
-                });
+        let mut vars_used = BTreeSet::new();
+        for ins in &block.ins {
+            if let Some(retvar) = ins.retvar() {
+                vars_declared_in_this_block.insert(retvar);
             }
-            let state_changed = vars_in != block.vars_in;
-            (
-                std::mem::replace(&mut block.preds, Vec::new()),
-                state_changed,
-            )
-        };
-        // Add preceding blocks to the worklist if old in-state != new in-state
-        if state_changed {
+            ins.each_used_var(|used| {   
+                vars_used.insert(used);
+            });
+        }
+        block.vars_declared_in_this_block = vars_declared_in_this_block;
+        block.vars_used = vars_used;
+        // dbg_println!("block: {:#?}", block);
+    }
+
+    while let Some(node) = worklist.pop() {
+        let block = &mut context.blocks[node];
+        let mut new_vars_in: BTreeSet<usize> = &block.vars_out | &block.vars_used;
+        new_vars_in = new_vars_in.difference(&block.vars_declared_in_this_block).cloned().collect();
+        dbg_println!("new_vars_in: {:?}", new_vars_in);
+        // Borrow preds temporarily so as to not borrow multiple blocks in context.blocks
+        let preds = std::mem::replace(&mut block.preds, vec![]);
+        if block.vars_in != new_vars_in {
             for &pred in &preds {
-                let block = &mut context.blocks[pred];
-                for &var in &vars_in {
-                    block.vars_out.insert(var);
-                }
                 worklist.push(pred);
             }
+            block.vars_in = new_vars_in.clone();
         }
-        // Give preds back and fill vars_in
+        std::mem::drop(block);
+        for &pred in &preds {
+            let block = &mut context.blocks[pred];
+            block.vars_out.extend(new_vars_in.iter());
+            dbg_println!("extend vars_out: {:#?}", block);
+        }
+        // Give preds back to the current block
         {
             let block = &mut context.blocks[node];
             block.preds = preds;
-            block.vars_in = vars_in;
+            dbg_println!("worklist: {:#?} {:#?}", worklist, block);
         }
-        dbg_println!("worklist: {:#?}", worklist);
     }
+
+    dbg_println!("after dfa: {:#?}", context);
+    Flow::Continue
 }
 
-pub fn eliminate_phi(context: &mut Context) {
+pub fn eliminate_phi(context: &mut Context) -> Flow {
     dbg_println!("before phis: {:#?}", context);
-    let mut replacements = BTreeMap::new();
+    let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for block in &context.blocks {
         for ins in &block.ins {
             let retvar = ins.retvar();
@@ -452,14 +433,18 @@ pub fn eliminate_phi(context: &mut Context) {
                 InsType::Phi { vars } => {
                     let retvar = retvar.unwrap();
                     for var in vars {
-                        replacements.insert(*var, retvar);
+                        if let Some(vec) = replacements.get_mut(var) {
+                            vec.push(retvar);
+                        } else {
+                            replacements.insert(*var, vec![ retvar ]);
+                        }
                     }
                 }
                 _ => (),
             }
         }
     }
-    dbg_println!("replacements: {:?}", replacements);
+    dbg_println!("phis: {:?}", replacements);
     for block in &mut context.blocks {
         let oldins = std::mem::replace(&mut block.ins, Vec::new());
         for ins in &oldins {
@@ -469,11 +454,55 @@ pub fn eliminate_phi(context: &mut Context) {
             }
             block.ins.push(ins.clone());
             if let Some(retvar) = ins.retvar() {
-                if let Some(newvar) = replacements.get(&retvar) {
-                    block.ins.push(Ins::new(*newvar, InsType::LoadVar(retvar)));
+                if let Some(newvars) = replacements.get(&retvar) {
+                    // NOTE: we perform a LoadVar for constants as well
+                    // so that our native code generator doesn't have to
+                    // store constants in non-phi variables
+                    for newvar in newvars {
+                        block.ins.push(Ins::new(*newvar, InsType::LoadVar(retvar)));
+                    }
                 }
             }
         }
     }
     dbg_println!("after phis: {:#?}", context);
+    Flow::Continue
+}
+
+pub fn remove_no_flow(context: &mut Context) -> Flow {
+    let mut defined: BTreeSet<usize> = BTreeSet::new();
+    let mut used: BTreeSet<usize> = BTreeSet::new();
+    for block in &mut context.blocks {
+        for ins in &block.ins {
+            if let Some(retvar) = ins.retvar() {
+                defined.insert(retvar);
+                if ins.typed.has_side_effects() || block.vars_out.contains(&retvar) {
+                    used.insert(retvar);
+                    ins.each_used_var(|var| {
+                        used.insert(var);
+                    });
+                }
+            } else {
+                // This is a jump statement
+                ins.each_used_var(|var| {
+                    used.insert(var);
+                });
+            }
+        }
+    }
+    let to_remove = &defined ^ &used;
+    dbg_println!("context: {:#?}", context);
+    dbg_println!("remove: {:?}", to_remove);
+    for block in &mut context.blocks {
+        block.ins.retain(|ins| {
+            if let Some(retvar) = ins.retvar() {
+                !to_remove.contains(&retvar)
+            } else {
+                true
+            }
+        })
+    }
+    dbg_println!("after remove: {:#?}", context);
+
+    Flow::Continue
 }

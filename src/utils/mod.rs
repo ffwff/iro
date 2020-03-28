@@ -5,8 +5,7 @@ use crate::parser;
 mod rc_wrapper;
 pub use rc_wrapper::RcWrapper;
 
-mod pipeline;
-pub use pipeline::Pipeline;
+pub mod pipeline;
 
 pub type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, lexer::Error>;
 pub type ParseResult = Result<ast::Program, ParseError>;
