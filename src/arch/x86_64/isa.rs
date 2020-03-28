@@ -1,5 +1,6 @@
 use crate::ssa::isa::FunctionName;
 use std::rc::Rc;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
@@ -82,6 +83,8 @@ pub enum Ins {
     Mov(TwoOperands),
     Add(TwoOperands),
     Sub(TwoOperands),
+    IMul(TwoOperands),
+    IDiv(TwoOperands),
     Mul(TwoOperands),
     Div(TwoOperands),
     Cmp {
@@ -187,6 +190,8 @@ impl Ins {
             Ins::Mov(ops)
             | Ins::Add(ops)
             | Ins::Sub(ops)
+            | Ins::IMul(ops)
+            | Ins::IDiv(ops)
             | Ins::Mul(ops)
             | Ins::Div(ops)
             | Ins::Cmp { ops, .. } => Some(ops),
@@ -199,6 +204,8 @@ impl Ins {
             Ins::Mov(ops)
             | Ins::Add(ops)
             | Ins::Sub(ops)
+            | Ins::IMul(ops)
+            | Ins::IDiv(ops)
             | Ins::Mul(ops)
             | Ins::Div(ops)
             | Ins::Cmp { ops, .. } => Some(ops),
@@ -221,13 +228,28 @@ impl Ins {
 #[derive(Clone)]
 pub struct Block {
     pub ins: Vec<Ins>,
+    pub postlude: Vec<Ins>,
+    pub vars_in_to_reg: BTreeMap<usize, (Option<Reg>, usize)>,
+    pub vars_out_to_reg: BTreeMap<usize, (Option<Reg>, usize)>,
+}
+
+impl Block {
+    pub fn new(ins: Vec<Ins>) -> Self {
+        Block {
+            ins,
+            postlude: vec![],
+            vars_in_to_reg: BTreeMap::new(),
+            vars_out_to_reg: BTreeMap::new(),
+        }
+    }
 }
 
 impl std::fmt::Debug for Block {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_list()
             .entries(self.ins.iter().map(|ins| InsPrettifier { ins }))
-            .finish()
+            .finish()?;
+        write!(fmt, "\nvars_in_to_reg: {:?}\nvars_out_to_reg: {:?}\n---", self.vars_in_to_reg, self.vars_out_to_reg)
     }
 }
 

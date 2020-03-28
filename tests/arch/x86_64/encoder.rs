@@ -280,6 +280,76 @@ fn sub64_reg_imm32() {
 }
 
 #[test]
+fn imul32_reg_imm8() {
+    let mut context = context();
+    encode_instruction(
+        &mut context,
+        &Ins::IMul(TwoOperands {
+            dest: Operand::Register(Reg::Rcx),
+            src: Operand::U32(0x13),
+            size: OperandSize::I32,
+        }),
+    );
+    assert_eq!(objdump(&context.code), "imul ecx,ecx,0x13\n");
+}
+
+#[test]
+fn imul32_reg_imm32() {
+    let mut context = context();
+    encode_instruction(
+        &mut context,
+        &Ins::IMul(TwoOperands {
+            dest: Operand::Register(Reg::Rcx),
+            src: Operand::U32(0x1337),
+            size: OperandSize::I32,
+        }),
+    );
+    assert_eq!(objdump(&context.code), "imul ecx,ecx,0x1337\n");
+}
+
+#[test]
+fn imul32_reg_reg() {
+    let mut context = context();
+    encode_instruction(
+        &mut context,
+        &Ins::IMul(TwoOperands {
+            dest: Operand::Register(Reg::Rcx),
+            src: Operand::Register(Reg::R8),
+            size: OperandSize::I32,
+        }),
+    );
+    assert_eq!(objdump(&context.code), "imul ecx,r8d\n");
+}
+
+#[test]
+fn imul64_reg_reg() {
+    let mut context = context();
+    encode_instruction(
+        &mut context,
+        &Ins::IMul(TwoOperands {
+            dest: Operand::Register(Reg::Rcx),
+            src: Operand::Register(Reg::R8),
+            size: OperandSize::I64,
+        }),
+    );
+    assert_eq!(objdump(&context.code), "imul rcx,r8\n");
+}
+
+#[test]
+fn imul64_reg_imm32() {
+    let mut context = context();
+    encode_instruction(
+        &mut context,
+        &Ins::IMul(TwoOperands {
+            dest: Operand::Register(Reg::Rcx),
+            src: Operand::U32(0x1337),
+            size: OperandSize::I64,
+        }),
+    );
+    assert_eq!(objdump(&context.code), "imul rcx,rcx,0x1337\n");
+}
+
+#[test]
 fn cmp32_reg_imm8() {
     let mut context = context();
     encode_instruction(
