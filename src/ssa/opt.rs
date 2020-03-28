@@ -330,15 +330,7 @@ pub fn fold_constants(context: &mut Context) {
                         }
                     }
                 }
-                _ => {
-                    ins.rename_var_by(true, |var| {
-                        if let Some(mapped) = mapping.get(&var) {
-                            *mapped
-                        } else {
-                            var
-                        }
-                    });
-                }
+                _ => (),
             }
         }
         block.ins.retain(|ins| ins.typed != InsType::Nop);
@@ -347,6 +339,22 @@ pub fn fold_constants(context: &mut Context) {
         let first_block = &mut context.blocks[0];
         new_ins.append(&mut first_block.ins);
         first_block.ins = new_ins;
+    }
+    for block in &mut context.blocks {
+        for ins in &mut block.ins {
+            match &ins.typed {
+                const_ins if const_ins.is_const() => (),
+                InsType::LoadVar(mapped) => (),
+                InsType::Cast { var, typed } => (),
+                _ => ins.rename_var_by(true, |var| {
+                    if let Some(mapped) = mapping.get(&var) {
+                        *mapped
+                    } else {
+                        var
+                    }
+                }),
+            }
+        }
     }
 }
 
@@ -384,7 +392,7 @@ pub fn data_flow_analysis(context: &mut Context) {
         .blocks
         .iter()
         .enumerate()
-        .filter(|(_idx, block)| block.ins.iter().any(|ins| ins.typed.is_return()))
+        .filter(|(_idx, block)| block.ins.iter().any(|ins| ins.typed.has_side_effects()))
         .map(|(idx, _block)| idx)
         .collect();
     dbg_println!("initial worklist: {:#?}", worklist);
@@ -435,6 +443,7 @@ pub fn data_flow_analysis(context: &mut Context) {
 }
 
 pub fn eliminate_phi(context: &mut Context) {
+    dbg_println!("before phis: {:#?}", context);
     let mut replacements = BTreeMap::new();
     for block in &context.blocks {
         for ins in &block.ins {
@@ -450,6 +459,7 @@ pub fn eliminate_phi(context: &mut Context) {
             }
         }
     }
+    dbg_println!("replacements: {:?}", replacements);
     for block in &mut context.blocks {
         let oldins = std::mem::replace(&mut block.ins, Vec::new());
         for ins in &oldins {
@@ -465,4 +475,5 @@ pub fn eliminate_phi(context: &mut Context) {
             }
         }
     }
+    dbg_println!("after phis: {:#?}", context);
 }
