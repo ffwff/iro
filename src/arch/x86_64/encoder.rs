@@ -4,6 +4,20 @@ use isa::{Ins, Operand, OperandSize, TwoOperands};
 
 use crate::arch::context::RelativeRelocation;
 
+pub const JMP_64BIT_OP_SIZE: usize = 13;
+
+pub fn encode_64bit_jmp(ptr: *const libc::c_void) -> Vec<u8> {
+    let mut vec = vec![
+        0x49, 0xbb // movabs r11, ...
+    ];
+    vec.extend_from_slice(&(ptr as u64).to_le_bytes());
+    // jmp r11
+    vec.push(0x41);
+    vec.push(0xff);
+    vec.push(0xe3);
+    vec
+}
+
 pub fn encode_blocks(blocks: &Vec<isa::Block>) -> context::Context {
     let mut context = context::Context {
         code: vec![],

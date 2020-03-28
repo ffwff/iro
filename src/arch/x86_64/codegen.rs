@@ -1,9 +1,11 @@
 use crate::arch::x86_64::{encoder, isa};
 use crate::arch::{codegen, context};
+use crate::arch::mmap::Mmap;
 use crate::ssa::isa::*;
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
+use std::convert::TryFrom;
 
 static ARG_REGS: [isa::Reg; 6] = [
     isa::Reg::Rdi,
@@ -43,6 +45,12 @@ static CALLER_SAVED: [isa::Reg; 2] = [isa::Reg::R11, isa::Reg::R10];
 
 static RETURN_REG: isa::Reg = isa::Reg::Rax;
 
+const PAGE_SIZE: usize = 4096;
+
+fn round_to_page_size(n: usize) -> usize {
+    (n + PAGE_SIZE) - (n % PAGE_SIZE)
+}
+
 pub struct Codegen {
     unflattened_code: HashMap<Rc<FunctionName>, Vec<isa::Block>>,
     constant_operands: BTreeMap<usize, isa::Operand>,
@@ -62,6 +70,95 @@ impl codegen::Codegen for Codegen {
             );
         }
         Ok(isa_contexts)
+    }
+
+    unsafe fn make_mmap(&self, contexts: &context::Contexts) -> Result<Mmap, std::io::Error> {
+        use crate::arch::context::*;
+
+        let mut size = 0usize;
+        for (_, function) in contexts {
+            match function {
+                Function::Context(context) => {
+                    size += context.code.len();
+                }
+                Function::Extern(_) => {
+                    size += encoder::JMP_64BIT_OP_SIZE;
+                }
+            }
+        }
+        size = round_to_page_size(size);
+
+        let (bytes, err) = {
+            let mut bytes: *mut libc::c_void = std::ptr::null_mut();
+            let err = libc::posix_memalign(&mut bytes, PAGE_SIZE, size);
+            (bytes as *mut u8, err)
+        };
+        if err != 0 {
+            return Err(std::io::Error::from_raw_os_error(err));
+        }
+        dbg_println!("bytes: {:p}", bytes);
+
+        let mut context_locs: HashMap<Rc<FunctionName>, *const libc::c_void> = HashMap::new();
+        let mut placement = 0usize;
+        for (name, function) in contexts {
+            match function {
+                Function::Context(context) => {
+                    std::intrinsics::copy_nonoverlapping(
+                        context.code.as_ptr(),
+                        bytes.add(placement),
+                        context.code.len(),
+                    );
+                    let context_loc = bytes.add(placement);
+                    dbg_println!("function {:#?} => {:p}", name, context_loc);
+                    context_locs.insert(name.clone(), context_loc as _);
+                    placement += context.code.len();
+                }
+                Function::Extern(generic) => {
+                    let vec = encoder::encode_64bit_jmp(generic.ptr());
+                    std::intrinsics::copy_nonoverlapping(
+                        vec.as_ptr(),
+                        bytes.add(placement),
+                        vec.len(),
+                    );
+                    let context_loc = bytes.add(placement);
+                    dbg_println!("extern {:#?} => {:p}", name, context_loc);
+                    context_locs.insert(name.clone(), context_loc as _);
+                    placement += vec.len();
+                }
+            }
+        }
+        for (name, function) in contexts {
+            if let Function::Context(context) = function {
+                let cur_context_loc = *context_locs.get(name).unwrap();
+                for (label, func_name) in &context.func_relocation {
+                    // FIXME: this is architecture dependent
+                    let label = *label;
+                    let func_loc = *context_locs.get(func_name).unwrap();
+                    let mut dist = (func_loc.offset_from(cur_context_loc) - label as isize - 4) as i64;
+                    dbg_println!("{:p} - {:p} - {} - 4 = {}", func_loc, cur_context_loc, label, dist);
+                    if dist < 0 {
+                        dist = 0x1_0000_0000i64 + dist;
+                    }
+                    let le_bytes = (dist as u32).to_le_bytes();
+                    for (i, byte) in le_bytes.iter().enumerate() {
+                        (cur_context_loc as *mut u8)
+                            .add(label + i)
+                            .write_unaligned(*byte);
+                    }
+                }
+            }
+        }
+        libc::mprotect(
+            bytes as *mut libc::c_void,
+            size,
+            libc::PROT_EXEC | libc::PROT_READ,
+        );
+
+        Ok(Mmap {
+            contents: bytes as *const u8,
+            size,
+            context_locs,
+        })
     }
 }
 
@@ -86,19 +183,15 @@ impl Codegen {
         self.constant_operands.clear();
         for (idx, block) in context.blocks.iter().enumerate() {
             let mut isa_ins = vec![];
-            dbg_println!("{:#?}", block);
             for ins in &block.ins {
                 self.visit_ins(ins, &mut isa_ins, idx, context)?;
             }
-            dbg_println!("{:#?}", isa_ins);
             blocks.push(isa::Block { ins: isa_ins });
         }
-        dbg_println!("---\nbefore: {:#?}\n===", blocks);
         self.allocate_registers(&mut blocks, context);
         self.setup_stack_and_locals(&mut blocks, context);
         self.remove_unnecessary_movs(&mut blocks);
         self.remove_unnecessary_jmps(&mut blocks);
-        dbg_println!("after: {:#?}\n---", blocks);
         self.unflattened_code.insert(name.clone(), blocks);
         Ok(())
     }
@@ -126,7 +219,6 @@ impl Codegen {
         block_idx: usize,
         context: &Context,
     ) -> Result<(), codegen::Error> {
-        dbg_println!("ins: {:#?}", ins);
         match &ins.typed {
             InsType::Nop => (),
             InsType::LoadVar(arg) => {

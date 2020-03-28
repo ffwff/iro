@@ -20,14 +20,14 @@ pub fn parse_input(input: &str) -> ParseResult {
 macro_rules! dbg_println {
     ($first:expr) => {{
         if cfg!(debug_assertions) {
-            print!("\x1b[1m\x1b[38;5;11m{}:{}:{}:\x1b[0m ", file!(), line!(), column!());
-            println!($first)
+            eprint!("\x1b[1m\x1b[38;5;11m{}:{}:{}:\x1b[0m ", file!(), line!(), column!());
+            eprintln!($first)
         }
     }};
     ($first:expr, $($last:expr),+) => {{
         if cfg!(debug_assertions) {
-            print!("\x1b[1m\x1b[38;5;11m{}:{}:{}:\x1b[0m ", file!(), line!(), column!());
-            println!($first, $($last),+)
+            eprint!("\x1b[1m\x1b[38;5;11m{}:{}:{}:\x1b[0m ", file!(), line!(), column!());
+            eprintln!($first, $($last),+)
         }
     }};
 }
