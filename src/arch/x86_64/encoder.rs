@@ -174,8 +174,12 @@ pub fn encode_instruction(dest: &mut context::Context, ins: &isa::Ins) {
                 }
             }
             (Operand::Register(_), Operand::U64(_)) => unimplemented!(),
-            (Operand::Memory { .. }, Operand::Register(_))
-            | (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
+            (Operand::Memory { .. }, Operand::Register(_)) => {
+                rex_prefix(dest, ops, true, false);
+                dest.code.push(0x39);
+                modrm(dest, ops.src.clone(), ops.dest.clone(), 0);
+            }
+            (Operand::Register(_), Operand::Memory { .. }) => unimplemented!(),
             (_, _) => {
                 rex_prefix(dest, ops, false, false);
                 dest.code.push(0x39);

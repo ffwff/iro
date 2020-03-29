@@ -404,6 +404,26 @@ fn cmp32_mem8_imm() {
 }
 
 #[test]
+fn cmp32_mem8_reg() {
+    let mut context = context();
+    encode_instruction(
+        &mut context,
+        &Ins::Cmp {
+            ops: TwoOperands {
+                dest: Operand::Memory {
+                    base: Reg::Rax,
+                    disp: -0xA,
+                },
+                src: Operand::Register(Reg::Rax),
+                size: OperandSize::I32,
+            },
+            is_postlude: false,
+        },
+    );
+    assert_eq!(objdump(&context.code), "cmp DWORD PTR [rax-0xa],eax\n");
+}
+
+#[test]
 fn cmp32_mem32_imm() {
     let mut context = context();
     encode_instruction(
