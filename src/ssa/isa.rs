@@ -104,6 +104,8 @@ pub struct Block {
     pub succs: Vec<usize>,
     pub vars_in: BTreeSet<usize>,
     pub vars_out: BTreeSet<usize>,
+    pub vars_declared_in_this_block: BTreeSet<usize>,
+    pub vars_used: BTreeSet<usize>,
 }
 
 impl Block {
@@ -114,6 +116,8 @@ impl Block {
             succs: vec![],
             vars_in: BTreeSet::new(),
             vars_out: BTreeSet::new(),
+            vars_declared_in_this_block: BTreeSet::new(),
+            vars_used: BTreeSet::new(),
         }
     }
 }
@@ -315,7 +319,7 @@ pub enum InsType {
 impl InsType {
     pub fn is_jmp(&self) -> bool {
         match self {
-            InsType::IfJmp { .. } | InsType::Jmp(_) | InsType::Return(_) => true,
+            InsType::IfJmp { .. } | InsType::Jmp(_) | InsType::Return(_) | InsType::Exit => true,
             _ => false,
         }
     }

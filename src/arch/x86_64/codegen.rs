@@ -186,9 +186,10 @@ impl Codegen {
             for ins in &block.ins {
                 self.visit_ins(ins, &mut isa_ins, idx, context)?;
             }
-            blocks.push(isa::Block { ins: isa_ins });
+            blocks.push(isa::Block::new(isa_ins));
         }
         self.allocate_registers(&mut blocks, context);
+        self.combine_postlude(&mut blocks);
         self.setup_stack_and_locals(&mut blocks, context);
         self.remove_unnecessary_movs(&mut blocks);
         self.remove_unnecessary_jmps(&mut blocks);
@@ -436,8 +437,8 @@ impl Codegen {
                             match &ins.typed {
                                 InsType::Add(_) => isa::Ins::Add(operands),
                                 InsType::Sub(_) => isa::Ins::Sub(operands),
-                                InsType::Mul(_) => isa::Ins::Mul(operands),
-                                InsType::Div(_) => isa::Ins::Div(operands),
+                                InsType::Mul(_) => isa::Ins::IMul(operands),
+                                InsType::Div(_) => isa::Ins::IDiv(operands),
                                 _ => unreachable!(),
                             }
                         });
@@ -480,8 +481,10 @@ impl Codegen {
         // to retrieve it from local stack.
         mut var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)>,
     ) {
+        let vars_in_to_reg = var_to_reg.clone();
         let cblock = &context.blocks[node];
-        let mut isa_block = std::mem::replace(&mut blocks[node], isa::Block { ins: vec![] });
+        let mut isa_block = std::mem::replace(&mut blocks[node], isa::Block::new(vec![]));
+
         // We defer despilling of the output variables to cleanup stage
         // or when we run out of variables
         let mut variable_factored: BTreeSet<usize> = cblock.vars_out.clone();
@@ -505,7 +508,6 @@ impl Codegen {
             });
         }
 
-        let mut prelude = vec![];
         let mut body = vec![];
         let mut postlude = vec![];
         for (idx, ins) in isa_block.ins.iter_mut().enumerate() {
@@ -676,9 +678,11 @@ impl Codegen {
 
         // insert to new block
         let new_isa_block = &mut blocks[node];
-        new_isa_block.ins.append(&mut prelude);
-        new_isa_block.ins.append(&mut body);
-        new_isa_block.ins.append(&mut postlude);
+        dbg_println!("vars_in_to_reg {:?}", vars_in_to_reg);
+        new_isa_block.vars_in_to_reg = vars_in_to_reg;
+        new_isa_block.vars_out_to_reg = var_to_reg.clone();
+        new_isa_block.ins = body;
+        new_isa_block.postlude = postlude;
 
         dbg_println!("free vars {:?}", unused_regs);
         dbg_println!("new_var_to_reg {:?}", new_var_to_reg);
@@ -689,6 +693,8 @@ impl Codegen {
             cblock,
             new_isa_block
         );
+
+        let mut child_vars_in_to_reg = vec![];
 
         // Repeat the process for each descendent
         for succ in &cblock.succs {
@@ -702,6 +708,49 @@ impl Codegen {
                     unused_regs.clone(),
                     new_var_to_reg.clone(),
                 );
+            }
+            // Handle child nodes where the output register of the current node
+            // holds a variable that the child node's register doesn't.
+            let mut vars = vec![];
+            let block = &mut blocks[*succ];
+            for (var, (reg, _)) in &block.vars_in_to_reg {
+                match new_var_to_reg.get(var) {
+                    Some((oreg, _)) if *reg == *oreg => continue,
+                    _ => vars.push((*var, reg.clone().unwrap())),
+                }
+            }
+            child_vars_in_to_reg.push((*succ, vars));
+        }
+
+        // For every input var each child blocks expect that the current block doesn't store
+        // We insert a load of that var to the start of the child block,
+        // This prevents us from entering the child block and passing the wrong register as input.
+        let mut save_vars = btreeset![];
+        for (idx, vars_in) in child_vars_in_to_reg.iter() {
+            let block = &mut blocks[*idx];
+            for (var, reg) in vars_in {
+                block.ins.insert(0, isa::Ins::Mov(isa::TwoOperands {
+                    dest: isa::Operand::Register(*reg),
+                    src: isa::Operand::UndeterminedMapping(*var),
+                    size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
+                }));
+                block.vars_in_to_reg.remove(&var);
+                save_vars.insert(*var);
+                println!("child vars {}: {:?} => {:?} ({:?})", idx, var, reg, new_var_to_reg);
+            }
+        }
+        // We also need to save those variables in the current block
+        for save_var in &save_vars {
+            if let Some((reg, _)) = var_to_reg.get(&save_var) {
+                if let Some(reg) = reg {
+                    let new_isa_block = &mut blocks[node];
+                    new_isa_block.ins.push(isa::Ins::Mov(isa::TwoOperands {
+                        dest: isa::Operand::UndeterminedMapping(*save_var),
+                        src: isa::Operand::Register(*reg),
+                        size: Codegen::type_to_operand_size(&context.variables[*save_var]).unwrap(),
+                    }));
+                    dbg_println!("save var {:?} <- {:?} (current {:?})", save_var, reg, var_to_reg);
+                }
             }
         }
     }
@@ -796,6 +845,13 @@ impl Codegen {
                 }
             }
         }
+    }
+
+    fn combine_postlude(&mut self, blocks: &mut Vec<isa::Block>) {
+        for block in blocks.iter_mut() {
+            block.ins.append(&mut block.postlude);
+        }
+        panic!("{:#?}", blocks);
     }
 
     fn remove_unnecessary_movs(&mut self, blocks: &mut Vec<isa::Block>) {
