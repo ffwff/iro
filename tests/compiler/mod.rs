@@ -72,26 +72,37 @@ fn while_loop() {
 #[cfg(test)]
 #[test]
 fn while_loop_nested() {
-    extern "C" fn record_i32(n: i32) {
-        assert_eq!(n, 50);
+    use std::sync::Mutex;
+    use std::cell::RefCell;
+    lazy_static! {
+        static ref OUTPUT: Mutex<RefCell<Vec<(i32, i32)>>> = Mutex::new(RefCell::new(vec![]));
+    }
+    extern "C" fn record_i32(i: i32, j: i32) {
+        OUTPUT.lock().unwrap().borrow_mut().push((i, j));
     }
     let mut runtime = Runtime::empty();
-    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32,i32));
     utils::parse_and_run("
     @[Static(record_i32)]
-    def record(n: I32): Nil
+    def record(i: I32, j: I32): Nil
     end
 
     let i = 0
-    let x = 0
     while i < 10
         let j = 0
         while j < 5
-            x += 1
+            record(i, j)
             j += 1
         end
         i += 1
     end
-    record(x)
     ", runtime);
+    let mut expected = vec![];
+    for i in 0..10 {
+        for j in 0..5 {
+            expected.push((i as i32, j as i32));
+        }
+    }
+    let locked = OUTPUT.lock().unwrap().borrow().clone();
+    assert_eq!(locked, expected);
 }
