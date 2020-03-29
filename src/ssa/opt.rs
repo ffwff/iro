@@ -7,6 +7,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     if context.blocks.is_empty() {
         return Flow::Break;
     }
+    dbg_println!("begin: {:#?}", context);
 
     let mut defsites: Vec<BTreeSet<usize>> =
         (0..context.variables.len()).map(|_| btreeset![]).collect();
@@ -190,18 +191,30 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         dbg_println!("---\ndom_frontier: {:#?}", dom_frontier);
         dbg_println!("---\ndefsites: {:#?}", defsites);
 
-        // Insert some phi nodes
-        for (var, defsites) in defsites.iter_mut().enumerate() {
-            let mut has_phi: BTreeSet<usize> = btreeset![];
-            for &defsite in defsites.iter() {
-                for &node in &dom_frontier[defsite] {
-                    has_phi.insert(node);
-                }
+        let mut origin: Vec<Vec<usize>> = (0..num_blocks).map(|_| vec![]).collect();
+        for (var, defsites) in defsites.iter().enumerate() {
+            for defsite in defsites {
+                origin[*defsite].push(var);
             }
-            for &frontier_node in &has_phi {
-                context.blocks[frontier_node]
-                    .ins
-                    .insert(0, Ins::new(var, InsType::Phi { vars: vec![var] }));
+        }
+
+        // Insert phi nodes
+        for (var, defsites) in defsites.iter_mut().enumerate() {
+            let mut worklist: Vec<usize> = defsites.iter().cloned().collect();
+            let mut phi_inserted = btreeset![];
+            while let Some(n) = worklist.pop() {
+                for &y in &dom_frontier[n] {
+                    if !phi_inserted.contains(&y) {
+                        let block = &mut context.blocks[y];
+                        block.ins.insert(0, Ins::new(var, InsType::Phi {
+                            vars: vec![ var ]
+                        }));
+                        phi_inserted.insert(y);
+                        if !origin[y].contains(&var) {
+                            worklist.push(y);
+                        }
+                    }
+                }
             }
         }
 
@@ -264,7 +277,6 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 }
             }
             dbg_println!("{} ==> {:#?}", var, context);
-            //panic!("!!!");
         }
     } else {
         let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
@@ -409,13 +421,11 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         for &pred in &preds {
             let block = &mut context.blocks[pred];
             block.vars_out.extend(new_vars_in.iter());
-            dbg_println!("extend vars_out: {:#?}", block);
         }
         // Give preds back to the current block
         {
             let block = &mut context.blocks[node];
             block.preds = preds;
-            dbg_println!("worklist: {:#?} {:#?}", worklist, block);
         }
     }
 
