@@ -1,6 +1,6 @@
 use crate::ssa::isa::FunctionName;
 use std::rc::Rc;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
@@ -229,8 +229,9 @@ impl Ins {
 pub struct Block {
     pub ins: Vec<Ins>,
     pub postlude: Vec<Ins>,
-    pub vars_in_to_reg: BTreeMap<usize, (Option<Reg>, usize)>,
-    pub vars_out_to_reg: BTreeMap<usize, (Option<Reg>, usize)>,
+    pub expected_in_vars: (usize, BTreeSet<(usize, Reg)>),
+    pub possible_in_vars: Vec<(usize, BTreeSet<(usize, Reg)>)>,
+    pub vars_out_to_reg: BTreeMap<usize, Reg>,
 }
 
 impl Block {
@@ -238,7 +239,8 @@ impl Block {
         Block {
             ins,
             postlude: vec![],
-            vars_in_to_reg: BTreeMap::new(),
+            expected_in_vars: (0, btreeset![]),
+            possible_in_vars: vec![],
             vars_out_to_reg: BTreeMap::new(),
         }
     }
@@ -249,7 +251,11 @@ impl std::fmt::Debug for Block {
         fmt.debug_list()
             .entries(self.ins.iter().map(|ins| InsPrettifier { ins }))
             .finish()?;
-        write!(fmt, "\nvars_in_to_reg: {:?}\nvars_out_to_reg: {:?}\n---", self.vars_in_to_reg, self.vars_out_to_reg)
+        writeln!(fmt)?;
+        fmt.debug_list()
+            .entries(self.postlude.iter().map(|ins| InsPrettifier { ins }))
+            .finish()?;
+        write!(fmt, "\nexpected in: {:?}\npossible in: {:?}\nvars_out_to_reg: {:?}\n---", self.expected_in_vars, self.possible_in_vars, self.vars_out_to_reg)
     }
 }
 

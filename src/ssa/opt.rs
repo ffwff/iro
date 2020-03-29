@@ -399,7 +399,8 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
                 vars_used.insert(used);
             });
         }
-        block.vars_declared_in_this_block = vars_declared_in_this_block;
+        block.vars_declared_in_this_block = vars_declared_in_this_block
+            .difference(&block.vars_phi).cloned().collect();
         block.vars_used = vars_used;
         // dbg_println!("block: {:#?}", block);
     }
@@ -465,11 +466,12 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
             block.ins.push(ins.clone());
             if let Some(retvar) = ins.retvar() {
                 if let Some(newvars) = replacements.get(&retvar) {
-                    // NOTE: we perform a LoadVar for constants as well
-                    // so that our native code generator doesn't have to
-                    // store constants in non-phi variables
                     for newvar in newvars {
+                        // NOTE: we perform a LoadVar for constants as well
+                        // so that our native code generator doesn't have to
+                        // store constants in non-phi variables
                         block.ins.push(Ins::new(*newvar, InsType::LoadVar(retvar)));
+                        block.vars_phi.insert(*newvar);
                     }
                 }
             }

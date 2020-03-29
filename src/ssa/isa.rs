@@ -106,6 +106,7 @@ pub struct Block {
     pub vars_out: BTreeSet<usize>,
     pub vars_declared_in_this_block: BTreeSet<usize>,
     pub vars_used: BTreeSet<usize>,
+    pub vars_phi: BTreeSet<usize>,
 }
 
 impl Block {
@@ -118,6 +119,7 @@ impl Block {
             vars_out: BTreeSet::new(),
             vars_declared_in_this_block: BTreeSet::new(),
             vars_used: BTreeSet::new(),
+            vars_phi: BTreeSet::new(),
         }
     }
 }
