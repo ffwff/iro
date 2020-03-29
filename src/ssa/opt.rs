@@ -456,22 +456,24 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
         }
     }
     dbg_println!("phis: {:?}", replacements);
-    for block in &mut context.blocks {
-        let oldins = std::mem::replace(&mut block.ins, Vec::new());
-        for ins in &oldins {
-            match &ins.typed {
-                InsType::Phi { .. } => continue,
-                _ => (),
-            }
-            block.ins.push(ins.clone());
-            if let Some(retvar) = ins.retvar() {
-                if let Some(newvars) = replacements.get(&retvar) {
-                    for newvar in newvars {
-                        // NOTE: we perform a LoadVar for constants as well
-                        // so that our native code generator doesn't have to
-                        // store constants in non-phi variables
-                        block.ins.push(Ins::new(*newvar, InsType::LoadVar(retvar)));
-                        block.vars_phi.insert(*newvar);
+    while !replacements.is_empty() {
+        for block in &mut context.blocks {
+            let oldins = std::mem::replace(&mut block.ins, Vec::new());
+            for ins in &oldins {
+                match &ins.typed {
+                    InsType::Phi { .. } => continue,
+                    _ => (),
+                }
+                block.ins.push(ins.clone());
+                if let Some(retvar) = ins.retvar() {
+                    if let Some(newvars) = replacements.remove(&retvar) {
+                        for newvar in newvars {
+                            // NOTE: we perform a LoadVar for constants as well
+                            // so that our native code generator doesn't have to
+                            // store constants in non-phi variables
+                            block.ins.push(Ins::new(newvar, InsType::LoadVar(retvar)));
+                            block.vars_phi.insert(newvar);
+                        }
                     }
                 }
             }
@@ -488,7 +490,7 @@ pub fn remove_no_flow(context: &mut Context) -> Flow {
         for ins in &block.ins {
             if let Some(retvar) = ins.retvar() {
                 defined.insert(retvar);
-                if ins.typed.has_side_effects() || block.vars_out.contains(&retvar) {
+                if ins.typed.has_side_effects() || block.vars_out.contains(&retvar) || block.vars_phi.contains(&retvar) {
                     used.insert(retvar);
                     ins.each_used_var(|var| {
                         used.insert(var);
