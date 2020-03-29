@@ -188,7 +188,6 @@ impl Codegen {
             blocks.push(isa::Block::new(isa_ins));
         }
         self.allocate_registers(&mut blocks, context);
-        // self.spill_input_registers(&mut blocks, context);
         self.combine_postlude(&mut blocks);
         self.setup_stack_and_locals(&mut blocks, context);
         self.remove_unnecessary_movs(&mut blocks);
@@ -223,6 +222,9 @@ impl Codegen {
         match &ins.typed {
             InsType::Nop => (),
             InsType::LoadVar(arg) => {
+                if context.variables[*arg] == Type::Bool || context.variables[*arg] == Type::Nil {
+                    return Ok(());
+                }
                 isa_ins.push(isa::Ins::Mov(isa::TwoOperands {
                     dest: isa::Operand::UndeterminedMapping(ins.retvar().unwrap()),
                     src: self.get_register_for_var(*arg),
@@ -467,7 +469,7 @@ impl Codegen {
     }
 
     fn allocate_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
-        self.allocate_registers_for_block(0, blocks, context, ALLOC_REGS.to_vec(), BTreeMap::new());
+        self.allocate_registers_for_block(0, blocks, context);
     }
 
     fn allocate_registers_for_block(
@@ -475,10 +477,6 @@ impl Codegen {
         node: usize,
         blocks: &mut Vec<isa::Block>,
         context: &Context,
-        mut unused_regs: Vec<isa::Reg>,
-        // Map of variable to (Option(register), allocated interval).
-        // if register is none, additional work must be done to retrieve it from local stack.
-        mut var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)>,
     ) {
         let cblock = &context.blocks[node];
         let mut isa_block_ins = std::mem::replace(&mut blocks[node].ins, vec![]);
@@ -506,16 +504,15 @@ impl Codegen {
             });
         }
 
+        let mut unused_regs: Vec<isa::Reg> = ALLOC_REGS.to_vec();
+
+        // Map of variable to (Option(register), allocated interval).
+        // if register is none, additional work must be done to retrieve it from local stack.
+        let mut var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)> = btreemap![];
+
         let mut body = vec![];
         let mut postlude = vec![];
         for (idx, ins) in isa_block_ins.iter_mut().enumerate() {
-            dbg_println!(
-                "!!! {:#?} {:?} {:?} {:?}",
-                ins,
-                unused_regs,
-                var_to_reg,
-                deallocation
-            );
             match &ins {
                 isa::Ins::Clobber(clobbers) => {
                     dbg_println!("clobbering: {:?}", clobbers);
@@ -626,8 +623,7 @@ impl Codegen {
                         }
                         let reg = reg.unwrap_or_else(|| unused_regs.pop().unwrap());
                         // Unspill the local variable if it's used in the precceding blocks
-                        if cblock.vars_in.contains(&mapping) {
-                            // FIXME: correct mov type pls
+                        if cblock.vars_in.contains(&mapping) || cblock.vars_phi.contains(&mapping) {
                             body.push(isa::Ins::Mov(isa::TwoOperands {
                                 dest: isa::Operand::Register(reg),
                                 src: var.clone(),
@@ -659,18 +655,12 @@ impl Codegen {
         let mut new_var_to_reg: BTreeMap<usize, (Option<isa::Reg>, usize)> = BTreeMap::new();
         for (var, (reg, _)) in &var_to_reg {
             if let Some(reg) = reg.clone() {
-                if cblock.vars_out.contains(&var) {
-                    if cblock.vars_in.contains(&var) {
-                        body.push(isa::Ins::Mov(isa::TwoOperands {
-                            dest: isa::Operand::UndeterminedMapping(*var),
-                            src: isa::Operand::Register(reg),
-                            size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
-                        }));
-                        unused_regs.push(reg);
-                    } else {
-                        new_var_to_reg.insert(*var, (Some(reg), 0));
-                        continue;
-                    }
+                if cblock.vars_out.contains(&var) || cblock.vars_phi.contains(&var) {
+                    body.push(isa::Ins::Mov(isa::TwoOperands {
+                        dest: isa::Operand::UndeterminedMapping(*var),
+                        src: isa::Operand::Register(reg),
+                        size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
+                    }));
                 }
             }
             new_var_to_reg.insert(*var, (None, 0));
@@ -678,15 +668,6 @@ impl Codegen {
 
         // insert to new block
         let new_isa_block = &mut blocks[node];
-        let mut curr_vars_out_to_reg: BTreeMap<usize, isa::Reg> = btreemap![];
-        let mut curr_vars_out_to_reg_set: BTreeSet<(usize, isa::Reg)> = btreeset![];
-        for (var, (reg, _)) in &new_var_to_reg {
-            if let Some(reg) = reg {
-                curr_vars_out_to_reg.insert(*var, *reg);
-                curr_vars_out_to_reg_set.insert((*var, *reg));
-            }
-        }
-        new_isa_block.vars_out_to_reg = curr_vars_out_to_reg.clone();
         new_isa_block.ins = body;
         new_isa_block.postlude = postlude;
 
@@ -705,71 +686,13 @@ impl Codegen {
             // Since this is a DFS tree, all non-looping descendents
             // must have larger indices that its parent
             if *succ > node {
-                blocks[*succ].expected_in_vars = (node, curr_vars_out_to_reg_set.clone());
                 self.allocate_registers_for_block(
                     *succ,
                     blocks,
                     context,
-                    unused_regs.clone(),
-                    new_var_to_reg.clone(),
                 );
-            } else {
-                let block = &mut blocks[*succ];
-                block.possible_in_vars.push((node, curr_vars_out_to_reg_set.clone()));
             }
         }
-    }
-
-    fn spill_input_registers(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
-        // panic!("{:#?} {:#?}", context, blocks);
-        let mut spills: Vec<BTreeSet<usize>> = (0..blocks.len()).map(|_| btreeset![]).collect();
-        for block in blocks.iter_mut() {
-            if block.possible_in_vars.is_empty() {
-                continue;
-            }
-            // If we have an expected input variable-register mappings,
-            // then all of the possible input mappings from all antedescent block must be the same
-            let mut new_set = block.expected_in_vars.1.clone();
-            for (node, vars_in_to_reg) in &block.possible_in_vars {
-                new_set = &new_set & &vars_in_to_reg;
-            }
-            dbg_println!("new_set: {:#?}", new_set);
-            // Make the expected input node spill every variable not in the new expected set
-            for (expected_node_var, expected_node_reg) in block.expected_in_vars.1.difference(&new_set) {
-                spills[block.expected_in_vars.0].insert(*expected_node_var);
-                // The current block also needs to load back all the spilled
-                block.ins.insert(0, isa::Ins::Mov(isa::TwoOperands {
-                    dest: isa::Operand::Register(*expected_node_reg),
-                    src: isa::Operand::UndeterminedMapping(*expected_node_var),
-                    size: Codegen::type_to_operand_size(&context.variables[*expected_node_var]).unwrap(),
-                }));
-            }
-            // Make the possible input nodes spill every variable not in the new expected set
-            for (node, vars_in_to_reg) in &block.possible_in_vars {
-                dbg_println!("vars_in_to_reg: {:#?}", vars_in_to_reg);
-                for possible_node_spill in vars_in_to_reg.difference(&new_set) {
-                    spills[*node].insert(possible_node_spill.0);
-                }
-            }
-            dbg_println!("new_set: {:#?} {:#?}", new_set, spills);
-            block.expected_in_vars.1 = new_set;
-        }
-        // Insert spills after every node
-        for (node, var_spills) in spills.iter().enumerate() {
-            let block = &mut blocks[node];
-            for var in var_spills {
-                if let Some(reg) = block.vars_out_to_reg.get(&var) {
-                    block.ins.push(isa::Ins::Mov(isa::TwoOperands {
-                        dest: isa::Operand::UndeterminedMapping(*var),
-                        src: isa::Operand::Register(*reg),
-                        size: Codegen::type_to_operand_size(&context.variables[*var]).unwrap(),
-                    }));
-                } else {
-                    unreachable!()
-                }
-            }
-        }
-        // panic!("{:#?}", blocks)
     }
 
     fn setup_stack_and_locals(&mut self, blocks: &mut Vec<isa::Block>, context: &Context) {
