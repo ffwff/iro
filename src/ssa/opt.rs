@@ -470,8 +470,7 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
                 vars_used.insert(used);
             });
         }
-        block.vars_declared_in_this_block = vars_declared_in_this_block
-            .difference(&block.vars_phi).cloned().collect();
+        block.vars_declared_in_this_block = vars_declared_in_this_block;
         block.vars_used = vars_used;
         // dbg_println!("block: {:#?}", block);
     }
@@ -502,54 +501,5 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     }
 
     panic!("after dfa: {:#?}", context);
-    Flow::Continue
-}
-
-pub fn eliminate_phi(context: &mut Context) -> Flow {
-    dbg_println!("before phis: {:#?}", context);
-    let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    for block in &context.blocks {
-        for ins in &block.ins {
-            let retvar = ins.retvar();
-            match &ins.typed {
-                InsType::Phi { vars } => {
-                    let retvar = retvar.unwrap();
-                    for var in vars {
-                        if let Some(vec) = replacements.get_mut(var) {
-                            vec.push(retvar);
-                        } else {
-                            replacements.insert(*var, vec![ retvar ]);
-                        }
-                    }
-                }
-                _ => (),
-            }
-        }
-    }
-    dbg_println!("phis: {:?}", replacements);
-    while !replacements.is_empty() {
-        for block in &mut context.blocks {
-            let oldins = std::mem::replace(&mut block.ins, Vec::new());
-            for ins in &oldins {
-                match &ins.typed {
-                    InsType::Phi { .. } => continue,
-                    _ => (),
-                }
-                block.ins.push(ins.clone());
-                if let Some(retvar) = ins.retvar() {
-                    if let Some(newvars) = replacements.remove(&retvar) {
-                        for newvar in newvars {
-                            // NOTE: we perform a LoadVar for constants as well
-                            // so that our native code generator doesn't have to
-                            // store constants in non-phi variables
-                            block.ins.push(Ins::new(newvar, InsType::LoadVar(retvar)));
-                            block.vars_phi.insert(newvar);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    dbg_println!("after phis: {:#?}", context);
     Flow::Continue
 }
