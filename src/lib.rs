@@ -15,7 +15,7 @@ extern crate libc;
 #[macro_use]
 pub mod utils;
 pub mod ast;
+pub mod compiler;
 pub mod lexer;
 pub mod runtime;
 pub mod ssa;
-pub mod compiler;

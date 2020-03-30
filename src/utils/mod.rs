@@ -1,10 +1,10 @@
 use crate::ast;
+use crate::ast::Visitor;
+use crate::compiler;
 use crate::lexer;
 use crate::parser;
-use crate::ssa;
 use crate::runtime;
-use crate::compiler;
-use crate::ast::Visitor;
+use crate::ssa;
 use std::error::Error;
 
 mod rc_wrapper;

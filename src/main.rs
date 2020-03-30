@@ -1,11 +1,7 @@
 use std::collections::BTreeMap;
 #[macro_use]
 extern crate maplit;
-use iro::ast::Visitor;
-use iro::runtime::Runtime;
-use iro::ssa::visitor::SSAVisitor;
 use iro::utils;
-use iro::compiler;
 
 macro_rules! error {
     ($args:expr, $first:expr) => {{

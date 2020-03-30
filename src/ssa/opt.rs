@@ -1,5 +1,5 @@
-use crate::utils::pipeline::Flow;
 use crate::ssa::isa::*;
+use crate::utils::pipeline::Flow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 // NOTE: we assume each block is labelled according to DFS order
@@ -206,9 +206,9 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 for &y in &dom_frontier[n] {
                     if !phi_inserted.contains(&y) {
                         let block = &mut context.blocks[y];
-                        block.ins.insert(0, Ins::new(var, InsType::Phi {
-                            vars: vec![ var ]
-                        }));
+                        block
+                            .ins
+                            .insert(0, Ins::new(var, InsType::Phi { vars: vec![var] }));
                         phi_inserted.insert(y);
                         if !origin[y].contains(&var) {
                             worklist.push(y);
@@ -299,7 +299,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
             }
         }
     }
-    
+
     Flow::Continue
 }
 
@@ -355,12 +355,17 @@ macro_rules! ins_to_const_ins {
         } else {
             *$right
         };
-        match ($var_to_const.get(&mapped_left), $var_to_const.get(&mapped_right)) {
+        match (
+            $var_to_const.get(&mapped_left),
+            $var_to_const.get(&mapped_right),
+        ) {
             (None, Some(k)) => {
-                $ins.typed = InsType::$typed(RegConst::RegLeft((mapped_left, k.to_const().unwrap())));
+                $ins.typed =
+                    InsType::$typed(RegConst::RegLeft((mapped_left, k.to_const().unwrap())));
             }
             (Some(k), None) => {
-                $ins.typed = InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), mapped_right)));
+                $ins.typed =
+                    InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), mapped_right)));
             }
             (None, None) => (),
             (_, _) => unimplemented!(),
@@ -428,12 +433,24 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                 const_ins if const_ins.is_const() => (),
                 InsType::LoadVar(_) => unreachable!(),
                 InsType::Cast { .. } => (),
-                InsType::Add((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, AddC),
-                InsType::Sub((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, SubC),
-                InsType::Mul((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, MulC),
-                InsType::Div((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, DivC),
-                InsType::Lt((left, right))  => ins_to_const_ins!(left, right, var_to_const, mapping, ins, LtC),
-                InsType::Gt((left, right))  => ins_to_const_ins!(left, right, var_to_const, mapping, ins, GtC),
+                InsType::Add((left, right)) => {
+                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, AddC)
+                }
+                InsType::Sub((left, right)) => {
+                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, SubC)
+                }
+                InsType::Mul((left, right)) => {
+                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, MulC)
+                }
+                InsType::Div((left, right)) => {
+                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, DivC)
+                }
+                InsType::Lt((left, right)) => {
+                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, LtC)
+                }
+                InsType::Gt((left, right)) => {
+                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, GtC)
+                }
                 _ => ins.rename_var_by(true, |var| {
                     if let Some(mapped) = mapping.get(&var) {
                         *mapped
@@ -466,7 +483,7 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
             if let Some(retvar) = ins.retvar() {
                 vars_declared_in_this_block.insert(retvar);
             }
-            ins.each_used_var(|used| {   
+            ins.each_used_var(|used| {
                 vars_used.insert(used);
             });
         }
@@ -478,7 +495,10 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     while let Some(node) = worklist.pop() {
         let block = &mut context.blocks[node];
         let mut new_vars_in: BTreeSet<usize> = &block.vars_out | &block.vars_used;
-        new_vars_in = new_vars_in.difference(&block.vars_declared_in_this_block).cloned().collect();
+        new_vars_in = new_vars_in
+            .difference(&block.vars_declared_in_this_block)
+            .cloned()
+            .collect();
         dbg_println!("new_vars_in: {:?}", new_vars_in);
         // Borrow preds temporarily so as to not borrow multiple blocks in context.blocks
         let preds = std::mem::replace(&mut block.preds, vec![]);

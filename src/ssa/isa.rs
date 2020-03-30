@@ -181,18 +181,14 @@ impl Ins {
             InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
             InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
             InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
-            InsType::LteC(rc) |
-            InsType::GteC(rc) |
-            InsType::AddC(rc) |
-            InsType::SubC(rc) |
-            InsType::MulC(rc) |
-            InsType::DivC(rc) |
-            InsType::LtC(rc) |
-            InsType::GtC(rc) |
-            InsType::LteC(rc) |
-            InsType::GteC(rc) => {
-                unimplemented!()
-            }
+            InsType::AddC(_)
+            | InsType::SubC(_)
+            | InsType::MulC(_)
+            | InsType::DivC(_)
+            | InsType::LtC(_)
+            | InsType::GtC(_)
+            | InsType::LteC(_)
+            | InsType::GteC(_) => unimplemented!(),
             InsType::IfJmp {
                 condvar,
                 iftrue,
@@ -274,19 +270,17 @@ impl Ins {
             InsType::Cast { var, .. } => {
                 callback(*var);
             }
-            InsType::AddC(rc) |
-            InsType::SubC(rc) |
-            InsType::MulC(rc) |
-            InsType::DivC(rc) |
-            InsType::LtC(rc) |
-            InsType::GtC(rc) |
-            InsType::LteC(rc) |
-            InsType::GteC(rc) => {
-                match rc {
-                    RegConst::RegLeft((reg, _)) => callback(*reg),
-                    RegConst::RegRight((_, reg)) => callback(*reg)
-                }
-            }
+            InsType::AddC(rc)
+            | InsType::SubC(rc)
+            | InsType::MulC(rc)
+            | InsType::DivC(rc)
+            | InsType::LtC(rc)
+            | InsType::GtC(rc)
+            | InsType::LteC(rc)
+            | InsType::GteC(rc) => match rc {
+                RegConst::RegLeft((reg, _)) => callback(*reg),
+                RegConst::RegRight((_, reg)) => callback(*reg),
+            },
             _ => (),
         }
     }
@@ -346,8 +340,8 @@ pub enum InsType {
     SubC(RegConst),
     MulC(RegConst),
     DivC(RegConst),
-     LtC(RegConst),
-     GtC(RegConst),
+    LtC(RegConst),
+    GtC(RegConst),
     LteC(RegConst),
     GteC(RegConst),
     Cast {
