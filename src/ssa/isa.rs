@@ -183,6 +183,18 @@ impl Ins {
             InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
             InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
             InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
+            InsType::LteC(rc) |
+            InsType::GteC(rc) |
+            InsType::AddC(rc) |
+            InsType::SubC(rc) |
+            InsType::MulC(rc) |
+            InsType::DivC(rc) |
+            InsType::LtC(rc) |
+            InsType::GtC(rc) |
+            InsType::LteC(rc) |
+            InsType::GteC(rc) => {
+                unimplemented!()
+            }
             InsType::IfJmp {
                 condvar,
                 iftrue,
@@ -264,6 +276,21 @@ impl Ins {
             InsType::Cast { var, .. } => {
                 callback(*var);
             }
+            InsType::LteC(rc) |
+            InsType::GteC(rc) |
+            InsType::AddC(rc) |
+            InsType::SubC(rc) |
+            InsType::MulC(rc) |
+            InsType::DivC(rc) |
+            InsType::LtC(rc) |
+            InsType::GtC(rc) |
+            InsType::LteC(rc) |
+            InsType::GteC(rc) => {
+                match rc {
+                    RegConst::RegLeft((reg, _)) => callback(*reg),
+                    RegConst::RegRight((_, reg)) => callback(*reg)
+                }
+            }
             _ => (),
         }
     }
@@ -277,6 +304,19 @@ impl std::fmt::Debug for Ins {
             write!(f, "v{} = {:?}", self.retvar, self.typed)
         }
     }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum Constant {
+    I32(i32),
+    I64(i64),
+    F64(u64),
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum RegConst {
+    RegLeft((usize, Constant)),
+    RegRight((Constant, usize)),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -306,6 +346,14 @@ pub enum InsType {
     Gt((usize, usize)),
     Lte((usize, usize)),
     Gte((usize, usize)),
+    AddC(RegConst),
+    SubC(RegConst),
+    MulC(RegConst),
+    DivC(RegConst),
+     LtC(RegConst),
+     GtC(RegConst),
+    LteC(RegConst),
+    GteC(RegConst),
     Cast {
         var: usize,
         typed: Type,
@@ -331,9 +379,19 @@ impl InsType {
             InsType::LoadNil
             | InsType::LoadArg(_)
             | InsType::LoadI32(_)
+            | InsType::LoadI64(_)
             | InsType::LoadF64(_)
             | InsType::LoadString(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn to_const(&self) -> Option<Constant> {
+        match self {
+            InsType::LoadI32(k) => Some(Constant::I32(*k)),
+            InsType::LoadI64(k) => Some(Constant::I64(*k)),
+            InsType::LoadF64(k) => Some(Constant::F64(*k)),
+            _ => None,
         }
     }
 

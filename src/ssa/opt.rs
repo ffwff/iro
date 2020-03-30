@@ -343,6 +343,31 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
+macro_rules! ins_to_const_ins {
+    ($left:expr, $right:expr, $var_to_const:expr, $mapping:expr, $ins:expr, $typed:tt) => {{
+        let mapped_left = if let Some(mapped) = $mapping.get(&$left) {
+            *mapped
+        } else {
+            *$left
+        };
+        let mapped_right = if let Some(mapped) = $mapping.get(&$right) {
+            *mapped
+        } else {
+            *$right
+        };
+        match ($var_to_const.get(&mapped_left), $var_to_const.get(&mapped_right)) {
+            (None, Some(k)) => {
+                $ins.typed = InsType::$typed(RegConst::RegLeft((mapped_left, k.to_const().unwrap())));
+            }
+            (Some(k), None) => {
+                $ins.typed = InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), mapped_right)));
+            }
+            (None, None) => (),
+            (_, _) => unimplemented!(),
+        }
+    }};
+}
+
 pub fn fold_constants(context: &mut Context) -> Flow {
     dbg_println!("before folding: {:#?}", context);
     let mut const_to_var = HashMap::new();
@@ -403,6 +428,12 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                 const_ins if const_ins.is_const() => (),
                 InsType::LoadVar(_) => unreachable!(),
                 InsType::Cast { .. } => (),
+                InsType::Add((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, AddC),
+                InsType::Sub((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, SubC),
+                InsType::Mul((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, MulC),
+                InsType::Div((left, right)) => ins_to_const_ins!(left, right, var_to_const, mapping, ins, DivC),
+                InsType::Lt((left, right))  => ins_to_const_ins!(left, right, var_to_const, mapping, ins, LtC),
+                InsType::Gt((left, right))  => ins_to_const_ins!(left, right, var_to_const, mapping, ins, GtC),
                 _ => ins.rename_var_by(true, |var| {
                     if let Some(mapped) = mapping.get(&var) {
                         *mapped
@@ -470,7 +501,7 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         }
     }
 
-    dbg_println!("after dfa: {:#?}", context);
+    panic!("after dfa: {:#?}", context);
     Flow::Continue
 }
 
