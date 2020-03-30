@@ -6,25 +6,20 @@ use crate::parser;
 use crate::runtime;
 use crate::ssa;
 use std::error::Error;
-
-mod rc_wrapper;
-pub use rc_wrapper::RcWrapper;
+use std::cell::RefCell;
 
 pub mod pipeline;
 
 pub type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, lexer::Error>;
 pub type ParseResult = Result<ast::Program, ParseError>;
 
-pub fn parse_input(input: &str) -> ParseResult {
+pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<dyn Error>> {
     let tokenizer = lexer::Lexer::new(input);
-    parser::TopParser::new().parse(tokenizer)
-}
-
-pub fn parse_and_run(code: &str) -> Result<(), Box<Error>> {
-    let ast = parse_input(code)?;
-    let mut visitor = ssa::visitor::SSAVisitor::new(runtime::Runtime::new());
+    let ast = parser::TopParser::new().parse(tokenizer)?;
+    let top_level_info = RefCell::new(ssa::visitor::TopLevelInfo::new(runtime));
+    let mut visitor = ssa::visitor::SSAVisitor::new(&top_level_info);
     visitor.visit_program(&ast)?;
-    let mut program = visitor.into_program().unwrap();
+    let mut program = visitor.into_program();
     let ssa_pipeline = compiler::ssa_pipeline();
     for (_, context) in &mut program.contexts {
         ssa_pipeline.apply(context);

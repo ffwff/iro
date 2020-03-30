@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 #[macro_use]
 extern crate maplit;
 use iro::utils;
+use iro::runtime;
 
 macro_rules! error {
     ($args:expr, $first:expr) => {{
@@ -21,7 +22,7 @@ fn run(idx: usize, args: &Vec<String>) {
     }
     match std::fs::read_to_string(args.last().unwrap()) {
         Ok(source) => {
-            utils::parse_and_run(&source).unwrap();
+            utils::parse_and_run(&source, runtime::Runtime::new()).unwrap();
         }
         Err(err) => {
             error!(args, "{}", err);

@@ -56,17 +56,17 @@ pub trait Node: Downcast {
         Ok(())
     }
 
-    fn visit(&self, visitor: &mut Visitor) -> VisitorResult;
+    fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult;
 }
 impl_downcast!(Node);
 
-impl std::fmt::Display for Node {
+impl std::fmt::Display for dyn Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.print(f)
     }
 }
 
-impl std::fmt::Debug for Node {
+impl std::fmt::Debug for dyn Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.print(f)
     }
@@ -74,7 +74,7 @@ impl std::fmt::Debug for Node {
 
 #[derive(Debug, Clone)]
 pub struct NodeBox {
-    data: Rc<Node>,
+    data: Rc<dyn Node>,
 }
 
 impl NodeBox {
@@ -87,15 +87,15 @@ impl NodeBox {
         }
     }
 
-    pub fn rc(&self) -> Rc<Node> {
+    pub fn rc(&self) -> Rc<dyn Node> {
         self.data.clone()
     }
 
-    pub fn borrow(&self) -> &Node {
+    pub fn borrow(&self) -> &dyn Node {
         self.data.borrow()
     }
 
-    pub fn visit(&self, visitor: &mut Visitor) -> VisitorResult {
+    pub fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult {
         self.borrow().visit(visitor)
     }
 }
@@ -110,7 +110,7 @@ macro_rules! debuggable {
 
 macro_rules! visitable {
     ($x:tt) => {
-        fn visit(&self, visitor: &mut Visitor) -> VisitorResult {
+        fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult {
             visitor.$x(self)
         }
     };
@@ -124,7 +124,7 @@ pub struct Program {
 impl Node for Program {
     debuggable!();
 
-    fn visit(&self, _visitor: &mut Visitor) -> VisitorResult {
+    fn visit(&self, _visitor: &mut dyn Visitor) -> VisitorResult {
         unimplemented!()
     }
 }

@@ -1,5 +1,3 @@
-#![feature(option_flattening)]
-#![feature(bind_by_move_pattern_guards)]
 #![feature(vec_remove_item)]
 #![feature(ptr_offset_from)]
 

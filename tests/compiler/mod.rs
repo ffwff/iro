@@ -1,7 +1,10 @@
 pub mod arithmetic;
+use iro::runtime::Runtime;
+use iro::utils;
+
+#[cfg(test)]
 
 /*
-#[cfg(test)]
 #[test]
 fn fib() {
     extern "C" fn record_i32(n: i32) {
@@ -160,6 +163,7 @@ fn while_loop_nested_x() {
     let locked = OUTPUT.lock().unwrap().borrow().clone();
     assert_eq!(locked, expected);
 }
+*/
 
 #[test]
 fn while_loop_nested_post_x() {
@@ -187,6 +191,5 @@ fn while_loop_nested_post_x() {
     record(x)
     ",
         runtime,
-    );
+    ).unwrap();
 }
-*/

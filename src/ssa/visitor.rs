@@ -33,13 +33,22 @@ impl TopLevelInfo {
             runtime,
         }
     }
+    
+    pub fn empty() -> Self {
+        TopLevelInfo {
+            defstmts: HashMap::new(),
+            func_contexts: HashMap::new(),
+            types: HashMap::new(),
+            runtime: Runtime::empty(),
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct SSAVisitor {
+pub struct SSAVisitor<'a> {
     context: Context,
     envs: Vec<Env>,
-    top_level: RcWrapper<TopLevelInfo>,
+    top_level: &'a RefCell<TopLevelInfo>,
     has_direct_return: bool,
 }
 
@@ -54,21 +63,21 @@ macro_rules! check_direct_return {
     }};
 }
 
-impl SSAVisitor {
-    pub fn new(runtime: Runtime) -> Self {
+impl<'a> SSAVisitor<'a> {
+    pub fn new(top_level: &'a RefCell<TopLevelInfo>) -> Self {
         Self {
             context: Context::new(Rc::from("main")),
             envs: vec![],
-            top_level: RcWrapper::new(TopLevelInfo::new(runtime)),
+            top_level: top_level,
             has_direct_return: false,
         }
     }
 
-    pub fn with_context(context: Context, top_level: RcWrapper<TopLevelInfo>) -> Self {
+    pub fn with_context(context: Context, top_level: &'a RefCell<TopLevelInfo>) -> Self {
         Self {
             context,
             envs: vec![],
-            top_level,
+            top_level: top_level,
             has_direct_return: false,
         }
     }
@@ -77,25 +86,22 @@ impl SSAVisitor {
         self.context
     }
 
-    pub fn into_program(self) -> Option<isa::Program> {
-        if let Ok(top_level) = self.top_level.try_unwrap() {
-            let context = self.context;
-            let mut func_contexts = top_level.func_contexts;
-            let entry = Rc::new(FunctionName {
-                name: context.name.clone(),
-                arg_types: vec![],
-            });
-            func_contexts.insert(entry.clone(), Some(context));
-            Some(isa::Program {
-                contexts: func_contexts
-                    .into_iter()
-                    .map(|(key, value)| (key, value.unwrap()))
-                    .collect(),
-                entry,
-                runtime: top_level.runtime,
-            })
-        } else {
-            None
+    pub fn into_program(self) -> isa::Program {
+        let top_level = self.top_level.replace(TopLevelInfo::empty());
+        let context = self.context;
+        let mut func_contexts = top_level.func_contexts;
+        let entry = Rc::new(FunctionName {
+            name: context.name.clone(),
+            arg_types: vec![],
+        });
+        func_contexts.insert(entry.clone(), Some(context));
+        isa::Program {
+            contexts: func_contexts
+                .into_iter()
+                .map(|(key, value)| (key, value.unwrap()))
+                .collect(),
+            entry,
+            runtime: top_level.runtime,
         }
     }
 
@@ -171,30 +177,27 @@ impl SSAVisitor {
     }
 }
 
-impl Visitor for SSAVisitor {
+impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_program(&mut self, n: &ast::Program) -> VisitorResult {
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
-                self.top_level.with_mut(|top_level| {
-                    let defstmt_rc = expr.rc().downcast_rc::<DefStatement>().unwrap();
-                    if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
-                        vec.push(defstmt_rc);
-                    } else {
-                        top_level
-                            .defstmts
-                            .insert(defstmt.id.clone(), vec![defstmt_rc]);
-                    }
-                });
+                let mut top_level = self.top_level.borrow_mut();
+                let defstmt_rc = expr.rc().downcast_rc::<DefStatement>().unwrap();
+                if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
+                    vec.push(defstmt_rc);
+                } else {
+                    top_level
+                        .defstmts
+                        .insert(defstmt.id.clone(), vec![defstmt_rc]);
+                }
             } else {
                 outerstmts.push(expr);
             }
         }
 
         {
-            let top_level_rcc = self.top_level.inner().clone();
-            let top_level_rc: &RefCell<TopLevelInfo> = top_level_rcc.borrow();
-            let top_level: &TopLevelInfo = &top_level_rc.borrow();
+            let top_level: &TopLevelInfo = &self.top_level.borrow();
             for (_, defstmt_vec) in &top_level.defstmts {
                 for defstmt_rc in defstmt_vec {
                     let defstmt: &DefStatement = defstmt_rc.borrow();
@@ -503,24 +506,26 @@ impl Visitor for SSAVisitor {
                     arg_types: arg_types.clone(),
                 });
 
-                let rettype = self.top_level.with_mut(|top_level| {
+                let rettype = {
+                    let top_level = self.top_level.borrow_mut();
                     if let Some(maybe_context) = top_level.func_contexts.get(&func_name) {
                         if let Some(context) = maybe_context {
-                            Ok(Some(context.rettype.clone()))
+                            Some(context.rettype.clone())
                         } else {
-                            Ok(None)
+                            None
                         }
                     } else if top_level.defstmts.contains_key(id) {
-                        Ok(None)
+                        None
                     } else {
-                        Err(Error::UnknownIdentifier(id.clone()))
+                        return Err(Error::UnknownIdentifier(id.clone()));
                     }
-                })?;
+                };
 
                 let retvar = self.context.insert_var(if let Some(rettype) = rettype {
                     rettype
                 } else {
-                    let (defstmt, func_insert) = self.top_level.with_mut(|top_level| {
+                    let (defstmt, func_insert) = {
+                        let mut top_level = self.top_level.borrow_mut();
                         let func_insert = top_level
                             .func_contexts
                             .insert(func_name.clone(), None)
@@ -535,7 +540,7 @@ impl Visitor for SSAVisitor {
                             }
                         }
                         (usable_defstmt, func_insert)
-                    });
+                    };
                     if defstmt.is_none() {
                         return Err(Error::InvalidArguments);
                     }
@@ -556,38 +561,29 @@ impl Visitor for SSAVisitor {
                                     &arg_types,
                                 )
                             } {
-                                let data = RefCell::new(Some((
-                                    func_name.clone(),
-                                    Context::with_intrinsics(
-                                        id.clone(),
-                                        arg_types,
-                                        rettype.clone(),
-                                        defstmt.intrinsic.get(),
-                                    ),
-                                )));
-                                self.top_level.with_mut(move |top_level| {
-                                    let (func_name, context) = data.replace(None).unwrap();
-                                    top_level.func_contexts.insert(func_name, Some(context));
-                                });
+                                let context = Context::with_intrinsics(
+                                    id.clone(),
+                                    arg_types,
+                                    rettype.clone(),
+                                    defstmt.intrinsic.get(),
+                                );
+                                let mut top_level = self.top_level.borrow_mut();
+                                top_level.func_contexts.insert(func_name.clone(), Some(context));
                                 rettype
                             } else {
                                 return Err(Error::InternalError);
                             }
                         } else {
-                            let visitor = RefCell::new(Some({
+                            let (func_name, context) = {
                                 let func_context = Context::with_args(id.clone(), arg_types);
-                                let mut visitor =
-                                    SSAVisitor::with_context(func_context, self.top_level.clone());
+                                let mut visitor = SSAVisitor::with_context(func_context, self.top_level);
                                 visitor.visit_defstmt(defstmt.borrow())?;
-                                (func_name.clone(), visitor)
-                            }));
-                            self.top_level.with_mut(move |top_level| {
-                                let (func_name, visitor) = visitor.replace(None).unwrap();
-                                let context = visitor.into_context();
-                                let rettype = context.rettype.clone();
-                                top_level.func_contexts.insert(func_name, Some(context));
-                                rettype
-                            })
+                                (func_name.clone(), visitor.into_context())
+                            };
+                            let mut top_level = self.top_level.borrow_mut();
+                            let rettype = context.rettype.clone();
+                            top_level.func_contexts.insert(func_name, Some(context));
+                            rettype
                         }
                     }
                 });
@@ -763,14 +759,15 @@ impl Visitor for SSAVisitor {
 
     fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult {
         match &n.data {
-            TypeIdData::Identifier(id) => self.top_level.with(|top_level| {
+            TypeIdData::Identifier(id) => {
+                let top_level = self.top_level.borrow();
                 if let Some(typed) = top_level.types.get(id) {
                     n.typed.replace(Some(typed.clone()));
                     Ok(())
                 } else {
                     Err(Error::UnknownType(id.clone()))
                 }
-            }),
+            },
         }
     }
 }

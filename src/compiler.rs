@@ -9,6 +9,7 @@ pub fn ssa_pipeline() -> Pipeline<Context, fn(&mut Context) -> Flow> {
             opt::fold_constants,
             opt::collect_garbage_vars,
             opt::data_flow_analysis,
+            opt::eliminate_phi,
         ]
         .to_vec(),
     )
