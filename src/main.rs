@@ -1,30 +1,11 @@
 use std::collections::BTreeMap;
 #[macro_use]
 extern crate maplit;
-use iro::arch::codegen::Codegen;
-use iro::arch::{current_codegen, mmap};
 use iro::ast::Visitor;
 use iro::runtime::Runtime;
 use iro::ssa::visitor::SSAVisitor;
 use iro::utils;
 use iro::compiler;
-
-fn parse_and_run(code: &str) {
-    let ast = utils::parse_input(code).unwrap();
-    let mut visitor = SSAVisitor::new(Runtime::new());
-    visitor.visit_program(&ast).unwrap();
-    let mut program = visitor.into_program().unwrap();
-    let ssa_pipeline = compiler::ssa_pipeline();
-    for (_, context) in &mut program.contexts {
-        ssa_pipeline.apply(context);
-    }
-    let mut visitor = current_codegen();
-    let contexts = visitor.process(&program).unwrap();
-    unsafe {
-        let mmap = visitor.make_mmap(&contexts).unwrap();
-        mmap.execute(&program.entry).unwrap();
-    }
-}
 
 macro_rules! error {
     ($args:expr, $first:expr) => {{
@@ -43,7 +24,9 @@ fn run(idx: usize, args: &Vec<String>) {
         return;
     }
     match std::fs::read_to_string(args.last().unwrap()) {
-        Ok(source) => parse_and_run(&source),
+        Ok(source) => {
+            utils::parse_and_run(&source).unwrap();
+        }
         Err(err) => {
             error!(args, "{}", err);
         }

@@ -48,6 +48,12 @@ pub enum Tok {
 
 impl Eq for Tok {}
 
+impl std::fmt::Display for Tok {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 pub type Spanned<T> = (usize, T, usize);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,6 +61,12 @@ pub enum Error {
     UnexpectedCharacter((usize, char)),
     UnexpectedEof,
     DuplicateArguments,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 pub struct Lexer<'input> {

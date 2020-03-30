@@ -12,9 +12,28 @@ pub enum Error {
     IncompatibleType,
     CannotInfer,
     UnknownIdentifier(Rc<str>),
+    UnknownType(Rc<str>),
+    UnknownAttribute(String),
+    UnknownStatic(String),
     NotEnoughArguments,
     InvalidArguments,
     InvalidReturnType,
+}
+
+impl std::error::Error for Error {
+    fn description(&self) -> &str {
+        "invalid first item to double"
+    }
+
+    fn cause(&self) -> Option<&(dyn std::error::Error)> {
+        None
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 pub type VisitorResult = Result<(), Error>;

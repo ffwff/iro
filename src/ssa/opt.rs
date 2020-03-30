@@ -500,6 +500,6 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         }
     }
 
-    panic!("after dfa: {:#?}", context);
+    dbg_println!("after dfa: {:#?}", context);
     Flow::Continue
 }

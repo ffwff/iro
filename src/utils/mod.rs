@@ -1,6 +1,11 @@
 use crate::ast;
 use crate::lexer;
 use crate::parser;
+use crate::ssa;
+use crate::runtime;
+use crate::compiler;
+use crate::ast::Visitor;
+use std::error::Error;
 
 mod rc_wrapper;
 pub use rc_wrapper::RcWrapper;
@@ -13,6 +18,18 @@ pub type ParseResult = Result<ast::Program, ParseError>;
 pub fn parse_input(input: &str) -> ParseResult {
     let tokenizer = lexer::Lexer::new(input);
     parser::TopParser::new().parse(tokenizer)
+}
+
+pub fn parse_and_run(code: &str) -> Result<(), Box<Error>> {
+    let ast = parse_input(code)?;
+    let mut visitor = ssa::visitor::SSAVisitor::new(runtime::Runtime::new());
+    visitor.visit_program(&ast)?;
+    let mut program = visitor.into_program().unwrap();
+    let ssa_pipeline = compiler::ssa_pipeline();
+    for (_, context) in &mut program.contexts {
+        ssa_pipeline.apply(context);
+    }
+    Ok(())
 }
 
 #[macro_use]

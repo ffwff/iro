@@ -77,7 +77,7 @@ impl SSAVisitor {
         self.context
     }
 
-    pub fn into_program(self) -> Result<isa::Program, ()> {
+    pub fn into_program(self) -> Option<isa::Program> {
         if let Ok(top_level) = self.top_level.try_unwrap() {
             let context = self.context;
             let mut func_contexts = top_level.func_contexts;
@@ -86,7 +86,7 @@ impl SSAVisitor {
                 arg_types: vec![],
             });
             func_contexts.insert(entry.clone(), Some(context));
-            Ok(isa::Program {
+            Some(isa::Program {
                 contexts: func_contexts
                     .into_iter()
                     .map(|(key, value)| (key, value.unwrap()))
@@ -95,7 +95,7 @@ impl SSAVisitor {
                 runtime: top_level.runtime,
             })
         } else {
-            Err(())
+            None
         }
     }
 
@@ -160,10 +160,10 @@ impl SSAVisitor {
                         {
                             defstmt.intrinsic.replace(intrinsic);
                         } else {
-                            return Err(Error::InternalError);
+                            return Err(Error::UnknownStatic(attr.args[0].to_string()));
                         }
                     }
-                    _ => return Err(Error::InternalError),
+                    _ => return Err(Error::UnknownAttribute(attr.name.clone())),
                 }
             }
         }
@@ -768,7 +768,7 @@ impl Visitor for SSAVisitor {
                     n.typed.replace(Some(typed.clone()));
                     Ok(())
                 } else {
-                    Err(Error::InternalError)
+                    Err(Error::UnknownType(id.clone()))
                 }
             }),
         }
