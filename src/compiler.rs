@@ -6,11 +6,9 @@ pub fn ssa_pipeline() -> Pipeline<Context, fn(&mut Context) -> Flow> {
     Pipeline::new(
         [
             opt::build_graph_and_rename_vars,
-            // opt::remove_defined_never_used,
-            // opt::fold_constants,
-            opt::eliminate_phi,
+            opt::fold_constants,
+            opt::collect_garbage_vars,
             opt::data_flow_analysis,
-            // opt::remove_no_flow,
         ]
         .to_vec(),
     )

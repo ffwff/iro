@@ -303,6 +303,46 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
+pub fn collect_garbage_vars(context: &mut Context) -> Flow {
+    let mut var_to_ins: BTreeMap<usize, Ins> = BTreeMap::new();
+    let mut roots = vec![];
+    for block in &mut context.blocks {
+        for ins in &mut block.ins {
+            if let Some(retvar) = ins.retvar() {
+                var_to_ins.insert(retvar, ins.clone());
+            }
+            if ins.typed.is_jmp() || ins.typed.has_side_effects() {
+                if let Some(retvar) = ins.retvar() {
+                    roots.push(retvar);
+                }
+                ins.each_used_var(|var| roots.push(var));
+            }
+        }
+    }
+    let mut alive: BTreeSet<usize> = btreeset![];
+    fn trace(var: usize, var_to_ins: &BTreeMap<usize, Ins>, alive: &mut BTreeSet<usize>) {
+        if alive.contains(&var) {
+            return;
+        }
+        alive.insert(var);
+        var_to_ins[&var].each_used_var(|cvar| trace(cvar, var_to_ins, alive));
+    }
+    for root in roots {
+        trace(root, &var_to_ins, &mut alive);
+    }
+    for block in &mut context.blocks {
+        block.ins.retain(|ins| {
+            if let Some(retvar) = ins.retvar() {
+                alive.contains(&retvar)
+            } else {
+                true
+            }
+        });
+    }
+    dbg_println!("after tracing: {:#?}", context);
+    Flow::Continue
+}
+
 pub fn fold_constants(context: &mut Context) -> Flow {
     dbg_println!("before folding: {:#?}", context);
     let mut const_to_var = HashMap::new();
@@ -361,8 +401,8 @@ pub fn fold_constants(context: &mut Context) -> Flow {
         for ins in &mut block.ins {
             match &ins.typed {
                 const_ins if const_ins.is_const() => (),
-                InsType::LoadVar(mapped) => unreachable!(),
-                InsType::Cast { var, typed } => (),
+                InsType::LoadVar(_) => unreachable!(),
+                InsType::Cast { .. } => (),
                 _ => ins.rename_var_by(true, |var| {
                     if let Some(mapped) = mapping.get(&var) {
                         *mapped
@@ -480,43 +520,5 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
         }
     }
     dbg_println!("after phis: {:#?}", context);
-    Flow::Continue
-}
-
-pub fn remove_no_flow(context: &mut Context) -> Flow {
-    let mut defined: BTreeSet<usize> = BTreeSet::new();
-    let mut used: BTreeSet<usize> = BTreeSet::new();
-    for block in &mut context.blocks {
-        for ins in &block.ins {
-            if let Some(retvar) = ins.retvar() {
-                defined.insert(retvar);
-                if ins.typed.has_side_effects() || block.vars_out.contains(&retvar) || block.vars_phi.contains(&retvar) {
-                    used.insert(retvar);
-                    ins.each_used_var(|var| {
-                        used.insert(var);
-                    });
-                }
-            } else {
-                // This is a jump statement
-                ins.each_used_var(|var| {
-                    used.insert(var);
-                });
-            }
-        }
-    }
-    let to_remove = &defined ^ &used;
-    dbg_println!("context: {:#?}", context);
-    dbg_println!("remove: {:?}", to_remove);
-    for block in &mut context.blocks {
-        block.ins.retain(|ins| {
-            if let Some(retvar) = ins.retvar() {
-                !to_remove.contains(&retvar)
-            } else {
-                true
-            }
-        })
-    }
-    dbg_println!("after remove: {:#?}", context);
-
     Flow::Continue
 }
