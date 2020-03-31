@@ -302,6 +302,20 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
+pub fn insert_jmps(context: &mut Context) -> Flow {
+    let len = context.blocks.len();
+    for (idx, block) in context.blocks.iter_mut().enumerate() {
+        if let Some(ins) = block.ins.last() {
+            if !ins.typed.is_jmp() {
+                block.ins.push(Ins::new(0, InsType::Jmp(idx + 1)));
+            }
+        } else if idx + 1 != len {
+            block.ins.push(Ins::new(0, InsType::Jmp(idx + 1)));
+        }
+    }
+    Flow::Continue
+}
+
 pub fn collect_garbage_vars(context: &mut Context) -> Flow {
     let mut var_to_ins: BTreeMap<usize, Ins> = BTreeMap::new();
     let mut roots = vec![];
@@ -348,28 +362,15 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
 }
 
 macro_rules! ins_to_const_ins {
-    ($left:expr, $right:expr, $var_to_const:expr, $mapping:expr, $ins:expr, $typed:tt) => {{
-        let mapped_left = if let Some(mapped) = $mapping.get(&$left) {
-            *mapped
-        } else {
-            *$left
-        };
-        let mapped_right = if let Some(mapped) = $mapping.get(&$right) {
-            *mapped
-        } else {
-            *$right
-        };
-        match (
-            $var_to_const.get(&mapped_left),
-            $var_to_const.get(&mapped_right),
-        ) {
+    ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt) => {{
+        match ($var_to_const.get(&$left), $var_to_const.get(&$right)) {
             (None, Some(k)) => {
                 $ins.typed =
-                    InsType::$typed(RegConst::RegLeft((mapped_left, k.to_const().unwrap())));
+                    InsType::$typed(RegConst::RegLeft(($left, k.to_const().unwrap())));
             }
             (Some(k), None) => {
                 $ins.typed =
-                    InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), mapped_right)));
+                    InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), $right)));
             }
             (Some(_), Some(_)) => unimplemented!(),
             (None, None) => (),
@@ -379,89 +380,48 @@ macro_rules! ins_to_const_ins {
 
 pub fn fold_constants(context: &mut Context) -> Flow {
     dbg_println!("before folding: {:#?}", context);
-    let mut const_to_var = HashMap::new();
-    let mut var_to_const = HashMap::new();
-    let mut mapping = BTreeMap::new();
-    let mut new_ins = vec![];
+    let mut var_to_const = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &mut block.ins {
             match &ins.typed {
                 const_ins if const_ins.is_const() => {
-                    let retvar = ins.retvar().unwrap();
-                    let oldins = std::mem::replace(ins, Ins::new(0, InsType::Nop));
-                    if let Some(mapped) = const_to_var.get(&oldins.typed) {
-                        mapping.insert(retvar, *mapped);
-                    } else {
-                        new_ins.push(oldins.clone());
-                        var_to_const.insert(retvar, oldins.typed.clone());
-                        const_to_var.insert(oldins.typed, retvar);
-                    }
-                }
-                InsType::LoadVar(mapped) => {
-                    mapping.insert(ins.retvar().unwrap(), *mapped);
-                    ins.typed = InsType::Nop;
+                    var_to_const.insert(ins.retvar().unwrap(), const_ins.clone());
                 }
                 InsType::Cast { var, typed } => {
-                    let const_ins = var_to_const
-                        .get(&var)
-                        .or_else(|| mapping.get(&var).map(|var| &var_to_const[&var]));
-                    if let Some(const_ins) = const_ins {
+                    if let Some(const_ins) = var_to_const.get(&var) {
                         if let Some(casted) = const_ins.const_cast(typed) {
-                            let retvar = ins.retvar().unwrap();
-                            dbg_println!("cast {} ({}) => {:#?}", retvar, var, casted);
-                            if let Some(mapped) = const_to_var.get(&casted) {
-                                mapping.insert(retvar, *mapped);
-                            } else {
-                                new_ins.push(Ins::new(retvar, casted.clone()));
-                                var_to_const.insert(retvar, casted.clone());
-                                const_to_var.insert(casted, retvar);
-                            }
-                            ins.typed = InsType::Nop;
+                            var_to_const.insert(ins.retvar().unwrap(), casted.clone());
+                            ins.typed = casted;
                         }
                     }
                 }
                 _ => (),
             }
         }
-        block.ins.retain(|ins| ins.typed != InsType::Nop);
-    }
-    dbg_println!("mapping: {:#?}", mapping);
-    {
-        let first_block = &mut context.blocks[0];
-        new_ins.append(&mut first_block.ins);
-        first_block.ins = new_ins;
     }
     for block in &mut context.blocks {
         for ins in &mut block.ins {
             match &ins.typed {
                 const_ins if const_ins.is_const() => (),
-                InsType::LoadVar(_) => unreachable!(),
-                InsType::Cast { .. } => (),
                 InsType::Add((left, right)) => {
-                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, AddC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, AddC)
                 }
                 InsType::Sub((left, right)) => {
-                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, SubC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, SubC)
                 }
                 InsType::Mul((left, right)) => {
-                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, MulC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, MulC)
                 }
                 InsType::Div((left, right)) => {
-                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, DivC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, DivC)
                 }
                 InsType::Lt((left, right)) => {
-                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, LtC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, LtC)
                 }
                 InsType::Gt((left, right)) => {
-                    ins_to_const_ins!(left, right, var_to_const, mapping, ins, GtC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, GtC)
                 }
-                _ => ins.rename_var_by(true, |var| {
-                    if let Some(mapped) = mapping.get(&var) {
-                        *mapped
-                    } else {
-                        var
-                    }
-                }),
+                _ => (),
             }
         }
     }

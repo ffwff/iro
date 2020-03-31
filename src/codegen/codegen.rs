@@ -123,13 +123,6 @@ impl<B> Codegen<B> where B: Backend {
             for ins in &cblock.ins {
                 self.visit_ins(&ins, &cblock, &context, bblock, &blocks, &mut builder);
             }
-            if let Some(ins) = cblock.ins.last() {
-                if !ins.typed.is_jmp() {
-                    builder.ins().jump(blocks[idx + 1], &[]);
-                }
-            } else {
-                builder.ins().jump(blocks[idx + 1], &[]);
-            }
         }
         builder.seal_all_blocks();
         builder.finalize();
