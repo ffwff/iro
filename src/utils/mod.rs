@@ -15,7 +15,7 @@ pub mod pipeline;
 pub type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, lexer::Error>;
 pub type ParseResult = Result<ast::Program, ParseError>;
 
-pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<dyn Error>> {
+pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, Box<dyn Error>> {
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer)?;
     let top_level_info = RefCell::new(ssa::visitor::TopLevelInfo::new());
@@ -26,6 +26,11 @@ pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<d
     for (_, context) in &mut program.contexts {
         ssa_pipeline.apply(context);
     }
+    Ok(program)
+}
+
+pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<dyn Error>> {
+    let mut program = parse_to_ssa(input)?;
     let mut module = Codegen::process_jit(&program, &runtime);
     if let Some(main) = module.get_name("main()") {
         if let FuncOrDataId::Func(func_id) = main {
@@ -39,6 +44,12 @@ pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<d
         unreachable!()
     }
     Ok(())
+}
+
+pub fn parse_to_object(input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut program = parse_to_ssa(input)?;
+    let mut module = Codegen::process_object(&program);
+    Ok(module.finish().emit().unwrap())
 }
 
 #[macro_use]
