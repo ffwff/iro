@@ -362,7 +362,7 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
 }
 
 macro_rules! ins_to_const_ins {
-    ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt) => {{
+    ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt, $method:tt) => {{
         match ($var_to_const.get(&$left), $var_to_const.get(&$right)) {
             (None, Some(k)) => {
                 $ins.typed =
@@ -372,7 +372,11 @@ macro_rules! ins_to_const_ins {
                 $ins.typed =
                     InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), $right)));
             }
-            (Some(_), Some(_)) => unimplemented!(),
+            (Some(kleft), Some(kright)) => {
+                $ins.typed = InsType::load_const(
+                    kleft.to_const().unwrap().$method(kright.to_const().unwrap())
+                );
+            },
             (None, None) => (),
         }
     }};
@@ -404,22 +408,28 @@ pub fn fold_constants(context: &mut Context) -> Flow {
             match &ins.typed {
                 const_ins if const_ins.is_const() => (),
                 InsType::Add((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, AddC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, AddC, add)
                 }
                 InsType::Sub((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, SubC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, SubC, sub)
                 }
                 InsType::Mul((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, MulC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, MulC, mul)
                 }
                 InsType::Div((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, DivC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, DivC, div)
                 }
                 InsType::Lt((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, LtC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, LtC, lt)
                 }
                 InsType::Gt((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, GtC)
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, GtC, gt)
+                }
+                InsType::Lte((left, right)) => {
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, LteC, lte)
+                }
+                InsType::Gte((left, right)) => {
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, GteC, gte)
                 }
                 _ => (),
             }

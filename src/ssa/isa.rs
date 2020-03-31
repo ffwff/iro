@@ -292,11 +292,73 @@ impl std::fmt::Debug for Ins {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Constant {
     I32(i32),
     I64(i64),
     F64(u64),
+}
+
+impl Constant {
+    pub fn add(&self, right: Constant) -> Constant {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x + y),
+            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x + y),
+            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
+                f64::to_bits(f64::from_bits(x) + f64::from_bits(y))
+            ),
+            (_, _) => unreachable!(),
+        }
+    }
+
+    pub fn sub(&self, right: Constant) -> Constant {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x - y),
+            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x - y),
+            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
+                f64::to_bits(f64::from_bits(x) - f64::from_bits(y))
+            ),
+            (_, _) => unreachable!(),
+        }
+    }
+
+    pub fn mul(&self, right: Constant) -> Constant {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x * y),
+            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x * y),
+            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
+                f64::to_bits(f64::from_bits(x) * f64::from_bits(y))
+            ),
+            (_, _) => unreachable!(),
+        }
+    }
+
+    pub fn div(&self, right: Constant) -> Constant {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x / y),
+            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x / y),
+            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
+                f64::to_bits(f64::from_bits(x) + f64::from_bits(y))
+            ),
+            (_, _) => unreachable!(),
+        }
+    }
+
+    pub fn lt(&self, right: Constant) -> Constant {
+        unimplemented!()
+    }
+
+    pub fn gt(&self, right: Constant) -> Constant {
+        unimplemented!()
+    }
+
+    pub fn lte(&self, right: Constant) -> Constant {
+        unimplemented!()
+    }
+
+    pub fn gte(&self, right: Constant) -> Constant {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -353,6 +415,14 @@ pub enum InsType {
 }
 
 impl InsType {
+    pub fn load_const(c: Constant) -> Self {
+        match c {
+            Constant::I32(x) => InsType::LoadI32(x),
+            Constant::I64(x) => InsType::LoadI64(x),
+            Constant::F64(x) => InsType::LoadF64(x),
+        }
+    }
+
     pub fn is_jmp(&self) -> bool {
         match self {
             InsType::IfJmp { .. } | InsType::Jmp(_) | InsType::Return(_) | InsType::Exit => true,

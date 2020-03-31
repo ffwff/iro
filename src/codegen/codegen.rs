@@ -265,7 +265,17 @@ impl<B> Codegen<B> where B: Backend {
                     _ => unimplemented!()
                 }
             },
-            isa::InsType::Div((_x, _y)) => unimplemented!(),
+            isa::InsType::Div((x, y)) => {
+                match &context.variables[*x] {
+                    isa::Type::I32 | isa::Type::I64 => {
+                        let left = builder.use_var(to_var(*x));
+                        let right = builder.use_var(to_var(*y));
+                        let tmp = builder.ins().sdiv(left, right);
+                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                    }
+                    _ => unimplemented!()
+                }
+            },
             isa::InsType::AddC(regconst) |
             isa::InsType::SubC(regconst) |
             isa::InsType::MulC(regconst) |
@@ -278,7 +288,7 @@ impl<B> Codegen<B> where B: Backend {
                             isa::InsType::AddC(_) => builder.ins().iadd(left, right),
                             isa::InsType::SubC(_) => builder.ins().isub(left, right),
                             isa::InsType::MulC(_) => builder.ins().imul(left, right),
-                            isa::InsType::DivC(_) => unimplemented!(),
+                            isa::InsType::DivC(_) => builder.ins().sdiv(left, right),
                             _ => unreachable!()
                         }
                     }
