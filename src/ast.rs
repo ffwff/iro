@@ -1,7 +1,7 @@
 use crate::ssa::isa::{IntrinsicType, Type};
 use downcast_rs::Downcast;
 use std::borrow::Borrow;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 

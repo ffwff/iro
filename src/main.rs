@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 #[macro_use]
 extern crate maplit;
-use iro::utils;
 use iro::runtime;
+use iro::utils;
 
 macro_rules! error {
     ($args:expr, $first:expr) => {{

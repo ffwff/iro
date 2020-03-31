@@ -1,6 +1,5 @@
 use crate::ast;
 use crate::ast::*;
-use crate::runtime::Runtime;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
@@ -30,7 +29,7 @@ impl TopLevelInfo {
             ],
         }
     }
-    
+
     pub fn empty() -> Self {
         TopLevelInfo {
             defstmts: HashMap::new(),
@@ -139,11 +138,7 @@ impl<'a> SSAVisitor<'a> {
         Some(Type::Nil)
     }
 
-    fn top_level_visit_defstmt(
-        &mut self,
-        defstmt: &DefStatement,
-        top_level: &TopLevelInfo,
-    ) -> VisitorResult {
+    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement) -> VisitorResult {
         for (_, typed) in &defstmt.args {
             if let Some(typed) = typed {
                 self.visit_typeid(&typed)?;
@@ -156,8 +151,10 @@ impl<'a> SSAVisitor<'a> {
             for attr in attrs {
                 match attr.name.as_ref() {
                     "Static" => {
-                        defstmt.intrinsic.replace(IntrinsicType::Extern(attr.args[0].to_string()));
-                    },
+                        defstmt
+                            .intrinsic
+                            .replace(IntrinsicType::Extern(attr.args[0].to_string()));
+                    }
                     _ => return Err(Error::UnknownAttribute(attr.name.clone())),
                 }
             }
@@ -190,7 +187,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             for (_, defstmt_vec) in &top_level.defstmts {
                 for defstmt_rc in defstmt_vec {
                     let defstmt: &DefStatement = defstmt_rc.borrow();
-                    self.top_level_visit_defstmt(&defstmt, &top_level)?;
+                    self.top_level_visit_defstmt(&defstmt)?;
                 }
             }
         }
@@ -454,7 +451,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
             let block = &mut self.context.blocks[iftrue_end];
             if let Some(retvar) = retvar {
                 let last_retvar = block.ins.last().unwrap().retvar().unwrap();
-                block.ins.push(Ins::new(0, InsType::LoadVar(last_retvar)));
+                block
+                    .ins
+                    .push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
             }
             block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
         }
@@ -462,7 +461,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
             let block = &mut self.context.blocks[iffalse_end];
             if let Some(retvar) = retvar {
                 let last_retvar = block.ins.last().unwrap().retvar().unwrap();
-                block.ins.push(Ins::new(0, InsType::LoadVar(last_retvar)));
+                block
+                    .ins
+                    .push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
             }
             block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
         }
@@ -548,7 +549,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                     defstmt.intrinsic.clone().into_inner(),
                                 );
                                 let mut top_level = self.top_level.borrow_mut();
-                                top_level.func_contexts.insert(func_name.clone(), Some(context));
+                                top_level
+                                    .func_contexts
+                                    .insert(func_name.clone(), Some(context));
                                 rettype
                             } else {
                                 return Err(Error::InternalError);
@@ -556,7 +559,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         } else {
                             let (func_name, context) = {
                                 let func_context = Context::with_args(id.clone(), arg_types);
-                                let mut visitor = SSAVisitor::with_context(func_context, self.top_level);
+                                let mut visitor =
+                                    SSAVisitor::with_context(func_context, self.top_level);
                                 visitor.visit_defstmt(defstmt.borrow())?;
                                 (func_name.clone(), visitor.into_context())
                             };
@@ -747,7 +751,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 } else {
                     Err(Error::UnknownType(id.clone()))
                 }
-            },
+            }
         }
     }
 }

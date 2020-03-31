@@ -1,9 +1,8 @@
 use iro::runtime::Runtime;
-use std::sync::atomic::{AtomicBool, Ordering};
 use iro::utils;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
-
 #[test]
 fn constant_i32() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);

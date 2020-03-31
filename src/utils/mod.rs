@@ -1,14 +1,14 @@
 use crate::ast;
 use crate::ast::Visitor;
+use crate::codegen::codegen::Codegen;
 use crate::compiler;
 use crate::lexer;
 use crate::parser;
 use crate::runtime;
 use crate::ssa;
-use crate::codegen::codegen::Codegen;
 use cranelift_module::FuncOrDataId;
-use std::error::Error;
 use std::cell::RefCell;
+use std::error::Error;
 
 pub mod pipeline;
 

@@ -1,6 +1,6 @@
 use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 // NOTE: we assume each block is labelled according to DFS order
 pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
@@ -365,18 +365,19 @@ macro_rules! ins_to_const_ins {
     ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt, $method:tt) => {{
         match ($var_to_const.get(&$left), $var_to_const.get(&$right)) {
             (None, Some(k)) => {
-                $ins.typed =
-                    InsType::$typed(RegConst::RegLeft(($left, k.to_const().unwrap())));
+                $ins.typed = InsType::$typed(RegConst::RegLeft(($left, k.to_const().unwrap())));
             }
             (Some(k), None) => {
-                $ins.typed =
-                    InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), $right)));
+                $ins.typed = InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), $right)));
             }
             (Some(kleft), Some(kright)) => {
                 $ins.typed = InsType::load_const(
-                    kleft.to_const().unwrap().$method(kright.to_const().unwrap())
+                    kleft
+                        .to_const()
+                        .unwrap()
+                        .$method(kright.to_const().unwrap()),
                 );
-            },
+            }
             (None, None) => (),
         }
     }};
@@ -511,7 +512,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                         if let Some(vec) = replacements.get_mut(var) {
                             vec.push(retvar);
                         } else {
-                            replacements.insert(*var, vec![ retvar ]);
+                            replacements.insert(*var, vec![retvar]);
                         }
                     }
                 }

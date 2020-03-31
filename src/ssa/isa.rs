@@ -1,4 +1,3 @@
-use crate::runtime::{GenericFunction, Runtime};
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
@@ -304,9 +303,9 @@ impl Constant {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Constant::I32(x + y),
             (Constant::I64(x), Constant::I64(y)) => Constant::I64(x + y),
-            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
-                f64::to_bits(f64::from_bits(x) + f64::from_bits(y))
-            ),
+            (Constant::F64(x), Constant::F64(y)) => {
+                Constant::F64(f64::to_bits(f64::from_bits(x) + f64::from_bits(y)))
+            }
             (_, _) => unreachable!(),
         }
     }
@@ -315,9 +314,9 @@ impl Constant {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Constant::I32(x - y),
             (Constant::I64(x), Constant::I64(y)) => Constant::I64(x - y),
-            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
-                f64::to_bits(f64::from_bits(x) - f64::from_bits(y))
-            ),
+            (Constant::F64(x), Constant::F64(y)) => {
+                Constant::F64(f64::to_bits(f64::from_bits(x) - f64::from_bits(y)))
+            }
             (_, _) => unreachable!(),
         }
     }
@@ -326,9 +325,9 @@ impl Constant {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Constant::I32(x * y),
             (Constant::I64(x), Constant::I64(y)) => Constant::I64(x * y),
-            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
-                f64::to_bits(f64::from_bits(x) * f64::from_bits(y))
-            ),
+            (Constant::F64(x), Constant::F64(y)) => {
+                Constant::F64(f64::to_bits(f64::from_bits(x) * f64::from_bits(y)))
+            }
             (_, _) => unreachable!(),
         }
     }
@@ -337,26 +336,26 @@ impl Constant {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Constant::I32(x / y),
             (Constant::I64(x), Constant::I64(y)) => Constant::I64(x / y),
-            (Constant::F64(x), Constant::F64(y)) => Constant::F64(
-                f64::to_bits(f64::from_bits(x) + f64::from_bits(y))
-            ),
+            (Constant::F64(x), Constant::F64(y)) => {
+                Constant::F64(f64::to_bits(f64::from_bits(x) + f64::from_bits(y)))
+            }
             (_, _) => unreachable!(),
         }
     }
 
-    pub fn lt(&self, right: Constant) -> Constant {
+    pub fn lt(&self, _right: Constant) -> Constant {
         unimplemented!()
     }
 
-    pub fn gt(&self, right: Constant) -> Constant {
+    pub fn gt(&self, _right: Constant) -> Constant {
         unimplemented!()
     }
 
-    pub fn lte(&self, right: Constant) -> Constant {
+    pub fn lte(&self, _right: Constant) -> Constant {
         unimplemented!()
     }
 
-    pub fn gte(&self, right: Constant) -> Constant {
+    pub fn gte(&self, _right: Constant) -> Constant {
         unimplemented!()
     }
 }

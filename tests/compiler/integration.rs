@@ -1,9 +1,8 @@
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use iro::runtime::Runtime;
 use iro::utils;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
-
 #[test]
 fn fib() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);

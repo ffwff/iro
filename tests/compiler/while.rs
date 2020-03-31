@@ -1,9 +1,8 @@
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use iro::runtime::Runtime;
 use iro::utils;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 #[cfg(test)]
-
 #[test]
 fn while_loop() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
@@ -166,5 +165,6 @@ fn while_loop_nested_post_x() {
     record(x)
     ",
         runtime,
-    ).unwrap();
+    )
+    .unwrap();
 }

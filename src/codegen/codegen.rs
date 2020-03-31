@@ -1,19 +1,18 @@
+use cranelift_codegen::binemit::NullTrapSink;
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::entities::Block;
+use cranelift_codegen::ir::entities::Value;
 use cranelift_codegen::ir::types;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_codegen::ir::entities::Block;
-use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_module::{Linkage, Module, Backend};
-use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use cranelift_codegen::Context;
-use cranelift_codegen::ir::entities::Value;
-use std::rc::Rc;
-use std::collections::HashMap;
-use crate::ssa::isa;
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_module::{Backend, Linkage, Module};
+use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
+
 use crate::runtime::Runtime;
+use crate::ssa::isa;
 
 fn to_var(x: usize) -> Variable {
     Variable::with_u32(x as u32)
@@ -34,24 +33,33 @@ fn const_to_value(builder: &mut FunctionBuilder, c: &isa::Constant) -> Value {
     match c {
         isa::Constant::I32(x) => builder.ins().iconst(types::I32, *x as i64),
         isa::Constant::I64(x) => builder.ins().iconst(types::I64, *x),
-        isa::Constant::F64(x) => unimplemented!(),
+        isa::Constant::F64(_x) => unimplemented!(),
     }
 }
 
 fn const_to_type(c: &isa::Constant) -> types::Type {
     match c {
-        isa::Constant::I32(x) => types::I32,
-        isa::Constant::I64(x) => types::I64,
-        isa::Constant::F64(x) => types::F64,
+        isa::Constant::I32(_) => types::I32,
+        isa::Constant::I64(_) => types::I64,
+        isa::Constant::F64(_) => types::F64,
     }
 }
 
-fn regconst_to_type(builder: &mut FunctionBuilder, rc: &isa::RegConst) -> (Value, Value, types::Type) {
+fn regconst_to_type(
+    builder: &mut FunctionBuilder,
+    rc: &isa::RegConst,
+) -> (Value, Value, types::Type) {
     match rc {
-        isa::RegConst::RegLeft((reg, value))
-            => (builder.use_var(to_var(*reg)), const_to_value(builder, value), const_to_type(value)),
-        isa::RegConst::RegRight((value, reg))
-            => (const_to_value(builder, value), builder.use_var(to_var(*reg)), const_to_type(value)),
+        isa::RegConst::RegLeft((reg, value)) => (
+            builder.use_var(to_var(*reg)),
+            const_to_value(builder, value),
+            const_to_type(value),
+        ),
+        isa::RegConst::RegRight((value, reg)) => (
+            const_to_value(builder, value),
+            builder.use_var(to_var(*reg)),
+            const_to_type(value),
+        ),
     }
 }
 
@@ -60,7 +68,10 @@ pub struct Codegen<B: Backend> {
     module: Module<B>,
 }
 
-impl<B> Codegen<B> where B: Backend {
+impl<B> Codegen<B>
+where
+    B: Backend,
+{
     pub fn from_builder(builder: B::Builder) -> Self {
         Codegen {
             module: Module::new(builder),
@@ -74,17 +85,18 @@ impl<B> Codegen<B> where B: Backend {
                 continue;
             }
             let mut fctx = self.module.make_context();
-            self.visit_context(&context, &func_name, &mut builder_context, &mut fctx);
-            let id = self.module.declare_function(
-                &func_name.to_string(),
-                Linkage::Export,
-                &fctx.func.signature
-            ).unwrap();
-            self.module.define_function(
-                id,
-                &mut fctx,
-                &mut NullTrapSink {},
-            ).unwrap();
+            self.visit_context(&context, &mut builder_context, &mut fctx);
+            let id = self
+                .module
+                .declare_function(
+                    &func_name.to_string(),
+                    Linkage::Export,
+                    &fctx.func.signature,
+                )
+                .unwrap();
+            self.module
+                .define_function(id, &mut fctx, &mut NullTrapSink {})
+                .unwrap();
         }
         self.module.finalize_definitions();
         self.module
@@ -93,19 +105,26 @@ impl<B> Codegen<B> where B: Backend {
     fn visit_context(
         &mut self,
         context: &isa::Context,
-        name: &Rc<isa::FunctionName>,
         builder_context: &mut FunctionBuilderContext,
         fctx: &mut Context,
     ) {
         for arg in &context.args {
-            fctx.func.signature.params.push(AbiParam::new(ir_to_cranelift_type(&arg)));
+            fctx.func
+                .signature
+                .params
+                .push(AbiParam::new(ir_to_cranelift_type(&arg)));
         }
         if context.rettype != isa::Type::NoReturn {
-            fctx.func.signature.returns.push(AbiParam::new(ir_to_cranelift_type(&context.rettype)));
+            fctx.func
+                .signature
+                .returns
+                .push(AbiParam::new(ir_to_cranelift_type(&context.rettype)));
         }
 
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
-        let blocks: Vec<Block> = (0..context.blocks.len()).map(|_| builder.create_block()).collect();
+        let blocks: Vec<Block> = (0..context.blocks.len())
+            .map(|_| builder.create_block())
+            .collect();
 
         for (idx, arg) in context.args.iter().enumerate() {
             builder.declare_var(Variable::with_u32(idx as u32), ir_to_cranelift_type(&arg));
@@ -118,10 +137,10 @@ impl<B> Codegen<B> where B: Backend {
             }
         }
 
-        for (idx, (cblock, &bblock)) in context.blocks.iter().zip(blocks.iter()).enumerate() {
+        for (cblock, &bblock) in context.blocks.iter().zip(blocks.iter()) {
             builder.switch_to_block(bblock);
             for ins in &cblock.ins {
-                self.visit_ins(&ins, &cblock, &context, bblock, &blocks, &mut builder);
+                self.visit_ins(&ins, &context, bblock, &blocks, &mut builder);
             }
         }
         builder.seal_all_blocks();
@@ -139,7 +158,6 @@ impl<B> Codegen<B> where B: Backend {
     fn visit_ins(
         &mut self,
         ins: &isa::Ins,
-        _cblock: &isa::Block,
         context: &isa::Context,
         bblock: Block,
         bblocks: &Vec<Block>,
@@ -173,10 +191,14 @@ impl<B> Codegen<B> where B: Backend {
                     }
                 }
                 if *rettype != isa::Type::NoReturn {
-                    sig.returns.push(AbiParam::new(ir_to_cranelift_type(&rettype)));
+                    sig.returns
+                        .push(AbiParam::new(ir_to_cranelift_type(&rettype)));
                 }
 
-                let callee = self.module.declare_function(&name.to_string(), Linkage::Import, &sig).unwrap();
+                let callee = self
+                    .module
+                    .declare_function(&name.to_string(), Linkage::Import, &sig)
+                    .unwrap();
                 let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
 
                 let mut arg_values = vec![];
@@ -218,8 +240,8 @@ impl<B> Codegen<B> where B: Backend {
                     isa::Type::I32 | isa::Type::I64 => {
                         let tmp = builder.ins().icmp(
                             match &ins.typed {
-                                isa::InsType::Lt((_x, _y))  => IntCC::SignedLessThan,
-                                isa::InsType::Gt((_x, _y))  => IntCC::SignedGreaterThan,
+                                isa::InsType::Lt((_x, _y)) => IntCC::SignedLessThan,
+                                isa::InsType::Gt((_x, _y)) => IntCC::SignedGreaterThan,
                                 isa::InsType::Lte((_x, _y)) => IntCC::SignedLessThanOrEqual,
                                 isa::InsType::Gte((_x, _y)) => IntCC::SignedGreaterThanOrEqual,
                                 _ => unreachable!(),
@@ -232,66 +254,55 @@ impl<B> Codegen<B> where B: Backend {
                     _ => unimplemented!(),
                 }
             }
-            isa::InsType::Add((x, y)) => {
-                match &context.variables[*x] {
-                    isa::Type::I32 | isa::Type::I64 => {
-                        let left = builder.use_var(to_var(*x));
-                        let right = builder.use_var(to_var(*y));
-                        let tmp = builder.ins().iadd(left, right);
-                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                    }
-                    _ => unimplemented!()
+            isa::InsType::Add((x, y)) => match &context.variables[*x] {
+                isa::Type::I32 | isa::Type::I64 => {
+                    let left = builder.use_var(to_var(*x));
+                    let right = builder.use_var(to_var(*y));
+                    let tmp = builder.ins().iadd(left, right);
+                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
-            }
-            isa::InsType::Sub((x, y)) => {
-                match &context.variables[*x] {
-                    isa::Type::I32 | isa::Type::I64 => {
-                        let left = builder.use_var(to_var(*x));
-                        let right = builder.use_var(to_var(*y));
-                        let tmp = builder.ins().isub(left, right);
-                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                    }
-                    _ => unimplemented!()
-                }
+                _ => unimplemented!(),
             },
-            isa::InsType::Mul((x, y)) => {
-                match &context.variables[*x] {
-                    isa::Type::I32 | isa::Type::I64 => {
-                        let left = builder.use_var(to_var(*x));
-                        let right = builder.use_var(to_var(*y));
-                        let tmp = builder.ins().imul(left, right);
-                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                    }
-                    _ => unimplemented!()
+            isa::InsType::Sub((x, y)) => match &context.variables[*x] {
+                isa::Type::I32 | isa::Type::I64 => {
+                    let left = builder.use_var(to_var(*x));
+                    let right = builder.use_var(to_var(*y));
+                    let tmp = builder.ins().isub(left, right);
+                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
+                _ => unimplemented!(),
             },
-            isa::InsType::Div((x, y)) => {
-                match &context.variables[*x] {
-                    isa::Type::I32 | isa::Type::I64 => {
-                        let left = builder.use_var(to_var(*x));
-                        let right = builder.use_var(to_var(*y));
-                        let tmp = builder.ins().sdiv(left, right);
-                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                    }
-                    _ => unimplemented!()
+            isa::InsType::Mul((x, y)) => match &context.variables[*x] {
+                isa::Type::I32 | isa::Type::I64 => {
+                    let left = builder.use_var(to_var(*x));
+                    let right = builder.use_var(to_var(*y));
+                    let tmp = builder.ins().imul(left, right);
+                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
+                _ => unimplemented!(),
             },
-            isa::InsType::AddC(regconst) |
-            isa::InsType::SubC(regconst) |
-            isa::InsType::MulC(regconst) |
-            isa::InsType::DivC(regconst)
-                => {
+            isa::InsType::Div((x, y)) => match &context.variables[*x] {
+                isa::Type::I32 | isa::Type::I64 => {
+                    let left = builder.use_var(to_var(*x));
+                    let right = builder.use_var(to_var(*y));
+                    let tmp = builder.ins().sdiv(left, right);
+                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                }
+                _ => unimplemented!(),
+            },
+            isa::InsType::AddC(regconst)
+            | isa::InsType::SubC(regconst)
+            | isa::InsType::MulC(regconst)
+            | isa::InsType::DivC(regconst) => {
                 let (left, right, typed) = regconst_to_type(builder, &regconst);
                 let tmp = match typed {
-                    types::I32 | types::I64 => {
-                        match &ins.typed {
-                            isa::InsType::AddC(_) => builder.ins().iadd(left, right),
-                            isa::InsType::SubC(_) => builder.ins().isub(left, right),
-                            isa::InsType::MulC(_) => builder.ins().imul(left, right),
-                            isa::InsType::DivC(_) => builder.ins().sdiv(left, right),
-                            _ => unreachable!()
-                        }
-                    }
+                    types::I32 | types::I64 => match &ins.typed {
+                        isa::InsType::AddC(_) => builder.ins().iadd(left, right),
+                        isa::InsType::SubC(_) => builder.ins().isub(left, right),
+                        isa::InsType::MulC(_) => builder.ins().imul(left, right),
+                        isa::InsType::DivC(_) => builder.ins().sdiv(left, right),
+                        _ => unreachable!(),
+                    },
                     _ => unimplemented!(),
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
@@ -302,19 +313,17 @@ impl<B> Codegen<B> where B: Backend {
             | isa::InsType::GteC(regconst) => {
                 let (left, right, typed) = regconst_to_type(builder, &regconst);
                 let tmp = match typed {
-                    types::I32 | types::I64 => {
-                        builder.ins().icmp(
-                            match &ins.typed {
-                                isa::InsType::LtC(_)  => IntCC::SignedLessThan,
-                                isa::InsType::GtC(_)  => IntCC::SignedGreaterThan,
-                                isa::InsType::LteC(_) => IntCC::SignedLessThanOrEqual,
-                                isa::InsType::GteC(_) => IntCC::SignedGreaterThanOrEqual,
-                                _ => unreachable!(),
-                            },
-                            left,
-                            right,
-                        )
-                    },
+                    types::I32 | types::I64 => builder.ins().icmp(
+                        match &ins.typed {
+                            isa::InsType::LtC(_) => IntCC::SignedLessThan,
+                            isa::InsType::GtC(_) => IntCC::SignedGreaterThan,
+                            isa::InsType::LteC(_) => IntCC::SignedLessThanOrEqual,
+                            isa::InsType::GteC(_) => IntCC::SignedGreaterThanOrEqual,
+                            _ => unreachable!(),
+                        },
+                        left,
+                        right,
+                    ),
                     _ => unimplemented!(),
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
@@ -330,7 +339,10 @@ impl Codegen<SimpleJITBackend> {
         let mut builder = SimpleJITBuilder::new(cranelift_module::default_libcall_names());
         for (name, context) in &program.contexts {
             if let isa::IntrinsicType::Extern(symbol) = &context.intrinsic {
-                builder.symbol(name.to_string(), runtime.funcs().get(symbol).unwrap().ptr() as _);
+                builder.symbol(
+                    name.to_string(),
+                    runtime.funcs().get(symbol).unwrap().ptr() as _,
+                );
             }
         }
         let codegen = Codegen::from_builder(builder);
