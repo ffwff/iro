@@ -78,12 +78,12 @@ where
         }
     }
 
-    pub fn process(mut self, program: &isa::Program, extern_redirect: bool) -> Module<B> {
+    pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
         let mut builder_context = FunctionBuilderContext::new();
         for (func_name, context) in &program.contexts {
             let mut fctx = self.module.make_context();
             if let isa::IntrinsicType::Extern(external) = &context.intrinsic {
-                if extern_redirect {
+                if build_standalone {
                     self.visit_extern(&external, &context, &mut builder_context, &mut fctx);
                     let id = self
                         .module
@@ -112,8 +112,60 @@ where
                 .define_function(id, &mut fctx, &mut NullTrapSink {})
                 .unwrap();
         }
+        if build_standalone {
+            self.generate_main(&mut builder_context);
+        }
         self.module.finalize_definitions();
         self.module
+    }
+
+    fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
+        let mut fctx = self.module.make_context();
+        fctx.func
+            .signature
+            .params
+            .push(AbiParam::new(types::I32));
+        fctx.func
+            .signature
+            .params
+            .push(AbiParam::new(self.module.isa().pointer_type()));
+        fctx.func
+            .signature
+            .returns
+            .push(AbiParam::new(types::I32));
+        
+        let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
+        let block = builder.create_block();
+        builder.append_block_params_for_function_params(block);
+        builder.switch_to_block(block);
+
+        let mut sig = self.module.make_signature();
+        let callee = self
+            .module
+            .declare_function("main()", Linkage::Import, &sig)
+            .unwrap();
+        let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
+        let call = builder.ins().call(local_callee, &[]);
+
+        let tmp = builder.ins().iconst(types::I32, 0);
+        builder.ins().return_(&[tmp]);
+
+        builder.seal_block(block);
+        builder.finalize();
+        std::mem::drop(builder);
+        dbg_println!("{}", fctx.func.display(None));
+
+        let id = self
+            .module
+            .declare_function(
+                &"main".to_string(),
+                Linkage::Export,
+                &fctx.func.signature,
+            )
+            .unwrap();
+        self.module
+            .define_function(id, &mut fctx, &mut NullTrapSink {})
+            .unwrap();
     }
 
     fn visit_extern(

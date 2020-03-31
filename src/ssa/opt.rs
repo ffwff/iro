@@ -54,9 +54,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 }
             }
         });
-        if !jumped && idx + 1 < num_blocks {
-            insert_node(idx + 1, idx);
-        }
+        debug_assert!(jumped);
     }
 
     // Store predecessors and successors in blocks
