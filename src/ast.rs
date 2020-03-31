@@ -260,7 +260,7 @@ pub struct DefStatement {
     pub exprs: Vec<NodeBox>,
     pub return_type: Option<TypeId>,
     pub attrs: Option<Vec<AttributeValue>>,
-    pub intrinsic: Cell<IntrinsicType>,
+    pub intrinsic: RefCell<IntrinsicType>,
 }
 
 impl DefStatement {

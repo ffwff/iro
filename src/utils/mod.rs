@@ -6,6 +6,7 @@ use crate::parser;
 use crate::runtime;
 use crate::ssa;
 use crate::codegen::codegen::Codegen;
+use cranelift_module::FuncOrDataId;
 use std::error::Error;
 use std::cell::RefCell;
 
@@ -17,7 +18,7 @@ pub type ParseResult = Result<ast::Program, ParseError>;
 pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<dyn Error>> {
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    let top_level_info = RefCell::new(ssa::visitor::TopLevelInfo::new(runtime));
+    let top_level_info = RefCell::new(ssa::visitor::TopLevelInfo::new());
     let mut visitor = ssa::visitor::SSAVisitor::new(&top_level_info);
     visitor.visit_program(&ast)?;
     let mut program = visitor.into_program();
@@ -25,8 +26,18 @@ pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<d
     for (_, context) in &mut program.contexts {
         ssa_pipeline.apply(context);
     }
-    let mut codegen = Codegen::new();
-    codegen.process(&program);
+    let mut module = Codegen::process_jit(&program, &runtime);
+    if let Some(main) = module.get_name("main()") {
+        if let FuncOrDataId::Func(func_id) = main {
+            let function = module.get_finalized_function(func_id);
+            let main_fn = unsafe { std::mem::transmute::<_, extern "C" fn()>(function) };
+            main_fn();
+        } else {
+            unreachable!()
+        }
+    } else {
+        unreachable!()
+    }
     Ok(())
 }
 

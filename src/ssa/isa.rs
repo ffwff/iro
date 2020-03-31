@@ -5,19 +5,15 @@ use std::fmt::Write;
 use std::ops::BitAnd;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IntrinsicType {
     None,
-    Extern(GenericFunction),
+    Extern(String),
 }
 
 impl IntrinsicType {
-    pub fn from_static(s: &str, runtime: &Runtime) -> Option<Self> {
-        if let Some(func) = runtime.funcs().get(s) {
-            Some(IntrinsicType::Extern(*func))
-        } else {
-            None
-        }
+    pub fn is_none(&self) -> bool {
+        self == &IntrinsicType::None
     }
 }
 
@@ -437,7 +433,6 @@ impl ToString for FunctionName {
 pub struct Program {
     pub contexts: HashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
-    pub runtime: Runtime,
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

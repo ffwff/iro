@@ -14,11 +14,10 @@ pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<Rc<DefStatement>>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
-    pub runtime: Runtime,
 }
 
 impl TopLevelInfo {
-    pub fn new(runtime: Runtime) -> Self {
+    pub fn new() -> Self {
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
@@ -29,7 +28,6 @@ impl TopLevelInfo {
                 Rc::from("Float") => Type::Float,
                 Rc::from("String") => Type::String,
             ],
-            runtime,
         }
     }
     
@@ -38,7 +36,6 @@ impl TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
             types: HashMap::new(),
-            runtime: Runtime::empty(),
         }
     }
 }
@@ -100,7 +97,6 @@ impl<'a> SSAVisitor<'a> {
                 .map(|(key, value)| (key, value.unwrap()))
                 .collect(),
             entry,
-            runtime: top_level.runtime,
         }
     }
 
@@ -139,7 +135,7 @@ impl<'a> SSAVisitor<'a> {
         })
     }
 
-    fn intrinsic_return_type(_intrinsic: IntrinsicType, _arg_types: &Vec<Type>) -> Option<Type> {
+    fn intrinsic_return_type(_intrinsic: &IntrinsicType, _arg_types: &Vec<Type>) -> Option<Type> {
         Some(Type::Nil)
     }
 
@@ -160,14 +156,8 @@ impl<'a> SSAVisitor<'a> {
             for attr in attrs {
                 match attr.name.as_ref() {
                     "Static" => {
-                        if let Some(intrinsic) =
-                            IntrinsicType::from_static(&attr.args[0], &top_level.runtime)
-                        {
-                            defstmt.intrinsic.replace(intrinsic);
-                        } else {
-                            return Err(Error::UnknownStatic(attr.args[0].to_string()));
-                        }
-                    }
+                        defstmt.intrinsic.replace(IntrinsicType::Extern(attr.args[0].to_string()));
+                    },
                     _ => return Err(Error::UnknownAttribute(attr.name.clone())),
                 }
             }
@@ -553,10 +543,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         }
                     } else {
                         // Properly compute the return type
-                        if defstmt.intrinsic.get() != IntrinsicType::None {
+                        if !defstmt.intrinsic.borrow().is_none() {
                             if let Some(rettype) = {
                                 SSAVisitor::intrinsic_return_type(
-                                    defstmt.intrinsic.get(),
+                                    &defstmt.intrinsic.borrow(),
                                     &arg_types,
                                 )
                             } {
@@ -564,7 +554,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                     id.clone(),
                                     arg_types,
                                     rettype.clone(),
-                                    defstmt.intrinsic.get(),
+                                    defstmt.intrinsic.clone().into_inner(),
                                 );
                                 let mut top_level = self.top_level.borrow_mut();
                                 top_level.func_contexts.insert(func_name.clone(), Some(context));

@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::rc::Rc;
-use std::collections::HashMap;
-use std::cell::Cell;
+use std::cell::RefCell;
 use lalrpop_util::ParseError;
 use crate::ssa::isa::IntrinsicType;
 use crate::ast::*;
@@ -69,7 +68,7 @@ DefStatement: NodeBox = {
             exprs,
             return_type,
             attrs,
-            intrinsic: Cell::new(IntrinsicType::None)
+            intrinsic: RefCell::new(IntrinsicType::None)
         })
     },
 };
