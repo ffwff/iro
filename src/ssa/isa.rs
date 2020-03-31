@@ -367,7 +367,6 @@ impl InsType {
     pub fn is_const(&self) -> bool {
         match self {
             InsType::LoadNil
-            | InsType::LoadArg(_)
             | InsType::LoadI32(_)
             | InsType::LoadI64(_)
             | InsType::LoadF64(_)
@@ -452,6 +451,7 @@ pub enum Type {
     Float,
     String,
     Union(Rc<BTreeSet<Type>>),
+    NeverUsed,
 }
 
 impl Type {

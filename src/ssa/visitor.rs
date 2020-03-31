@@ -4,7 +4,6 @@ use crate::runtime::Runtime;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
-use crate::utils::RcWrapper;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;

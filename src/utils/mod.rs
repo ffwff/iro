@@ -5,6 +5,7 @@ use crate::lexer;
 use crate::parser;
 use crate::runtime;
 use crate::ssa;
+use crate::codegen::codegen::Codegen;
 use std::error::Error;
 use std::cell::RefCell;
 
@@ -24,6 +25,8 @@ pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<d
     for (_, context) in &mut program.contexts {
         ssa_pipeline.apply(context);
     }
+    let mut codegen = Codegen::new();
+    codegen.process(&program);
     Ok(())
 }
 

@@ -9,13 +9,12 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     }
     dbg_println!("begin: {:#?}", context);
 
-    let mut defsites: Vec<BTreeSet<usize>> =
-        (0..context.variables.len()).map(|_| btreeset![]).collect();
+    let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
     let num_blocks = context.blocks.len();
 
     // Build the successor/predecessor set corresponding to each block
-    let mut predecessors_map: Vec<Vec<usize>> = (0..num_blocks).map(|_| vec![]).collect();
-    let mut successors_map: Vec<Vec<usize>> = (0..num_blocks).map(|_| vec![]).collect();
+    let mut predecessors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
+    let mut successors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
     let mut insert_node = |succ: usize, pred: usize| {
         predecessors_map[succ].push(pred);
         successors_map[pred].push(succ);
@@ -169,7 +168,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         dbg_println!("dominance_dfs: {:?}", dominance_dfs);
 
         // Find the dominance frontier for each block
-        let mut dom_frontier: Vec<BTreeSet<usize>> = (0..num_blocks).map(|_| btreeset![]).collect();
+        let mut dom_frontier: Vec<BTreeSet<usize>> = vec![btreeset![]; num_blocks];
         for (b, blocks) in context.blocks.iter_mut().enumerate() {
             if blocks.preds.len() >= 2 {
                 for &p in &blocks.preds {
@@ -191,7 +190,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         dbg_println!("---\ndom_frontier: {:#?}", dom_frontier);
         dbg_println!("---\ndefsites: {:#?}", defsites);
 
-        let mut origin: Vec<Vec<usize>> = (0..num_blocks).map(|_| vec![]).collect();
+        let mut origin: Vec<Vec<usize>> = vec![vec![]; num_blocks];
         for (var, defsites) in defsites.iter().enumerate() {
             for defsite in defsites {
                 origin[*defsite].push(var);
@@ -220,7 +219,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
 
         // Rename variables
         let orig_varlen = context.variables.len();
-        let mut last_defined_at_block: Vec<usize> = (0..orig_varlen).map(|_| 0).collect();
+        let mut last_defined_at_block: Vec<usize> = vec![0; orig_varlen];
         for var in 0..orig_varlen {
             dbg_println!("renaming variable {}", var);
             let mut did_initial_assignment = false;
@@ -339,6 +338,11 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
             }
         });
     }
+    for (idx, var) in context.variables.iter_mut().enumerate() {
+        if !alive.contains(&idx) {
+            *var = Type::NeverUsed;
+        }
+    }
     dbg_println!("after tracing: {:#?}", context);
     Flow::Continue
 }
@@ -367,8 +371,8 @@ macro_rules! ins_to_const_ins {
                 $ins.typed =
                     InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), mapped_right)));
             }
+            (Some(_), Some(_)) => unimplemented!(),
             (None, None) => (),
-            (_, _) => unimplemented!(),
         }
     }};
 }

@@ -12,6 +12,10 @@ maplit = "1.0.2"
 downcast-rs = "1.1.1"
 libc = "0.2.68"
 cranelift = "0.61.0"
+cranelift-module = "0.61.0"
+cranelift-codegen="0.61.0"
+cranelift-frontend="0.61.0"
+cranelift-simplejit = "0.61.0"
 
 [dev-dependencies]
 lazy_static = "1.4.0"
