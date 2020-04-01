@@ -39,7 +39,7 @@
 			"name": "punctuation.section.function.iro"
 		},
 		{
-			"match": "\\b[1-9][0-9]*([ui](8|16|32|64|128))?\\b",
+			"match": "\\b(0|[1-9][0-9]*)([ui](8|16|32|64|128))?\\b",
 			"name": "constant.numeric.integer.decimal.iro"
 		},
 		{

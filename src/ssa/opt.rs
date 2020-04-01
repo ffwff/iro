@@ -2,7 +2,20 @@ use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
 use std::collections::{BTreeMap, BTreeSet};
 
-// NOTE: we assume each block is labelled according to DFS order
+pub fn insert_jmps(context: &mut Context) -> Flow {
+    let len = context.blocks.len();
+    for (idx, block) in context.blocks.iter_mut().enumerate() {
+        if let Some(ins) = block.ins.last() {
+            if !ins.typed.is_jmp() {
+                block.ins.push(Ins::new(0, InsType::Jmp(idx + 1)));
+            }
+        } else if idx + 1 != len {
+            block.ins.push(Ins::new(0, InsType::Jmp(idx + 1)));
+        }
+    }
+    Flow::Continue
+}
+
 pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     if context.blocks.is_empty() {
         return Flow::Break;
@@ -300,65 +313,6 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn insert_jmps(context: &mut Context) -> Flow {
-    let len = context.blocks.len();
-    for (idx, block) in context.blocks.iter_mut().enumerate() {
-        if let Some(ins) = block.ins.last() {
-            if !ins.typed.is_jmp() {
-                block.ins.push(Ins::new(0, InsType::Jmp(idx + 1)));
-            }
-        } else if idx + 1 != len {
-            block.ins.push(Ins::new(0, InsType::Jmp(idx + 1)));
-        }
-    }
-    Flow::Continue
-}
-
-pub fn collect_garbage_vars(context: &mut Context) -> Flow {
-    let mut var_to_ins: BTreeMap<usize, Ins> = BTreeMap::new();
-    let mut roots = vec![];
-    for block in &mut context.blocks {
-        for ins in &mut block.ins {
-            if let Some(retvar) = ins.retvar() {
-                var_to_ins.insert(retvar, ins.clone());
-            }
-            if ins.typed.is_jmp() || ins.typed.has_side_effects() {
-                if let Some(retvar) = ins.retvar() {
-                    roots.push(retvar);
-                }
-                ins.each_used_var(|var| roots.push(var));
-            }
-        }
-    }
-    let mut alive: BTreeSet<usize> = btreeset![];
-    fn trace(var: usize, var_to_ins: &BTreeMap<usize, Ins>, alive: &mut BTreeSet<usize>) {
-        if alive.contains(&var) {
-            return;
-        }
-        alive.insert(var);
-        var_to_ins[&var].each_used_var(|cvar| trace(cvar, var_to_ins, alive));
-    }
-    for root in roots {
-        trace(root, &var_to_ins, &mut alive);
-    }
-    for block in &mut context.blocks {
-        block.ins.retain(|ins| {
-            if let Some(retvar) = ins.retvar() {
-                alive.contains(&retvar)
-            } else {
-                true
-            }
-        });
-    }
-    for (idx, var) in context.variables.iter_mut().enumerate() {
-        if !alive.contains(&idx) {
-            *var = Type::NeverUsed;
-        }
-    }
-    dbg_println!("after tracing: {:#?}", context);
-    Flow::Continue
-}
-
 macro_rules! ins_to_const_ins {
     ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt, $method:tt) => {{
         match ($var_to_const.get(&$left), $var_to_const.get(&$right)) {
@@ -438,6 +392,51 @@ pub fn fold_constants(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
+pub fn collect_garbage_vars(context: &mut Context) -> Flow {
+    let mut var_to_ins: BTreeMap<usize, Ins> = BTreeMap::new();
+    let mut roots = vec![];
+    for block in &mut context.blocks {
+        for ins in &mut block.ins {
+            if let Some(retvar) = ins.retvar() {
+                var_to_ins.insert(retvar, ins.clone());
+            }
+            if ins.typed.is_jmp() || ins.typed.has_side_effects() {
+                if let Some(retvar) = ins.retvar() {
+                    roots.push(retvar);
+                }
+                ins.each_used_var(|var| roots.push(var));
+            }
+        }
+    }
+    let mut alive: BTreeSet<usize> = btreeset![];
+    fn trace(var: usize, var_to_ins: &BTreeMap<usize, Ins>, alive: &mut BTreeSet<usize>) {
+        if alive.contains(&var) {
+            return;
+        }
+        alive.insert(var);
+        var_to_ins[&var].each_used_var(|cvar| trace(cvar, var_to_ins, alive));
+    }
+    for root in roots {
+        trace(root, &var_to_ins, &mut alive);
+    }
+    for block in &mut context.blocks {
+        block.ins.retain(|ins| {
+            if let Some(retvar) = ins.retvar() {
+                alive.contains(&retvar)
+            } else {
+                true
+            }
+        });
+    }
+    for (idx, var) in context.variables.iter_mut().enumerate() {
+        if !alive.contains(&idx) {
+            *var = Type::NeverUsed;
+        }
+    }
+    dbg_println!("after tracing: {:#?}", context);
+    Flow::Continue
+}
+
 pub fn data_flow_analysis(context: &mut Context) -> Flow {
     // Generate the initial worklist by putting returning blocks
     let mut worklist: Vec<usize> = context
@@ -497,6 +496,19 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
+pub fn separate_postlude(context: &mut Context) -> Flow {
+    for block in &mut context.blocks {
+        if let Some(ins) = block.ins.last().clone() {
+            if ins.typed.is_jmp() {
+                block.postlude = ins;
+                block.ins.pop();
+            } else {
+                unreachable!()
+            }
+        }
+    }
+}
+
 pub fn eliminate_phi(context: &mut Context) -> Flow {
     dbg_println!("before phis: {:#?}", context);
     let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
@@ -540,4 +552,11 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
     }
     dbg_println!("after phis: {:#?}", context);
     Flow::Continue
+}
+
+pub fn fuse_postlude(context: &mut Context) -> Flow {
+    for block in &mut context.blocks {
+        let postlude = std::mem::replace(&mut block.postlude, Ins::new(0, InsType::Nop));
+        block.ins.push(postlude);
+    }
 }

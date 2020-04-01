@@ -95,6 +95,7 @@ impl Context {
 #[derive(Debug, Clone)]
 pub struct Block {
     pub ins: Vec<Ins>,
+    pub postlude: Ins,
     pub preds: Vec<usize>,
     pub succs: Vec<usize>,
     pub vars_in: BTreeSet<usize>,
@@ -107,6 +108,7 @@ impl Block {
     pub fn new(ins: Vec<Ins>) -> Self {
         Block {
             ins,
+            postlude: Ins::new(0, InsType::Nop),
             preds: vec![],
             succs: vec![],
             vars_in: BTreeSet::new(),
