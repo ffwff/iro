@@ -1,3 +1,4 @@
+use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,6 +14,7 @@ fn fib() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -27,7 +29,8 @@ fn fib() {
     record(fib(10))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -41,6 +44,7 @@ fn fib64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -55,6 +59,7 @@ fn fib64() {
     record(fib(10i64))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }

@@ -9,10 +9,10 @@ extern crate maplit;
 #[macro_use]
 extern crate downcast_rs;
 extern crate cranelift;
-extern crate cranelift_native;
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 extern crate cranelift_module;
+extern crate cranelift_native;
 extern crate cranelift_simplejit;
 
 #[macro_use]

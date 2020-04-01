@@ -1,3 +1,4 @@
+use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,6 +14,7 @@ fn less_than() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -27,7 +29,8 @@ fn less_than() {
     f(10, 15)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -41,6 +44,7 @@ fn greater_than() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -55,7 +59,8 @@ fn greater_than() {
     f(15, 10)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -69,6 +74,7 @@ fn greater_than_eq() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -86,7 +92,8 @@ fn greater_than_eq() {
     f(15, 15)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -100,6 +107,7 @@ fn less_than_eq() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -117,6 +125,7 @@ fn less_than_eq() {
     f(15, 15)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }

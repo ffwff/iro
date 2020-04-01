@@ -1,3 +1,4 @@
+use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,6 +14,7 @@ fn constant_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -21,7 +23,8 @@ fn constant_i32() {
     record(10)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -35,6 +38,7 @@ fn constant_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -43,7 +47,8 @@ fn constant_i64() {
     record(10i64)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -57,6 +62,7 @@ fn add_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -68,7 +74,8 @@ fn add_i32() {
     record(f(10, 15))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -82,6 +89,7 @@ fn sub_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -93,7 +101,8 @@ fn sub_i32() {
     record(f(10, 15))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -107,6 +116,7 @@ fn mul_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -118,7 +128,8 @@ fn mul_i32() {
     record(f(40, 2))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -132,6 +143,7 @@ fn div_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -143,7 +155,8 @@ fn div_i32() {
     record(f(40, 2))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -157,6 +170,7 @@ fn add_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -168,7 +182,8 @@ fn add_i64() {
     record(f(10i64, 15i64))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -182,6 +197,7 @@ fn sub_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -193,7 +209,8 @@ fn sub_i64() {
     record(f(10i64, 15i64))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -207,6 +224,7 @@ fn mul_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -218,7 +236,8 @@ fn mul_i64() {
     record(f(10i64, 15i64))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -230,6 +249,7 @@ fn div_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -241,7 +261,8 @@ fn div_i64() {
     record(f(40i64, 2i64))
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
 }
 
 #[test]
@@ -254,6 +275,7 @@ fn add_const_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -262,7 +284,8 @@ fn add_const_i32() {
     record(10+15)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -276,6 +299,7 @@ fn sub_const_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -284,7 +308,8 @@ fn sub_const_i32() {
     record(10-15)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -298,6 +323,7 @@ fn mul_const_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -306,7 +332,8 @@ fn mul_const_i32() {
     record(10*15)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -320,6 +347,7 @@ fn div_const_i32() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -328,7 +356,8 @@ fn div_const_i32() {
     record(100/10)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -342,6 +371,7 @@ fn add_const_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -350,7 +380,8 @@ fn add_const_i64() {
     record(10i64 + 5i64)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -364,6 +395,7 @@ fn sub_const_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -372,7 +404,8 @@ fn sub_const_i64() {
     record(10i64 - 5i64)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -386,6 +419,7 @@ fn mul_const_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -394,7 +428,8 @@ fn mul_const_i64() {
     record(10i64 * 15i64)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -408,6 +443,7 @@ fn div_const_i64() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i64)]
     def record(n: I64): Nil
@@ -416,6 +452,7 @@ fn div_const_i64() {
     record(100i64 / 10i64)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }

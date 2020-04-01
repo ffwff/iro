@@ -1,18 +1,21 @@
+use crate::runtime::Runtime;
+use crate::ssa::isa;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::entities::{Block, Value};
 use cranelift_codegen::ir::types;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};
+use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, Linkage, Module};
-use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
-use crate::runtime::Runtime;
-use crate::ssa::isa;
+use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 fn to_var(x: usize) -> Variable {
     Variable::with_u32(x as u32)
@@ -66,6 +69,7 @@ fn regconst_to_type(
 /// Code generator
 pub struct Codegen<B: Backend> {
     module: Module<B>,
+    extern_mapping: HashMap<Rc<isa::FunctionName>, String>,
 }
 
 impl<B> Codegen<B>
@@ -75,6 +79,7 @@ where
     pub fn from_builder(builder: B::Builder) -> Self {
         Codegen {
             module: Module::new(builder),
+            extern_mapping: HashMap::new(),
         }
     }
 
@@ -84,29 +89,15 @@ where
             let mut fctx = self.module.make_context();
             if let isa::IntrinsicType::Extern(external) = &context.intrinsic {
                 if build_standalone {
-                    self.visit_extern(&external, &context, &mut builder_context, &mut fctx);
-                    let id = self
-                        .module
-                        .declare_function(
-                            &func_name.to_string(),
-                            Linkage::Local,
-                            &fctx.func.signature,
-                        )
-                        .unwrap();
-                    self.module
-                        .define_function(id, &mut fctx, &mut NullTrapSink {})
-                        .unwrap();
+                    self.extern_mapping
+                        .insert(func_name.clone(), external.clone());
                 }
                 continue;
             }
             self.visit_context(&context, &mut builder_context, &mut fctx);
             let id = self
                 .module
-                .declare_function(
-                    &func_name.to_string(),
-                    Linkage::Export,
-                    &fctx.func.signature,
-                )
+                .declare_function(&func_name.to_string(), Linkage::Local, &fctx.func.signature)
                 .unwrap();
             self.module
                 .define_function(id, &mut fctx, &mut NullTrapSink {})
@@ -121,31 +112,25 @@ where
 
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
         let mut fctx = self.module.make_context();
-        fctx.func
-            .signature
-            .params
-            .push(AbiParam::new(types::I32));
+        fctx.func.signature.params.push(AbiParam::new(types::I32));
         fctx.func
             .signature
             .params
             .push(AbiParam::new(self.module.isa().pointer_type()));
-        fctx.func
-            .signature
-            .returns
-            .push(AbiParam::new(types::I32));
-        
+        fctx.func.signature.returns.push(AbiParam::new(types::I32));
+
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
         let block = builder.create_block();
         builder.append_block_params_for_function_params(block);
         builder.switch_to_block(block);
 
-        let mut sig = self.module.make_signature();
+        let sig = self.module.make_signature();
         let callee = self
             .module
             .declare_function("main()", Linkage::Import, &sig)
             .unwrap();
         let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
-        let call = builder.ins().call(local_callee, &[]);
+        let _call = builder.ins().call(local_callee, &[]);
 
         let tmp = builder.ins().iconst(types::I32, 0);
         builder.ins().return_(&[tmp]);
@@ -157,65 +142,11 @@ where
 
         let id = self
             .module
-            .declare_function(
-                &"main".to_string(),
-                Linkage::Export,
-                &fctx.func.signature,
-            )
+            .declare_function(&"main".to_string(), Linkage::Export, &fctx.func.signature)
             .unwrap();
         self.module
             .define_function(id, &mut fctx, &mut NullTrapSink {})
             .unwrap();
-    }
-
-    fn visit_extern(
-        &mut self,
-        external: &String,
-        context: &isa::Context,
-        builder_context: &mut FunctionBuilderContext,
-        fctx: &mut Context,
-    ) {
-        for arg in &context.args {
-            fctx.func
-                .signature
-                .params
-                .push(AbiParam::new(ir_to_cranelift_type(&arg)));
-        }
-        if context.rettype != isa::Type::NoReturn {
-            fctx.func
-                .signature
-                .returns
-                .push(AbiParam::new(ir_to_cranelift_type(&context.rettype)));
-        }
-        let sig = fctx.func.signature.clone();
-        let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
-        let block = builder.create_block();
-        builder.switch_to_block(block);
-        let mut arg_values = vec![];
-        let mut idx = 0u32;
-        for arg in &context.args {
-            let var = Variable::with_u32(idx);
-            builder.declare_var(var, ir_to_cranelift_type(&arg));
-            arg_values.push(builder.use_var(var));
-            idx += 1;
-        }
-        builder.append_block_params_for_function_params(block);
-
-        let callee = self
-            .module
-            .declare_function(external, Linkage::Import, &sig)
-            .unwrap();
-        let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
-
-        let call = builder.ins().call(local_callee, &arg_values);
-        if context.rettype != isa::Type::NoReturn {
-            let tmp = builder.inst_results(call)[0];
-            builder.ins().return_(&[tmp]);
-        } else {
-            builder.ins().return_(&[]);
-        }
-        builder.seal_all_blocks();
-        builder.finalize();
     }
 
     fn visit_context(
@@ -311,10 +242,14 @@ where
                         .push(AbiParam::new(ir_to_cranelift_type(&rettype)));
                 }
 
-                let callee = self
-                    .module
-                    .declare_function(&name.to_string(), Linkage::Import, &sig)
-                    .unwrap();
+                let callee = if let Some(mapping) = self.extern_mapping.get(&name.clone()) {
+                    self.module
+                        .declare_function(&mapping, Linkage::Import, &sig)
+                } else {
+                    self.module
+                        .declare_function(&name.to_string(), Linkage::Import, &sig)
+                }
+                .unwrap();
                 let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
 
                 let mut arg_values = vec![];
@@ -356,10 +291,10 @@ where
                     isa::Type::I32 | isa::Type::I64 => {
                         let tmp = builder.ins().icmp(
                             match &ins.typed {
-                                isa::InsType::Lt((_x, _y)) => IntCC::SignedLessThan,
-                                isa::InsType::Gt((_x, _y)) => IntCC::SignedGreaterThan,
-                                isa::InsType::Lte((_x, _y)) => IntCC::SignedLessThanOrEqual,
-                                isa::InsType::Gte((_x, _y)) => IntCC::SignedGreaterThanOrEqual,
+                                isa::InsType::Lt(_) => IntCC::SignedLessThan,
+                                isa::InsType::Gt(_) => IntCC::SignedGreaterThan,
+                                isa::InsType::Lte(_) => IntCC::SignedLessThanOrEqual,
+                                isa::InsType::Gte(_) => IntCC::SignedGreaterThanOrEqual,
                                 _ => unreachable!(),
                             },
                             left,
@@ -449,9 +384,46 @@ where
     }
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum OptLevel {
+    None,
+    Speed,
+    SpeedAndSize,
+}
+
+pub struct Settings {
+    pub opt_level: OptLevel,
+}
+
+impl Settings {
+    pub fn default() -> Self {
+        Settings {
+            opt_level: OptLevel::None,
+        }
+    }
+
+    pub fn to_isa(&self) -> Box<dyn TargetIsa> {
+        let mut flag_builder = settings::builder();
+        match self.opt_level {
+            OptLevel::None => flag_builder.set("opt_level", "none"),
+            OptLevel::Speed => flag_builder.set("opt_level", "speed"),
+            OptLevel::SpeedAndSize => flag_builder.set("opt_level", "speed_and_size"),
+        }
+        .unwrap();
+        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+            panic!("host machine is not supported: {}", msg);
+        });
+        isa_builder.finish(settings::Flags::new(flag_builder))
+    }
+}
+
 /// Simple JIT Backend
 impl Codegen<SimpleJITBackend> {
-    pub fn process_jit(program: &isa::Program, runtime: &Runtime) -> Module<SimpleJITBackend> {
+    pub fn process_jit(
+        _settings: Settings,
+        program: &isa::Program,
+        runtime: &Runtime,
+    ) -> Module<SimpleJITBackend> {
         let mut builder = SimpleJITBuilder::new(cranelift_module::default_libcall_names());
         for (name, context) in &program.contexts {
             if let isa::IntrinsicType::Extern(symbol) = &context.intrinsic {
@@ -468,14 +440,9 @@ impl Codegen<SimpleJITBackend> {
 
 /// Object generation backend
 impl Codegen<ObjectBackend> {
-    pub fn process_object(program: &isa::Program) -> Module<ObjectBackend> {
-        let mut flag_builder = settings::builder();
-        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
-            panic!("host machine is not supported: {}", msg);
-        });
-        flag_builder.set("opt_level", "speed_and_size").unwrap();
-        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
-        let mut builder = ObjectBuilder::new(isa, "main.o", cranelift_module::default_libcall_names());
+    pub fn process_object(settings: Settings, program: &isa::Program) -> Module<ObjectBackend> {
+        let isa = settings.to_isa();
+        let builder = ObjectBuilder::new(isa, "main.o", cranelift_module::default_libcall_names());
         let codegen = Codegen::from_builder(builder);
         codegen.process(program, true)
     }

@@ -1,3 +1,4 @@
+use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::utils;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -13,6 +14,7 @@ fn while_loop() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -25,7 +27,8 @@ fn while_loop() {
     record(i)
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
 
@@ -39,6 +42,7 @@ fn while_loop_set() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(n: I32): Nil
@@ -51,7 +55,8 @@ fn while_loop_set() {
     end
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     assert_eq!(RUN_IT.load(Ordering::Relaxed), 10);
 }
 
@@ -68,6 +73,7 @@ fn while_loop_nested() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(i: I32, j: I32): Nil
@@ -84,7 +90,8 @@ fn while_loop_nested() {
     end
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     let mut expected = vec![];
     for i in 0..10 {
         for j in 0..5 {
@@ -108,6 +115,7 @@ fn while_loop_nested_x() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32, i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(i: I32, j: I32, x: I32): Nil
@@ -126,7 +134,8 @@ fn while_loop_nested_x() {
     end
     ",
         runtime,
-    );
+    )
+    .expect("able to parse_and_run");
     let mut expected = vec![];
     let mut x = 0;
     for i in 0..10 {
@@ -147,6 +156,7 @@ fn while_loop_nested_post_x() {
     let mut runtime = Runtime::empty();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
+        Settings::default(),
         "
     @[Static(record_i32)]
     def record(x: I32): Nil

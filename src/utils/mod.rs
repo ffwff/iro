@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::Visitor;
-use crate::codegen::codegen::Codegen;
+use crate::codegen::codegen::{Codegen, Settings};
 use crate::compiler;
 use crate::lexer;
 use crate::parser;
@@ -29,9 +29,13 @@ pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, Box<dyn Error>> {
     Ok(program)
 }
 
-pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<dyn Error>> {
-    let mut program = parse_to_ssa(input)?;
-    let mut module = Codegen::process_jit(&program, &runtime);
+pub fn parse_and_run(
+    settings: Settings,
+    input: &str,
+    runtime: runtime::Runtime,
+) -> Result<(), Box<dyn Error>> {
+    let program = parse_to_ssa(input)?;
+    let mut module = Codegen::process_jit(settings, &program, &runtime);
     if let Some(main) = module.get_name("main()") {
         if let FuncOrDataId::Func(func_id) = main {
             let function = module.get_finalized_function(func_id);
@@ -46,9 +50,9 @@ pub fn parse_and_run(input: &str, runtime: runtime::Runtime) -> Result<(), Box<d
     Ok(())
 }
 
-pub fn parse_to_object(input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut program = parse_to_ssa(input)?;
-    let mut module = Codegen::process_object(&program);
+pub fn parse_to_object(settings: Settings, input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let program = parse_to_ssa(input)?;
+    let module = Codegen::process_object(settings, &program);
     Ok(module.finish().emit().unwrap())
 }
 
