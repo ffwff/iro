@@ -551,4 +551,22 @@ impl Type {
             _ => false,
         }
     }
+
+    pub fn is_nil(&self) -> bool {
+        match self {
+            Type::Nil => true,
+            Type::Union(set) => {
+                let bbset: &BTreeSet<Type> = set.borrow();
+                bbset.contains(&Type::Nil)
+            },
+            _ => false,
+        }
+    }
+
+    pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
+        match self {
+            Type::Union(set) => Some(set.clone()),
+            _ => None,
+        }
+    }
 }

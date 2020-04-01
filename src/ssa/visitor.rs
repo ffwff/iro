@@ -438,6 +438,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
         // Insert jumps
         {
             let block = &mut self.context.blocks[cond];
+            if let Some(retvar) = retvar {
+                if self.context.variables[retvar].is_nil() {
+                    block.ins.push(Ins::new(retvar, InsType::LoadNil));
+                }
+            }
             block.ins.push(Ins::new(
                 0,
                 InsType::IfJmp {
@@ -466,6 +471,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     .push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
             }
             block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+        }
+
+        // Load return var
+        if let Some(retvar) = retvar {
+            self.with_block_mut(|block| {
+                block.ins.push(Ins::new(retvar, InsType::Nop));
+            });
         }
 
         Ok(())
