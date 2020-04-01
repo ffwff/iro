@@ -1,6 +1,8 @@
 use iro::codegen::codegen::Settings;
+use iro::ssa::isa::{FunctionName, Type};
 use iro::runtime::Runtime;
 use iro::utils;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 #[cfg(test)]
@@ -177,4 +179,45 @@ fn while_loop_nested_post_x() {
         runtime,
     )
     .unwrap();
+}
+
+#[test]
+fn while_expr_type() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        return while x > 10
+            0
+        end
+    end
+    f(10)
+    ",
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program.contexts.get(&FunctionName {
+        name: Rc::from("f"),
+        arg_types: vec![Type::I32],
+    }).expect("f(I32) exists");
+    assert_eq!(&function.rettype, &Type::I32);
+}
+
+#[test]
+fn while_expr_nil() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        return while x > 10
+        end
+    end
+    f(10)
+    ",
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program.contexts.get(&FunctionName {
+        name: Rc::from("f"),
+        arg_types: vec![Type::I32],
+    }).expect("f(I32) exists");
+    assert_eq!(&function.rettype, &Type::Nil);
 }

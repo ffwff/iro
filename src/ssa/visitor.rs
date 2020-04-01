@@ -295,7 +295,35 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 unimplemented!()
             }
             if n.exprs.is_empty() {
-                unimplemented!();
+                while_block = Some(self.context.new_block());
+                self.with_block_mut(|block| {
+                    block
+                        .ins
+                        .push(Ins::new(0, InsType::Jmp(cond_block.unwrap())));
+                });
+                
+                let new_block = self.context.new_block();
+                let retvar = self.context.insert_var(Type::Nil);
+                self.with_block_mut(|block| {
+                    block
+                        .ins
+                        .push(Ins::new(retvar, InsType::LoadNil));
+                });
+
+                {
+                    let cond_block = &mut self.context.blocks[cond_block.unwrap()];
+                    let ins = cond_block.ins.last_mut().unwrap();
+                    if let InsType::IfJmp {
+                        iftrue, iffalse, ..
+                    } = &mut ins.typed
+                    {
+                        *iftrue = while_block.unwrap();
+                        *iffalse = new_block;
+                    } else {
+                        unreachable!()
+                    }
+                }
+                return Ok(());
             }
             while_block = Some(self.context.new_block());
             if !n.exprs.is_empty() {
