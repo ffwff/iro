@@ -2,7 +2,7 @@ use crate::runtime::Runtime;
 use crate::ssa::isa;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::condcodes::{IntCC, FloatCC};
 use cranelift_codegen::ir::entities::{Block, Value};
 use cranelift_codegen::ir::types;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};
@@ -64,6 +64,15 @@ fn regconst_to_type(
             const_to_type(value),
         ),
     }
+}
+
+macro_rules! generate_arithmetic {
+    ($builder:expr, $ins:expr, $x:expr, $y:expr, $fn:tt) => {{
+        let left = $builder.use_var(to_var(*$x));
+        let right = $builder.use_var(to_var(*$y));
+        let tmp = $builder.ins().$fn(left, right);
+        $builder.def_var(to_var($ins.retvar().unwrap()), tmp);
+    }};
 }
 
 /// Code generator
@@ -228,6 +237,10 @@ where
                 let tmp = builder.ins().iconst(types::I64, *x as i64);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::LoadF64(x) => {
+                let tmp = builder.ins().f64const(*x);
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
             isa::InsType::Call { name, args } => {
                 let mut sig = self.module.make_signature();
                 let rettype = &context.variables[ins.retvar().unwrap()];
@@ -302,43 +315,49 @@ where
                         );
                         builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                     }
+                    isa::Type::F64 => {
+                        let tmp = builder.ins().fcmp(
+                            match &ins.typed {
+                                isa::InsType::Lt(_)  => FloatCC::LessThan,
+                                isa::InsType::Gt(_)  => FloatCC::GreaterThan,
+                                isa::InsType::Lte(_) => FloatCC::LessThanOrEqual,
+                                isa::InsType::Gte(_) => FloatCC::GreaterThanOrEqual,
+                                _ => unreachable!(),
+                            },
+                            left,
+                            right,
+                        );
+                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                    }
                     _ => unimplemented!(),
                 }
             }
             isa::InsType::Add((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => {
-                    let left = builder.use_var(to_var(*x));
-                    let right = builder.use_var(to_var(*y));
-                    let tmp = builder.ins().iadd(left, right);
-                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                }
+                isa::Type::I32 | isa::Type::I64
+                    => generate_arithmetic!(builder, ins, x, y, iadd),
+                isa::Type::F64
+                    => generate_arithmetic!(builder, ins, x, y, fadd),
                 _ => unimplemented!(),
             },
             isa::InsType::Sub((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => {
-                    let left = builder.use_var(to_var(*x));
-                    let right = builder.use_var(to_var(*y));
-                    let tmp = builder.ins().isub(left, right);
-                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                }
+                isa::Type::I32 | isa::Type::I64
+                    => generate_arithmetic!(builder, ins, x, y, isub),
+                isa::Type::F64
+                    => generate_arithmetic!(builder, ins, x, y, fsub),
                 _ => unimplemented!(),
             },
             isa::InsType::Mul((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => {
-                    let left = builder.use_var(to_var(*x));
-                    let right = builder.use_var(to_var(*y));
-                    let tmp = builder.ins().imul(left, right);
-                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                }
+                isa::Type::I32 | isa::Type::I64
+                    => generate_arithmetic!(builder, ins, x, y, imul),
+                isa::Type::F64
+                    => generate_arithmetic!(builder, ins, x, y, fmul),
                 _ => unimplemented!(),
             },
             isa::InsType::Div((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => {
-                    let left = builder.use_var(to_var(*x));
-                    let right = builder.use_var(to_var(*y));
-                    let tmp = builder.ins().sdiv(left, right);
-                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-                }
+                isa::Type::I32 | isa::Type::I64
+                    => generate_arithmetic!(builder, ins, x, y, sdiv),
+                isa::Type::F64
+                    => generate_arithmetic!(builder, ins, x, y, fdiv),
                 _ => unimplemented!(),
             },
             isa::InsType::AddC(regconst)
@@ -352,6 +371,13 @@ where
                         isa::InsType::SubC(_) => builder.ins().isub(left, right),
                         isa::InsType::MulC(_) => builder.ins().imul(left, right),
                         isa::InsType::DivC(_) => builder.ins().sdiv(left, right),
+                        _ => unreachable!(),
+                    },
+                    types::F64 => match &ins.typed {
+                        isa::InsType::AddC(_) => builder.ins().fadd(left, right),
+                        isa::InsType::SubC(_) => builder.ins().fsub(left, right),
+                        isa::InsType::MulC(_) => builder.ins().fmul(left, right),
+                        isa::InsType::DivC(_) => builder.ins().fdiv(left, right),
                         _ => unreachable!(),
                     },
                     _ => unimplemented!(),

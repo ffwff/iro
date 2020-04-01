@@ -512,7 +512,6 @@ pub enum Type {
     I32,
     I64,
     F64,
-    Float,
     String,
     Union(Rc<BTreeSet<Type>>),
     NeverUsed,
