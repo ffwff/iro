@@ -11,7 +11,7 @@ use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::{Backend, Linkage, Module};
+use cranelift_module::{Backend, Linkage, Module, DataId, DataContext};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::collections::HashMap;
@@ -19,17 +19,6 @@ use std::rc::Rc;
 
 fn to_var(x: usize) -> Variable {
     Variable::with_u32(x as u32)
-}
-
-fn ir_to_cranelift_type(typed: &isa::Type) -> types::Type {
-    match typed {
-        isa::Type::Nil => types::I32,
-        isa::Type::Bool => types::B1,
-        isa::Type::I32 => types::I32,
-        isa::Type::I64 => types::I64,
-        isa::Type::F64 => types::F64,
-        _ => unreachable!(),
-    }
 }
 
 fn const_to_value(builder: &mut FunctionBuilder, c: &isa::Constant) -> Value {
@@ -79,6 +68,7 @@ macro_rules! generate_arithmetic {
 pub struct Codegen<B: Backend> {
     module: Module<B>,
     extern_mapping: HashMap<Rc<isa::FunctionName>, String>,
+    string_mapping: HashMap<Rc<str>, DataId>,
 }
 
 impl<B> Codegen<B>
@@ -89,20 +79,25 @@ where
         Codegen {
             module: Module::new(builder),
             extern_mapping: HashMap::new(),
+            string_mapping: HashMap::new(),
         }
     }
 
     pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
         let mut builder_context = FunctionBuilderContext::new();
-        for (func_name, context) in &program.contexts {
-            let mut fctx = self.module.make_context();
-            if let isa::IntrinsicType::Extern(external) = &context.intrinsic {
-                if build_standalone {
+        if build_standalone {
+            for (func_name, context) in &program.contexts {
+                if let isa::IntrinsicType::Extern(external) = &context.intrinsic {
                     self.extern_mapping
                         .insert(func_name.clone(), external.clone());
                 }
+            }
+        }
+        for (func_name, context) in &program.contexts {
+            if let isa::IntrinsicType::Extern(_) = &context.intrinsic {
                 continue;
             }
+            let mut fctx = self.module.make_context();
             self.visit_context(&context, &mut builder_context, &mut fctx);
             let id = self
                 .module
@@ -117,6 +112,22 @@ where
         }
         self.module.finalize_definitions();
         self.module
+    }
+
+    fn pointer_type(&self) -> types::Type {
+        self.module.isa().pointer_type()
+    }
+
+    fn ir_to_cranelift_type(&self, typed: &isa::Type) -> types::Type {
+        match typed {
+            isa::Type::Nil => types::I32,
+            isa::Type::Bool => types::B1,
+            isa::Type::I32 => types::I32,
+            isa::Type::I64 => types::I64,
+            isa::Type::F64 => types::F64,
+            isa::Type::String => self.pointer_type(),
+            _ => unreachable!(),
+        }
     }
 
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
@@ -168,13 +179,13 @@ where
             fctx.func
                 .signature
                 .params
-                .push(AbiParam::new(ir_to_cranelift_type(&arg)));
+                .push(AbiParam::new(self.ir_to_cranelift_type(&arg)));
         }
         if context.rettype != isa::Type::NoReturn {
             fctx.func
                 .signature
                 .returns
-                .push(AbiParam::new(ir_to_cranelift_type(&context.rettype)));
+                .push(AbiParam::new(self.ir_to_cranelift_type(&context.rettype)));
         }
 
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
@@ -183,13 +194,13 @@ where
             .collect();
 
         for (idx, arg) in context.args.iter().enumerate() {
-            builder.declare_var(Variable::with_u32(idx as u32), ir_to_cranelift_type(&arg));
+            builder.declare_var(Variable::with_u32(idx as u32), self.ir_to_cranelift_type(&arg));
         }
         builder.append_block_params_for_function_params(blocks[0]);
 
         for (idx, typed) in context.variables.iter().enumerate() {
             if typed != &isa::Type::NeverUsed {
-                builder.declare_var(Variable::with_u32(idx as u32), ir_to_cranelift_type(&typed));
+                builder.declare_var(Variable::with_u32(idx as u32), self.ir_to_cranelift_type(&typed));
             }
         }
 
@@ -237,6 +248,25 @@ where
                 let tmp = builder.ins().iconst(types::I64, *x as i64);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::LoadString(x) => {
+                let data_id = if let Some(data_id) = self.string_mapping.get(x) {
+                    data_id.clone()
+                } else {
+                    let mut bytes_vec = x.as_bytes().to_vec();
+                    bytes_vec.push(0u8);
+                    let name = "__string_".to_owned() + &self.string_mapping.len().to_string();
+                    let data_id = self.module
+                        .declare_data(&name, Linkage::Export, false, false, None)
+                        .expect("able to create data for string");
+                    let mut data_ctx = DataContext::new();
+                    data_ctx.define(bytes_vec.into_boxed_slice());
+                    self.module.define_data(data_id, &data_ctx);
+                    data_id
+                };
+                let value = self.module.declare_data_in_func(data_id, &mut builder.func);
+                let tmp = builder.ins().symbol_value(self.pointer_type(), value);
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
             isa::InsType::LoadF64(x) => {
                 let tmp = builder.ins().f64const(*x);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
@@ -247,12 +277,12 @@ where
                 {
                     let name: &isa::FunctionName = name;
                     for arg in &name.arg_types {
-                        sig.params.push(AbiParam::new(ir_to_cranelift_type(&arg)));
+                        sig.params.push(AbiParam::new(self.ir_to_cranelift_type(&arg)));
                     }
                 }
                 if *rettype != isa::Type::NoReturn {
                     sig.returns
-                        .push(AbiParam::new(ir_to_cranelift_type(&rettype)));
+                        .push(AbiParam::new(self.ir_to_cranelift_type(&rettype)));
                 }
 
                 let callee = if let Some(mapping) = self.extern_mapping.get(&name.clone()) {
