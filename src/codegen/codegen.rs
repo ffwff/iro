@@ -256,7 +256,7 @@ where
                     bytes_vec.push(0u8);
                     let name = "__string_".to_owned() + &self.string_mapping.len().to_string();
                     let data_id = self.module
-                        .declare_data(&name, Linkage::Export, false, false, None)
+                        .declare_data(&name, Linkage::Local, false, false, None)
                         .expect("able to create data for string");
                     let mut data_ctx = DataContext::new();
                     data_ctx.define(bytes_vec.into_boxed_slice());
@@ -390,10 +390,16 @@ where
                     => generate_arithmetic!(builder, ins, x, y, fdiv),
                 _ => unimplemented!(),
             },
+            isa::InsType::Mod((x, y)) => match &context.variables[*x] {
+                isa::Type::I32 | isa::Type::I64
+                    => generate_arithmetic!(builder, ins, x, y, srem),
+                _ => unimplemented!(),
+            },
             isa::InsType::AddC(regconst)
             | isa::InsType::SubC(regconst)
             | isa::InsType::MulC(regconst)
-            | isa::InsType::DivC(regconst) => {
+            | isa::InsType::DivC(regconst) 
+            | isa::InsType::ModC(regconst) => {
                 let (left, right, typed) = regconst_to_type(builder, &regconst);
                 let tmp = match typed {
                     types::I32 | types::I64 => match &ins.typed {
@@ -401,6 +407,7 @@ where
                         isa::InsType::SubC(_) => builder.ins().isub(left, right),
                         isa::InsType::MulC(_) => builder.ins().imul(left, right),
                         isa::InsType::DivC(_) => builder.ins().sdiv(left, right),
+                        isa::InsType::ModC(_) => builder.ins().srem(left, right),
                         _ => unreachable!(),
                     },
                     types::F64 => match &ins.typed {

@@ -644,7 +644,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult {
         match &n.op {
-            BinOp::Asg | BinOp::Adds | BinOp::Subs | BinOp::Muls | BinOp::Divs => {
+            BinOp::Asg
+            | BinOp::Adds
+            | BinOp::Subs
+            | BinOp::Muls
+            | BinOp::Divs
+            | BinOp::Mods => {
                 if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
                     if let Value::Identifier(id) = &id {
                         if let Some(var) = self.non_local(&id) {
@@ -674,6 +679,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 BinOp::Divs => {
                                     self.with_block_mut(|block| {
                                         block.ins.push(Ins::new(var, InsType::Div((var, right))));
+                                    });
+                                }
+                                BinOp::Mods => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(var, InsType::Mod((var, right))));
                                     });
                                 }
                                 _ => unreachable!(),
@@ -720,6 +730,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             BinOp::Sub => InsType::Sub((left, right)),
                             BinOp::Mul => InsType::Mul((left, right)),
                             BinOp::Div => InsType::Div((left, right)),
+                            BinOp::Mod => InsType::Mod((left, right)),
                             BinOp::Lt => InsType::Lt((left, right)),
                             BinOp::Gt => InsType::Gt((left, right)),
                             BinOp::Lte => InsType::Lte((left, right)),

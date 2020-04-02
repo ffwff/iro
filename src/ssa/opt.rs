@@ -372,6 +372,9 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                 InsType::Div((left, right)) => {
                     ins_to_const_ins!(*left, *right, var_to_const, ins, DivC, div)
                 }
+                InsType::Mod((left, right)) => {
+                    ins_to_const_ins!(*left, *right, var_to_const, ins, ModC, imod)
+                }
                 InsType::Lt((left, right)) => {
                     ins_to_const_ins!(*left, *right, var_to_const, ins, LtC, lt)
                 }

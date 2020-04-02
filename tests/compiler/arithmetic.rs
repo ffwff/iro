@@ -185,6 +185,33 @@ fn div_i32() {
 }
 
 #[test]
+fn mod_i32() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 2);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i32)]
+    def record(n: I32): Nil
+    end
+
+    def f(x, y)
+        return x % y
+    end
+    record(f(30, 7))
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
 fn add_i64() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_i64(n: i64) {
@@ -283,6 +310,30 @@ fn div_i64() {
         return x / y
     end
     record(f(40i64, 2i64))
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+}
+
+#[test]
+fn mod_i64() {
+    extern "C" fn record_i64(n: i64) {
+        assert_eq!(n, 2);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i64)]
+    def record(n: I64): Nil
+    end
+
+    def f(x, y)
+        return x % y
+    end
+    record(f(30i64, 7i64))
     ",
         runtime,
     )
@@ -490,6 +541,30 @@ fn div_const_i32() {
 }
 
 #[test]
+fn mod_const_i32() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 2);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i32)]
+    def record(n: I32): Nil
+    end
+
+    record(30%7)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
 fn add_const_i64() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_i64(n: i64) {
@@ -578,6 +653,30 @@ fn div_const_i64() {
     end
 
     record(100i64 / 10i64)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
+fn mod_const_i64() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i64(n: i64) {
+        assert_eq!(n, 2);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i64)]
+    def record(n: I64): Nil
+    end
+
+    record(30i64 % 7i64)
     ",
         runtime,
     )

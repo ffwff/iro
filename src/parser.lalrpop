@@ -119,6 +119,7 @@ AsgOp: BinOp = {
     "-=" => BinOp::Subs,
     "*=" => BinOp::Muls,
     "/=" => BinOp::Divs,
+    "%=" => BinOp::Mods,
 };
 
 AndOp: BinOp = {
@@ -146,6 +147,7 @@ AddOp: BinOp = {
 FacOp: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
+    "%" => BinOp::Mod,
 };
 
 // While expression
@@ -220,11 +222,13 @@ extern {
         "-" => lexer::Tok::Sub,
         "*" => lexer::Tok::Mul,
         "/" => lexer::Tok::Div,
+        "%" => lexer::Tok::Mod,
         "=" => lexer::Tok::Asg,
         "+=" => lexer::Tok::Adds,
         "-=" => lexer::Tok::Subs,
         "*=" => lexer::Tok::Muls,
         "/=" => lexer::Tok::Divs,
+        "%=" => lexer::Tok::Mods,
         "<" => lexer::Tok::Lt,
         ">" => lexer::Tok::Gt,
         "<=" => lexer::Tok::Lte,

@@ -174,6 +174,7 @@ impl Ins {
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
             InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
             InsType::Div((x, y)) => InsType::Div((swap(x), swap(y))),
+            InsType::Mod((x, y)) => InsType::Mod((swap(x), swap(y))),
             InsType::Lt((x, y)) => InsType::Lt((swap(x), swap(y))),
             InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
             InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
@@ -242,6 +243,10 @@ impl Ins {
                 callback(*y);
             }
             InsType::Div((x, y)) => {
+                callback(*x);
+                callback(*y);
+            }
+            InsType::Mod((x, y)) => {
                 callback(*x);
                 callback(*y);
             }
@@ -345,6 +350,14 @@ impl Constant {
         }
     }
 
+    pub fn imod(&self, right: Constant) -> Constant {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x % y),
+            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x % y),
+            (_, _) => unreachable!(),
+        }
+    }
+
     pub fn lt(&self, _right: Constant) -> Constant {
         unimplemented!()
     }
@@ -391,6 +404,7 @@ pub enum InsType {
     Sub((usize, usize)),
     Mul((usize, usize)),
     Div((usize, usize)),
+    Mod((usize, usize)),
     Lt((usize, usize)),
     Gt((usize, usize)),
     Lte((usize, usize)),
@@ -399,6 +413,7 @@ pub enum InsType {
     SubC(RegConst),
     MulC(RegConst),
     DivC(RegConst),
+    ModC(RegConst),
     LtC(RegConst),
     GtC(RegConst),
     LteC(RegConst),
