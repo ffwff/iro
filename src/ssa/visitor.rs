@@ -204,6 +204,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
+    fn visit_import(&mut self, n: &ImportStatement) -> VisitorResult {
+        unimplemented!()
+    }
+
     fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult {
         {
             let mut env = Env::new();

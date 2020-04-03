@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.control.iro",
-			"match": "\\b(def|return|while|if|elsif|else|unsafe|end)\\b"
+			"match": "\\b(extern|def|return|while|if|elsif|else|unsafe|end)\\b"
 		},
 		{
 			"name": "storage.type.built-in.primitive.iro",
@@ -62,7 +62,7 @@
 		},
 		{
 			"name": "keyword.operator.misc.iro",
-			"match": "(\\bas\\b)"
+			"match": "\\b(import|as)\\b"
 		}
 	],
 	"scopeName": "source.iro"

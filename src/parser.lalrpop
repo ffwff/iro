@@ -1,7 +1,5 @@
-use std::str::FromStr;
 use std::rc::Rc;
 use std::cell::RefCell;
-use lalrpop_util::ParseError;
 use crate::ssa::isa::IntrinsicType;
 use crate::ast::*;
 use crate::lexer;
@@ -28,6 +26,7 @@ NLOrEOF: () = {
 };
 Expr = <StandaloneExpr> NLOrEOF;
 TopLevelExpr = {
+    <ImportStatement> NLOrEOF,
     <DefStatement> NLOrEOF,
     <ExternDefStatement> NLOrEOF,
     <Expr>,
@@ -57,6 +56,14 @@ AttributeValue: AttributeValue = {
 }
 
 // Function definitions
+ImportStatement: NodeBox = {
+    "import" <path:String> => {
+        NodeBox::new(ImportStatement {
+            path
+        })
+    }
+};
+
 DefStatement: NodeBox = {
     <attrs:AttributeList?> "def"
         <id:Identifier>
@@ -247,6 +254,7 @@ extern {
     type Error = lexer::Error;
 
     enum lexer::Tok {
+        "import" => lexer::Tok::Import,
         "def" => lexer::Tok::Def,
         "extern" => lexer::Tok::Extern,
         "return" => lexer::Tok::Return,

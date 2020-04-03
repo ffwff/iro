@@ -5,6 +5,7 @@ use unicode_xid::UnicodeXID;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tok {
     EOF,
+    Import,
     Def,
     Extern,
     Return,
@@ -217,6 +218,7 @@ impl<'input> Iterator for Lexer<'input> {
                         }
                     }
                     let value = match string.as_str() {
+                        "import" => Tok::Import,
                         "def" => Tok::Def,
                         "extern" => Tok::Extern,
                         "return" => Tok::Return,

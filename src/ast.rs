@@ -40,6 +40,7 @@ pub type VisitorResult = Result<(), Error>;
 
 pub trait Visitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult;
+    fn visit_import(&mut self, n: &ImportStatement) -> VisitorResult;
     fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult;
     fn visit_return(&mut self, n: &ReturnExpr) -> VisitorResult;
     fn visit_whileexpr(&mut self, n: &WhileExpr) -> VisitorResult;
@@ -303,4 +304,14 @@ pub struct ReturnExpr {
 impl Node for ReturnExpr {
     debuggable!();
     visitable!(visit_return);
+}
+
+#[derive(Debug)]
+pub struct ImportStatement {
+    pub path: String,
+}
+
+impl Node for ImportStatement {
+    debuggable!();
+    visitable!(visit_import);
 }
