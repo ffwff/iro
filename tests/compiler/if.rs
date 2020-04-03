@@ -2,9 +2,9 @@ use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
 use iro::utils;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::collections::BTreeSet;
 
 #[cfg(test)]
 #[test]
@@ -19,9 +19,7 @@ fn if_expr() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x)
         if x > 10
@@ -51,9 +49,7 @@ fn if_expr_elsif() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(i: I32, n: I32): Nil
-    end
+    extern def record=\"record_i32\"(i: I32, n: I32): Nil
 
     def f(i, x)
         if x > 10
@@ -91,13 +87,16 @@ fn if_expr_unify() {
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
-    let function = program.contexts.get(&FunctionName {
-        name: Rc::from("f"),
-        arg_types: vec![Type::I32],
-    }).expect("f(I32) exists");
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
     let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![ Type::I32, Type::String ]);
+    assert_eq!(set, &btreeset![Type::I32, Type::String]);
 }
 
 #[test]
@@ -114,13 +113,16 @@ fn if_expr_unify_true_branch() {
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
-    let function = program.contexts.get(&FunctionName {
-        name: Rc::from("f"),
-        arg_types: vec![Type::I32],
-    }).expect("f(I32) exists");
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
     let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![ Type::I32, Type::Nil ]);
+    assert_eq!(set, &btreeset![Type::I32, Type::Nil]);
 }
 
 #[test]
@@ -138,11 +140,14 @@ fn if_expr_unify_false_branch() {
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
-    let function = program.contexts.get(&FunctionName {
-        name: Rc::from("f"),
-        arg_types: vec![Type::I32],
-    }).expect("f(I32) exists");
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
     let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![ Type::I32, Type::Nil ]);
+    assert_eq!(set, &btreeset![Type::I32, Type::Nil]);
 }

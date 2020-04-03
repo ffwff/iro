@@ -231,7 +231,7 @@ impl Ins {
             | InsType::Lt((x, y))
             | InsType::Gt((x, y))
             | InsType::Lte((x, y))
-            | InsType::Gte((x, y)) 
+            | InsType::Gte((x, y))
             | InsType::Equ((x, y)) => {
                 callback(*x);
                 callback(*y);
@@ -554,7 +554,7 @@ impl Type {
             Type::Union(set) => {
                 let bbset: &BTreeSet<Type> = set.borrow();
                 bbset.contains(&Type::Nil)
-            },
+            }
             _ => false,
         }
     }

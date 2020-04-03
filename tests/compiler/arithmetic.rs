@@ -16,9 +16,7 @@ fn constant_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     record(10)
     ",
@@ -40,9 +38,7 @@ fn constant_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(10i64)
     ",
@@ -64,9 +60,7 @@ fn constant_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     record(10.5)
     ",
@@ -88,9 +82,7 @@ fn add_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         return x + y
@@ -115,9 +107,7 @@ fn sub_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         return x - y
@@ -142,9 +132,7 @@ fn mul_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         return x * y
@@ -169,9 +157,7 @@ fn div_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         return x / y
@@ -196,9 +182,7 @@ fn mod_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         return x % y
@@ -223,9 +207,7 @@ fn add_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     def f(x, y)
         return x + y
@@ -250,9 +232,7 @@ fn sub_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     def f(x, y)
         return x - y
@@ -277,9 +257,7 @@ fn mul_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     def f(x, y)
         return x * y
@@ -302,9 +280,7 @@ fn div_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     def f(x, y)
         return x / y
@@ -326,9 +302,7 @@ fn mod_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     def f(x, y)
         return x % y
@@ -352,9 +326,7 @@ fn add_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     def f(x, y)
         return x + y
@@ -378,9 +350,7 @@ fn sub_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     def f(x, y)
         return x - y
@@ -404,9 +374,7 @@ fn mul_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     def f(x, y)
         return x * y
@@ -430,9 +398,7 @@ fn div_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     def f(x, y)
         return x / y
@@ -456,9 +422,7 @@ fn add_const_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     record(10+15)
     ",
@@ -480,9 +444,7 @@ fn sub_const_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     record(10-15)
     ",
@@ -504,9 +466,7 @@ fn mul_const_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     record(10*15)
     ",
@@ -528,9 +488,7 @@ fn div_const_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     record(100/10)
     ",
@@ -552,9 +510,7 @@ fn mod_const_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     record(30%7)
     ",
@@ -576,9 +532,7 @@ fn add_const_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(10i64 + 5i64)
     ",
@@ -600,9 +554,7 @@ fn sub_const_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(10i64 - 5i64)
     ",
@@ -624,9 +576,7 @@ fn mul_const_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(10i64 * 15i64)
     ",
@@ -648,9 +598,7 @@ fn div_const_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(100i64 / 10i64)
     ",
@@ -672,9 +620,7 @@ fn mod_const_i64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(30i64 % 7i64)
     ",
@@ -696,9 +642,7 @@ fn add_const_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     record(0.5 + 0.5)
     ",
@@ -720,9 +664,7 @@ fn sub_const_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     record(1.5 - 0.5)
     ",
@@ -744,9 +686,7 @@ fn mul_const_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     record(0.5 * 0.5)
     ",
@@ -768,9 +708,7 @@ fn div_const_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_f64)]
-    def record(n: F64): Nil
-    end
+    extern def record=\"record_f64\"(n: F64): Nil
 
     record(0.5 / 0.5)
     ",

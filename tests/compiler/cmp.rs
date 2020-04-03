@@ -4,7 +4,6 @@ use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
-
 #[test]
 fn less_than_i32() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
@@ -17,9 +16,7 @@ fn less_than_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x < y
@@ -47,9 +44,7 @@ fn greater_than_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x > y
@@ -77,9 +72,7 @@ fn greater_than_eq_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x >= y
@@ -110,9 +103,7 @@ fn less_than_eq_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x <= y
@@ -143,9 +134,7 @@ fn eq_i32() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x == y
@@ -175,9 +164,7 @@ fn less_than_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x < y
@@ -205,9 +192,7 @@ fn greater_than_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x > y
@@ -235,9 +220,7 @@ fn greater_than_eq_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x >= y
@@ -268,9 +251,7 @@ fn less_than_eq_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x <= y
@@ -301,9 +282,7 @@ fn eq_f64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def f(x, y)
         if x == y

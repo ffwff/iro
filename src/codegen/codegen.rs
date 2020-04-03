@@ -2,7 +2,7 @@ use crate::runtime::Runtime;
 use crate::ssa::isa;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_codegen::ir::condcodes::{IntCC, FloatCC};
+use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, Value};
 use cranelift_codegen::ir::types;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};
@@ -11,7 +11,7 @@ use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::{Backend, Linkage, Module, DataId, DataContext};
+use cranelift_module::{Backend, DataContext, DataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::collections::HashMap;
@@ -194,13 +194,19 @@ where
             .collect();
 
         for (idx, arg) in context.args.iter().enumerate() {
-            builder.declare_var(Variable::with_u32(idx as u32), self.ir_to_cranelift_type(&arg));
+            builder.declare_var(
+                Variable::with_u32(idx as u32),
+                self.ir_to_cranelift_type(&arg),
+            );
         }
         builder.append_block_params_for_function_params(blocks[0]);
 
         for (idx, typed) in context.variables.iter().enumerate() {
             if typed != &isa::Type::NeverUsed {
-                builder.declare_var(Variable::with_u32(idx as u32), self.ir_to_cranelift_type(&typed));
+                builder.declare_var(
+                    Variable::with_u32(idx as u32),
+                    self.ir_to_cranelift_type(&typed),
+                );
             }
         }
 
@@ -255,12 +261,14 @@ where
                     let mut bytes_vec = x.as_bytes().to_vec();
                     bytes_vec.push(0u8);
                     let name = "__string_".to_owned() + &self.string_mapping.len().to_string();
-                    let data_id = self.module
+                    let data_id = self
+                        .module
                         .declare_data(&name, Linkage::Local, false, false, None)
                         .expect("able to create data for string");
                     let mut data_ctx = DataContext::new();
                     data_ctx.define(bytes_vec.into_boxed_slice());
-                    self.module.define_data(data_id, &data_ctx)
+                    self.module
+                        .define_data(data_id, &data_ctx)
                         .expect("able to define data for string");
                     data_id
                 };
@@ -278,7 +286,8 @@ where
                 {
                     let name: &isa::FunctionName = name;
                     for arg in &name.arg_types {
-                        sig.params.push(AbiParam::new(self.ir_to_cranelift_type(&arg)));
+                        sig.params
+                            .push(AbiParam::new(self.ir_to_cranelift_type(&arg)));
                     }
                 }
                 if *rettype != isa::Type::NoReturn {
@@ -351,8 +360,8 @@ where
                     isa::Type::F64 => {
                         let tmp = builder.ins().fcmp(
                             match &ins.typed {
-                                isa::InsType::Lt(_)  => FloatCC::LessThan,
-                                isa::InsType::Gt(_)  => FloatCC::GreaterThan,
+                                isa::InsType::Lt(_) => FloatCC::LessThan,
+                                isa::InsType::Gt(_) => FloatCC::GreaterThan,
                                 isa::InsType::Lte(_) => FloatCC::LessThanOrEqual,
                                 isa::InsType::Gte(_) => FloatCC::GreaterThanOrEqual,
                                 isa::InsType::Equ(_) => FloatCC::Equal,
@@ -367,42 +376,33 @@ where
                 }
             }
             isa::InsType::Add((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64
-                    => generate_arithmetic!(builder, ins, x, y, iadd),
-                isa::Type::F64
-                    => generate_arithmetic!(builder, ins, x, y, fadd),
+                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, iadd),
+                isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fadd),
                 _ => unimplemented!(),
             },
             isa::InsType::Sub((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64
-                    => generate_arithmetic!(builder, ins, x, y, isub),
-                isa::Type::F64
-                    => generate_arithmetic!(builder, ins, x, y, fsub),
+                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, isub),
+                isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fsub),
                 _ => unimplemented!(),
             },
             isa::InsType::Mul((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64
-                    => generate_arithmetic!(builder, ins, x, y, imul),
-                isa::Type::F64
-                    => generate_arithmetic!(builder, ins, x, y, fmul),
+                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, imul),
+                isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fmul),
                 _ => unimplemented!(),
             },
             isa::InsType::Div((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64
-                    => generate_arithmetic!(builder, ins, x, y, sdiv),
-                isa::Type::F64
-                    => generate_arithmetic!(builder, ins, x, y, fdiv),
+                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, sdiv),
+                isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fdiv),
                 _ => unimplemented!(),
             },
             isa::InsType::Mod((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64
-                    => generate_arithmetic!(builder, ins, x, y, srem),
+                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, srem),
                 _ => unimplemented!(),
             },
             isa::InsType::AddC(regconst)
             | isa::InsType::SubC(regconst)
             | isa::InsType::MulC(regconst)
-            | isa::InsType::DivC(regconst) 
+            | isa::InsType::DivC(regconst)
             | isa::InsType::ModC(regconst) => {
                 let (left, right, typed) = regconst_to_type(builder, &regconst);
                 let tmp = match typed {

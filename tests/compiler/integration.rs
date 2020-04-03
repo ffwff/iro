@@ -16,9 +16,7 @@ fn fib() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     def fib(n): I32
         if n <= 1
@@ -46,9 +44,7 @@ fn fib64() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i64)]
-    def record(n: I64): Nil
-    end
+    extern def record=\"record_i64\"(n: I64): Nil
 
     def fib(n): I64
         if n <= 1

@@ -29,6 +29,7 @@ NLOrEOF: () = {
 Expr = <StandaloneExpr> NLOrEOF;
 TopLevelExpr = {
     <DefStatement> NLOrEOF,
+    <ExternDefStatement> NLOrEOF,
     <Expr>,
 };
 StandaloneExpr = ReturnExpr;
@@ -82,6 +83,25 @@ DefArgument: (Rc<str>, Option<TypeId>) = {
         (Rc::from(id), type_specifier)
     },
 };
+
+ExternDefStatement: NodeBox = {
+    "extern" "def"
+        <id:Identifier>
+        <symbol:ExternSymbol?>
+        <args:DefArgumentList?>
+        <return_type:TypeSpecifier?> => {
+        NodeBox::new(DefStatement {
+            id: Rc::from(id.clone()),
+            args: args.unwrap(),
+            exprs: vec![],
+            return_type: Some(return_type.unwrap()),
+            attrs: None,
+            intrinsic: RefCell::new(IntrinsicType::Extern(symbol.unwrap_or(id)))
+        })
+    },
+};
+
+ExternSymbol: String = "=" <String>;
 
 // Return expression
 ReturnExpr: NodeBox = {
@@ -228,6 +248,7 @@ extern {
 
     enum lexer::Tok {
         "def" => lexer::Tok::Def,
+        "extern" => lexer::Tok::Extern,
         "return" => lexer::Tok::Return,
         "if" => lexer::Tok::If,
         "while" => lexer::Tok::While,

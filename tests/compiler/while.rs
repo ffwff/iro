@@ -1,6 +1,6 @@
 use iro::codegen::codegen::Settings;
-use iro::ssa::isa::{FunctionName, Type};
 use iro::runtime::Runtime;
+use iro::ssa::isa::{FunctionName, Type};
 use iro::utils;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -18,9 +18,7 @@ fn while_loop() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     i := 0
     while i < 10
@@ -46,9 +44,7 @@ fn while_loop_set() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(n: I32): Nil
-    end
+    extern def record=\"record_i32\"(n: I32): Nil
 
     i := 0
     while i < 10
@@ -77,9 +73,7 @@ fn while_loop_nested() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(i: I32, j: I32): Nil
-    end
+    extern def record=\"record_i32\"(i: I32, j: I32): Nil
 
     i := 0
     while i < 10
@@ -119,9 +113,7 @@ fn while_loop_nested_x() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(i: I32, j: I32, x: I32): Nil
-    end
+    extern def record=\"record_i32\"(i: I32, j: I32, x: I32): Nil
 
     i := 0
     x := 0
@@ -160,9 +152,7 @@ fn while_loop_nested_post_x() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(x: I32): Nil
-    end
+    extern def record=\"record_i32\"(x: I32): Nil
 
     i := 0
     x := 0
@@ -195,10 +185,13 @@ fn while_expr_type() {
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
-    let function = program.contexts.get(&FunctionName {
-        name: Rc::from("f"),
-        arg_types: vec![Type::I32],
-    }).expect("f(I32) exists");
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
     assert_eq!(&function.rettype, &Type::I32);
 }
 
@@ -215,10 +208,13 @@ fn while_expr_nil() {
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
-    let function = program.contexts.get(&FunctionName {
-        name: Rc::from("f"),
-        arg_types: vec![Type::I32],
-    }).expect("f(I32) exists");
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
     assert_eq!(&function.rettype, &Type::Nil);
 }
 
@@ -232,9 +228,7 @@ fn while_loop_nested_with_if() {
     utils::parse_and_run(
         Settings::default(),
         "
-    @[Static(record_i32)]
-    def record(x: I32): Nil
-    end
+    extern def record=\"record_i32\"(x: I32): Nil
 
     i := 0
     x := 0

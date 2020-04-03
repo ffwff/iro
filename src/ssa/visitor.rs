@@ -301,13 +301,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .ins
                         .push(Ins::new(0, InsType::Jmp(cond_block.unwrap())));
                 });
-                
+
                 let new_block = self.context.new_block();
                 let retvar = self.context.insert_var(Type::Nil);
                 self.with_block_mut(|block| {
-                    block
-                        .ins
-                        .push(Ins::new(retvar, InsType::LoadNil));
+                    block.ins.push(Ins::new(retvar, InsType::LoadNil));
                 });
 
                 {
@@ -644,12 +642,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult {
         match &n.op {
-            BinOp::Asg
-            | BinOp::Adds
-            | BinOp::Subs
-            | BinOp::Muls
-            | BinOp::Divs
-            | BinOp::Mods => {
+            BinOp::Asg | BinOp::Adds | BinOp::Subs | BinOp::Muls | BinOp::Divs | BinOp::Mods => {
                 if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
                     if let Value::Identifier(id) = &id {
                         if let Some(var) = self.non_local(&id) {

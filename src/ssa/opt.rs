@@ -193,10 +193,16 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 for &y in &dom_frontier[n] {
                     if !phi_inserted.contains(&y) {
                         let block = &mut context.blocks[y];
-                        block.ins.insert(0, Ins::new(var, InsType::Phi {
-                            vars: std::iter::repeat(var).take(block.preds.len()).collect(),
-                            defines: var,
-                        }));
+                        block.ins.insert(
+                            0,
+                            Ins::new(
+                                var,
+                                InsType::Phi {
+                                    vars: std::iter::repeat(var).take(block.preds.len()).collect(),
+                                    defines: var,
+                                },
+                            ),
+                        );
                         phi_inserted.insert(y);
                         if !origin[y].contains(&var) {
                             worklist.push(y);
@@ -208,12 +214,14 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
 
         // Rename variables
         // Reference: https://iith.ac.in/~ramakrishna/fc5264/ssa-intro-construct.pdf
-        fn rename_variables(var: usize,
-                            node: usize,
-                            version: &mut usize,
-                            version_stack: &mut Vec<usize>,
-                            context: &mut Context,
-                            dom_tree: &Vec<Vec<usize>>) {
+        fn rename_variables(
+            var: usize,
+            node: usize,
+            version: &mut usize,
+            version_stack: &mut Vec<usize>,
+            context: &mut Context,
+            dom_tree: &Vec<Vec<usize>>,
+        ) {
             dbg_println!("use node {}", node);
             let version_start = version_stack.last().unwrap().clone();
             let mut new_variable_len = context.variables.len();
@@ -247,13 +255,19 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
             for &succ in &tmp_succs {
                 // j is predecessor index of node wrt succ
                 let succ_block: &mut Block = &mut context.blocks[succ];
-                let j = succ_block.preds.iter().position(|&pred| pred == node).unwrap();
+                let j = succ_block
+                    .preds
+                    .iter()
+                    .position(|&pred| pred == node)
+                    .unwrap();
                 for ins in &mut succ_block.ins {
                     match &mut ins.typed {
-                        InsType::Phi { vars, defines } => if *defines == var {
-                            vars[j] = *version_stack.last().unwrap();
-                            dbg_println!("rename phi {} = {:?}", var, vars);
-                        },
+                        InsType::Phi { vars, defines } => {
+                            if *defines == var {
+                                vars[j] = *version_stack.last().unwrap();
+                                dbg_println!("rename phi {} = {:?}", var, vars);
+                            }
+                        }
                         _ => (),
                     }
                 }
@@ -263,14 +277,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 block.succs = tmp_succs;
             }
             for &dominated in &dom_tree[node] {
-                rename_variables(
-                    var,
-                    dominated,
-                    version,
-                    version_stack,
-                    context,
-                    dom_tree
-                );
+                rename_variables(var, dominated, version, version_stack, context, dom_tree);
             }
             while *version_stack.last().unwrap() != version_start {
                 version_stack.pop();
@@ -278,16 +285,9 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         }
         let old_len = context.variables.len();
         for var in 0..old_len {
-            let mut version_stack = vec![ var ];
+            let mut version_stack = vec![var];
             let mut version = 1;
-            rename_variables(
-                var,
-                0,
-                &mut version,
-                &mut version_stack,
-                context,
-                &dom_tree
-            );
+            rename_variables(var, 0, &mut version, &mut version_stack, context, &dom_tree);
             dbg_println!("rename var {} ==> {:#?}", var, context);
         }
     } else {
