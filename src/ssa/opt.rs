@@ -215,7 +215,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                             context: &mut Context,
                             dom_tree: &Vec<Vec<usize>>) {
             dbg_println!("use node {}", node);
-            let v_e = version_stack.last().unwrap().clone();
+            let version_start = version_stack.last().unwrap().clone();
             let mut new_variable_len = context.variables.len();
             let tmp_succs = {
                 let block = &mut context.blocks[node];
@@ -272,13 +272,13 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                     dom_tree
                 );
             }
-            while *version_stack.last().unwrap() != v_e {
+            while *version_stack.last().unwrap() != version_start {
                 version_stack.pop();
             }
         }
         let old_len = context.variables.len();
         for var in 0..old_len {
-            let mut version_stack = vec![ 0 ];
+            let mut version_stack = vec![ var ];
             let mut version = 1;
             rename_variables(
                 var,
