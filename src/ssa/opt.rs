@@ -221,7 +221,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 let block = &mut context.blocks[node];
                 for ins in &mut block.ins {
                     if !ins.typed.is_phi() {
-                        ins.rename_var(false, var, *version_stack.last().clone().unwrap());
+                        ins.rename_var(var, *version_stack.last().clone().unwrap());
                     }
                     if let Some(retvar) = ins.mut_retvar() {
                         if *retvar == var {
@@ -297,7 +297,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         }
         let block = &mut context.blocks[0];
         for ins in &mut block.ins {
-            ins.rename_var_by(true, |var| mapping[var].unwrap());
+            ins.rename_var_by(|var| mapping[var].unwrap());
             if let Some(retvar) = ins.mut_retvar() {
                 if mapping[*retvar] == None {
                     mapping[*retvar] = Some(*retvar);

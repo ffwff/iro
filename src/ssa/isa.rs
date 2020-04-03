@@ -146,7 +146,7 @@ impl Ins {
         }
     }
 
-    pub fn rename_var_by<T>(&mut self, do_phi: bool, mut swap: T)
+    pub fn rename_var_by<T>(&mut self, mut swap: T)
     where
         T: FnMut(usize) -> usize,
     {
@@ -161,15 +161,7 @@ impl Ins {
                 InsType::Call { name, args }
             }
             InsType::Return(x) => InsType::Return(swap(x)),
-            InsType::Phi { mut vars, defines } => {
-                if do_phi {
-                    for arg in &mut vars {
-                        let oldvar = *arg;
-                        *arg = swap(oldvar);
-                    }
-                }
-                InsType::Phi { vars, defines }
-            }
+            InsType::Phi { .. } => unreachable!(),
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
             InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
@@ -206,8 +198,8 @@ impl Ins {
         std::mem::replace(&mut self.typed, new_typed);
     }
 
-    pub fn rename_var(&mut self, do_phi: bool, oldvar: usize, newvar: usize) {
-        self.rename_var_by(do_phi, |var| if var == oldvar { newvar } else { var })
+    pub fn rename_var(&mut self, oldvar: usize, newvar: usize) {
+        self.rename_var_by(|var| if var == oldvar { newvar } else { var })
     }
 
     pub fn each_used_var<T>(&self, mut callback: T)
