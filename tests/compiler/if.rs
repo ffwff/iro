@@ -40,6 +40,42 @@ fn if_expr() {
 }
 
 #[test]
+fn if_expr_elsif() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(i: i32, n: i32) {
+        assert_eq!(i, n);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i32)]
+    def record(i: I32, n: I32): Nil
+    end
+
+    def f(i, x)
+        if x > 10
+            record(i, 0)
+        elsif x > 5
+            record(i, 1)
+        else
+            record(i, 2)
+        end
+        0
+    end
+    f(0, 20)
+    f(1, 6)
+    f(2, 0)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
 fn if_expr_unify() {
     let program = utils::parse_to_ssa(
         "

@@ -85,7 +85,7 @@ fn greater_than_eq_i32() {
         if x >= y
             record(1)
         else
-            record(1)
+            record(0)
         end
         0
     end
@@ -118,11 +118,43 @@ fn less_than_eq_i32() {
         if x <= y
             record(1)
         else
-            record(1)
+            record(0)
         end
         0
     end
     f(10, 15)
+    f(15, 15)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
+fn eq_i32() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 1);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i32)]
+    def record(n: I32): Nil
+    end
+
+    def f(x, y)
+        if x == y
+            record(1)
+        else
+            record(0)
+        end
+        0
+    end
     f(15, 15)
     ",
         runtime,
@@ -211,7 +243,7 @@ fn greater_than_eq_f64() {
         if x >= y
             record(1)
         else
-            record(1)
+            record(0)
         end
         0
     end
@@ -244,11 +276,43 @@ fn less_than_eq_f64() {
         if x <= y
             record(1)
         else
-            record(1)
+            record(0)
         end
         0
     end
     f(10.0, 15.0)
+    f(15.0, 15.0)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
+fn eq_f64() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 1);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i32)]
+    def record(n: I32): Nil
+    end
+
+    def f(x, y)
+        if x == y
+            record(1)
+        else
+            record(0)
+        end
+        0
+    end
     f(15.0, 15.0)
     ",
         runtime,

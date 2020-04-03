@@ -179,6 +179,7 @@ impl Ins {
             InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
             InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
             InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
+            InsType::Equ((x, y)) => InsType::Equ((swap(x), swap(y))),
             InsType::AddC(_)
             | InsType::SubC(_)
             | InsType::MulC(_)
@@ -230,39 +231,16 @@ impl Ins {
                     callback(*arg);
                 }
             }
-            InsType::Add((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Sub((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Mul((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Div((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Mod((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Lt((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Gt((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Lte((x, y)) => {
-                callback(*x);
-                callback(*y);
-            }
-            InsType::Gte((x, y)) => {
+            InsType::Add((x, y))
+            | InsType::Sub((x, y))
+            | InsType::Mul((x, y))
+            | InsType::Div((x, y))
+            | InsType::Mod((x, y))
+            | InsType::Lt((x, y))
+            | InsType::Gt((x, y))
+            | InsType::Lte((x, y))
+            | InsType::Gte((x, y)) 
+            | InsType::Equ((x, y)) => {
                 callback(*x);
                 callback(*y);
             }
@@ -409,6 +387,8 @@ pub enum InsType {
     Gt((usize, usize)),
     Lte((usize, usize)),
     Gte((usize, usize)),
+    Equ((usize, usize)),
+    Neq((usize, usize)),
     AddC(RegConst),
     SubC(RegConst),
     MulC(RegConst),

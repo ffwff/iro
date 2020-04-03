@@ -720,7 +720,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     return Err(Error::IncompatibleType);
                 }
                 let retvar = self.context.insert_var(match op {
-                    BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => Type::Bool,
+                    BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte | BinOp::Equ => Type::Bool,
                     _ => self.context.variables[left].clone(),
                 });
                 self.with_block_mut(|block| {
@@ -735,7 +735,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             BinOp::Gt => InsType::Gt((left, right)),
                             BinOp::Lte => InsType::Lte((left, right)),
                             BinOp::Gte => InsType::Gte((left, right)),
-                            _ => unimplemented!(),
+                            BinOp::Equ => InsType::Equ((left, right)),
+                            _ => unimplemented!("{:?}", op),
                         }
                     }));
                 });

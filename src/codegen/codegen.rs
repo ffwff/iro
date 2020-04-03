@@ -327,7 +327,8 @@ where
             isa::InsType::Lt((x, y))
             | isa::InsType::Gt((x, y))
             | isa::InsType::Lte((x, y))
-            | isa::InsType::Gte((x, y)) => {
+            | isa::InsType::Gte((x, y))
+            | isa::InsType::Equ((x, y)) => {
                 let left = builder.use_var(to_var(*x));
                 let right = builder.use_var(to_var(*y));
                 match &context.variables[*x] {
@@ -338,6 +339,7 @@ where
                                 isa::InsType::Gt(_) => IntCC::SignedGreaterThan,
                                 isa::InsType::Lte(_) => IntCC::SignedLessThanOrEqual,
                                 isa::InsType::Gte(_) => IntCC::SignedGreaterThanOrEqual,
+                                isa::InsType::Equ(_) => IntCC::Equal,
                                 _ => unreachable!(),
                             },
                             left,
@@ -352,6 +354,7 @@ where
                                 isa::InsType::Gt(_)  => FloatCC::GreaterThan,
                                 isa::InsType::Lte(_) => FloatCC::LessThanOrEqual,
                                 isa::InsType::Gte(_) => FloatCC::GreaterThanOrEqual,
+                                isa::InsType::Equ(_) => FloatCC::Equal,
                                 _ => unreachable!(),
                             },
                             left,

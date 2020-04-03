@@ -160,14 +160,34 @@ WhileExpr: NodeBox = {
 
 // If expression
 IfExpr: NodeBox = {
-    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "else" NL+ <elses:Expr*> "end" => {
-        NodeBox::new(IfExpr { cond, exprs, elses })
-    },
-    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(IfExpr { cond, exprs, elses: vec![] })
+    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> <elsif:IfExprElsif*> <elses:IfExprElse?> "end" => {
+        if !elsif.is_empty() {
+            let last_elsif = elsif.last().unwrap();
+            let mut elsif_expr = NodeBox::new(IfExpr {
+                cond: last_elsif.0.clone(),
+                exprs: last_elsif.1.clone(),
+                elses: elses.unwrap_or_else(|| vec![])
+            });
+            for it_elsif in elsif.iter().rev().skip(1) {
+                elsif_expr = NodeBox::new(IfExpr {
+                    cond: it_elsif.0.clone(),
+                    exprs: it_elsif.1.clone(),
+                    elses: vec![ elsif_expr ],
+                });
+            }
+            return NodeBox::new(IfExpr { cond, exprs, elses: vec![ elsif_expr ] });
+        }
+        NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) })
     },
     CallExpr,
 };
+
+IfExprElsif: (NodeBox, Vec<NodeBox>) = {
+    "elsif" <cond:StandaloneExpr> NL+ <exprs:Expr*> => {
+        (cond, exprs)
+    },
+};
+IfExprElse: Vec<NodeBox> = "else" NL+ <Expr*>;
 
 // Call expression
 CallExpr: NodeBox = {
@@ -213,6 +233,7 @@ extern {
         "if" => lexer::Tok::If,
         "while" => lexer::Tok::While,
         "else" => lexer::Tok::Else,
+        "elsif" => lexer::Tok::Elsif,
         "end" => lexer::Tok::End,
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
