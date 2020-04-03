@@ -221,3 +221,32 @@ fn while_expr_nil() {
     }).expect("f(I32) exists");
     assert_eq!(&function.rettype, &Type::Nil);
 }
+
+#[test]
+fn while_loop_nested_with_if() {
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 5);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    @[Static(record_i32)]
+    def record(x: I32): Nil
+    end
+
+    let i = 0
+    let x = 0
+    while i < 10
+        if i < 5
+            x += 1
+        end
+        i += 1
+    end
+    record(x)
+    ",
+        runtime,
+    )
+    .unwrap();
+}

@@ -161,14 +161,14 @@ impl Ins {
                 InsType::Call { name, args }
             }
             InsType::Return(x) => InsType::Return(swap(x)),
-            InsType::Phi { mut vars } => {
+            InsType::Phi { mut vars, defines } => {
                 if do_phi {
                     for arg in &mut vars {
                         let oldvar = *arg;
                         *arg = swap(oldvar);
                     }
                 }
-                InsType::Phi { vars }
+                InsType::Phi { vars, defines }
             }
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
@@ -226,7 +226,7 @@ impl Ins {
             InsType::Return(x) => {
                 callback(*x);
             }
-            InsType::Phi { vars } => {
+            InsType::Phi { vars, .. } => {
                 for arg in vars {
                     callback(*arg);
                 }
@@ -371,6 +371,7 @@ pub enum InsType {
     LoadString(Rc<str>),
     Phi {
         vars: Vec<usize>,
+        defines: usize,
     },
     Call {
         name: Rc<FunctionName>,
@@ -466,6 +467,13 @@ impl InsType {
     pub fn is_return(&self) -> bool {
         match self {
             InsType::Return(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_phi(&self) -> bool {
+        match self {
+            InsType::Phi { .. } => true,
             _ => false,
         }
     }

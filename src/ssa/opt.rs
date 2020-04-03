@@ -110,7 +110,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         rpo.reverse();
 
         // Calculate the dominators for each block
-        // See https://www.doc.ic.ac.uk/~livshits/classes/CO444H/reading/dom14.pdf for algorithm
+        // Reference: https://www.doc.ic.ac.uk/~livshits/classes/CO444H/reading/dom14.pdf
         let mut doms: BTreeMap<usize, usize> = btreemap![ 0 => 0 ];
         let mut changed = true;
         while changed {
@@ -145,38 +145,15 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         }
 
         // Calculate the dominance tree
-        let mut dom_tree: BTreeMap<usize, Vec<usize>> = btreemap![];
+        let mut dom_tree: Vec<Vec<usize>> = vec![vec![]; num_blocks];
         for (&idx, &dominator) in &doms {
             if idx == dominator {
                 continue;
             }
-            if let Some(vec) = dom_tree.get_mut(&dominator) {
-                vec.push(idx);
-            } else {
-                dom_tree.insert(dominator, vec![idx]);
-            }
+            dom_tree[dominator].push(idx);
         }
 
         dbg_println!("dom_tree: {:#?}", dom_tree);
-
-        // Flatten the dominance tree in DFS order
-        let mut dominance_dfs = vec![];
-        {
-            fn walk(
-                node: usize,
-                dominance_dfs: &mut Vec<usize>,
-                dom_tree: &BTreeMap<usize, Vec<usize>>,
-            ) {
-                dominance_dfs.push(node);
-                if let Some(children) = dom_tree.get(&node) {
-                    for &child in children {
-                        walk(child, dominance_dfs, dom_tree);
-                    }
-                }
-            }
-            walk(0, &mut dominance_dfs, &dom_tree);
-        }
-        dbg_println!("dominance_dfs: {:?}", dominance_dfs);
 
         // Find the dominance frontier for each block
         let mut dom_frontier: Vec<BTreeSet<usize>> = vec![btreeset![]; num_blocks];
@@ -216,9 +193,10 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 for &y in &dom_frontier[n] {
                     if !phi_inserted.contains(&y) {
                         let block = &mut context.blocks[y];
-                        block
-                            .ins
-                            .insert(0, Ins::new(var, InsType::Phi { vars: vec![var] }));
+                        block.ins.insert(0, Ins::new(var, InsType::Phi {
+                            vars: std::iter::repeat(var).take(block.preds.len()).collect(),
+                            defines: var,
+                        }));
                         phi_inserted.insert(y);
                         if !origin[y].contains(&var) {
                             worklist.push(y);
@@ -229,64 +207,88 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
         }
 
         // Rename variables
-        let orig_varlen = context.variables.len();
-        let mut last_defined_at_block: Vec<usize> = vec![0; orig_varlen];
-        for var in 0..orig_varlen {
-            dbg_println!("renaming variable {}", var);
-            let mut did_initial_assignment = false;
-            for last_defined in &mut last_defined_at_block {
-                *last_defined = var;
-            }
-            dbg_println!("rpo: {:#?}", rpo);
-            let typed = context.variables[var].clone();
-            for &node in rpo.iter() {
+        // Reference: https://iith.ac.in/~ramakrishna/fc5264/ssa-intro-construct.pdf
+        fn rename_variables(var: usize,
+                            node: usize,
+                            version: &mut usize,
+                            version_stack: &mut Vec<usize>,
+                            context: &mut Context,
+                            dom_tree: &Vec<Vec<usize>>) {
+            dbg_println!("use node {}", node);
+            let v_e = version_stack.last().unwrap().clone();
+            let mut new_variable_len = context.variables.len();
+            let tmp_succs = {
                 let block = &mut context.blocks[node];
-                let mut last_defined = last_defined_at_block[node];
                 for ins in &mut block.ins {
-                    ins.rename_var(false, var, last_defined);
+                    if !ins.typed.is_phi() {
+                        ins.rename_var(false, var, *version_stack.last().clone().unwrap());
+                    }
                     if let Some(retvar) = ins.mut_retvar() {
                         if *retvar == var {
-                            let old = *retvar;
-                            if !did_initial_assignment {
-                                did_initial_assignment = true;
-                            } else {
-                                context.variables.push(typed.clone());
-                                *retvar = context.variables.len() - 1;
+                            if *version > 1 {
+                                *retvar = new_variable_len;
+                                version_stack.push(new_variable_len);
+                                dbg_println!("new: {:#?}", *retvar);
+                                new_variable_len += 1;
                             }
-                            dbg_println!("changed {} to {}", old, *retvar);
-                            last_defined = *retvar;
+                            *version += 1;
                         }
                     }
                 }
-                last_defined_at_block[node] = last_defined;
-                for &succ in &block.succs {
-                    last_defined_at_block[succ] = last_defined;
+                std::mem::replace(&mut block.succs, vec![])
+            };
+            {
+                let typed = context.variables[var].clone();
+                let curr_len = context.variables.len();
+                for new_var in curr_len..new_variable_len {
+                    context.variables.push(typed.clone());
                 }
             }
-            // Insert vars for phi-node
-            for block in &mut context.blocks {
-                for ins in &mut block.ins {
-                    let retvar = ins.retvar();
+            for &succ in &tmp_succs {
+                // j is predecessor index of node wrt succ
+                let succ_block: &mut Block = &mut context.blocks[succ];
+                let j = succ_block.preds.iter().position(|&pred| pred == node).unwrap();
+                for ins in &mut succ_block.ins {
                     match &mut ins.typed {
-                        InsType::Phi { vars } => {
-                            dbg_println!("{:#?}", vars);
-                            if vars.len() == 1 && vars[0] == var {
-                                let mut v: Vec<usize> = block
-                                    .preds
-                                    .iter()
-                                    .map(|pred| last_defined_at_block[*pred])
-                                    .collect();
-                                let retvar = retvar.unwrap();
-                                v.retain(|var| *var != retvar);
-                                *vars = v;
-                                break;
-                            }
-                        }
+                        InsType::Phi { vars, defines } => if *defines == var {
+                            vars[j] = *version_stack.last().unwrap();
+                            dbg_println!("rename phi {} = {:?}", var, vars);
+                        },
                         _ => (),
                     }
                 }
             }
-            dbg_println!("{} ==> {:#?}", var, context);
+            {
+                let block = &mut context.blocks[node];
+                block.succs = tmp_succs;
+            }
+            for &dominated in &dom_tree[node] {
+                rename_variables(
+                    var,
+                    dominated,
+                    version,
+                    version_stack,
+                    context,
+                    dom_tree
+                );
+            }
+            while *version_stack.last().unwrap() != v_e {
+                version_stack.pop();
+            }
+        }
+        let old_len = context.variables.len();
+        for var in 0..old_len {
+            let mut version_stack = vec![ 0 ];
+            let mut version = 1;
+            rename_variables(
+                var,
+                0,
+                &mut version,
+                &mut version_stack,
+                context,
+                &dom_tree
+            );
+            dbg_println!("rename var {} ==> {:#?}", var, context);
         }
     } else {
         let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
@@ -514,13 +516,17 @@ pub fn separate_postlude(context: &mut Context) -> Flow {
 }
 
 pub fn eliminate_phi(context: &mut Context) -> Flow {
+    if context.blocks.len() < 2 {
+        return Flow::Continue;
+    }
+
     dbg_println!("before phis: {:#?}", context);
     let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for block in &context.blocks {
         for ins in &block.ins {
             let retvar = ins.retvar();
             match &ins.typed {
-                InsType::Phi { vars } => {
+                InsType::Phi { vars, .. } => {
                     let retvar = retvar.unwrap();
                     for var in vars {
                         if let Some(vec) = replacements.get_mut(var) {
