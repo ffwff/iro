@@ -93,7 +93,7 @@ ReturnExpr: NodeBox = {
 
 // Let expression
 LetExpr: NodeBox = {
-    "let" <left:Term> "=" <right:StandaloneExpr> => {
+    <left:Term> ":" "=" <right:StandaloneExpr> => {
         NodeBox::new(LetExpr{ left, right })
     },
     BinExpr,
@@ -229,7 +229,6 @@ extern {
     enum lexer::Tok {
         "def" => lexer::Tok::Def,
         "return" => lexer::Tok::Return,
-        "let" => lexer::Tok::Let,
         "if" => lexer::Tok::If,
         "while" => lexer::Tok::While,
         "else" => lexer::Tok::Else,

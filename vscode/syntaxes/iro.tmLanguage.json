@@ -4,15 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.control.iro",
-			"match": "\\b(def|return|while|if|else|unsafe|end)\\b"
-		},
-		{
-			"name": "keyword.operator",
-			"match": "\\b(and|or)\\b"
-		},
-		{
-			"name": "keyword.other.iro",
-			"match": "\\b(let)\\b"
+			"match": "\\b(def|return|while|if|elsif|else|unsafe|end)\\b"
 		},
 		{
 			"name": "storage.type.built-in.primitive.iro",
@@ -24,7 +16,7 @@
 		},
 		{
 			"name": "keyword.operator.iro",
-			"match": "\\!=|[\\%\\+\\-\\*/\\<\\>\\=]=?|,|:|\\[|\\]"
+			"match": "==|\\!=|[\\+\\-\\*/\\<\\>]=?|,|:|\\[|\\]|\\b(and|or)\\b"
 		},
 		{
 			"name": "meta.attribute.iro",

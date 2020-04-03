@@ -22,7 +22,7 @@ fn while_loop() {
     def record(n: I32): Nil
     end
 
-    let i = 0
+    i := 0
     while i < 10
         i += 1
     end
@@ -50,7 +50,7 @@ fn while_loop_set() {
     def record(n: I32): Nil
     end
 
-    let i = 0
+    i := 0
     while i < 10
         record(i)
         i += 1
@@ -81,9 +81,9 @@ fn while_loop_nested() {
     def record(i: I32, j: I32): Nil
     end
 
-    let i = 0
+    i := 0
     while i < 10
-        let j = 0
+        j := 0
         while j < 5
             record(i, j)
             j += 1
@@ -123,10 +123,10 @@ fn while_loop_nested_x() {
     def record(i: I32, j: I32, x: I32): Nil
     end
 
-    let i = 0
-    let x = 0
+    i := 0
+    x := 0
     while i < 10
-        let j = 0
+        j := 0
         while j < 5
             x += 1
             record(i, j, x)
@@ -164,10 +164,10 @@ fn while_loop_nested_post_x() {
     def record(x: I32): Nil
     end
 
-    let i = 0
-    let x = 0
+    i := 0
+    x := 0
     while i < 10
-        let j = 0
+        j := 0
         while j < 5
             x += 1
             j += 1
@@ -236,8 +236,8 @@ fn while_loop_nested_with_if() {
     def record(x: I32): Nil
     end
 
-    let i = 0
-    let x = 0
+    i := 0
+    x := 0
     while i < 10
         if i < 5
             x += 1

@@ -240,7 +240,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
             {
                 let typed = context.variables[var].clone();
                 let curr_len = context.variables.len();
-                for new_var in curr_len..new_variable_len {
+                for _ in curr_len..new_variable_len {
                     context.variables.push(typed.clone());
                 }
             }

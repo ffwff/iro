@@ -260,7 +260,8 @@ where
                         .expect("able to create data for string");
                     let mut data_ctx = DataContext::new();
                     data_ctx.define(bytes_vec.into_boxed_slice());
-                    self.module.define_data(data_id, &data_ctx);
+                    self.module.define_data(data_id, &data_ctx)
+                        .expect("able to define data for string");
                     data_id
                 };
                 let value = self.module.declare_data_in_func(data_id, &mut builder.func);
