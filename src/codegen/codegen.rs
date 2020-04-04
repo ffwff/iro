@@ -66,7 +66,7 @@ macro_rules! generate_arithmetic {
 }
 
 struct VarStructData {
-    pub symbol_value: Value,
+    pub pointer: Value,
     pub struct_data: Rc<StructData>,
 }
 
@@ -312,11 +312,11 @@ where
                     data_id
                 };
                 let value = self.module.declare_data_in_func(data_id, &mut builder.func);
-                let symbol_value = builder.ins().symbol_value(self.pointer_type(), value);
+                let pointer = builder.ins().symbol_value(self.pointer_type(), value);
                 var_to_var_struct_data.insert(
                     ins.retvar().unwrap(),
                     VarStructData {
-                        symbol_value,
+                        pointer,
                         struct_data: program.substring_struct.clone(),
                     },
                 );
@@ -504,7 +504,7 @@ where
                 let tmp = builder.ins().load(
                     self.ir_to_cranelift_type(&field_data.typed).unwrap(),
                     MemFlags::trusted(),
-                    var_struct_data.symbol_value,
+                    var_struct_data.pointer,
                     field_data.offset as i32,
                 );
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);

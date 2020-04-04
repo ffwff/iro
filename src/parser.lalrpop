@@ -274,7 +274,22 @@ Literal: Value = {
 
 // Types
 Type: TypeId = {
-    <Identifier> => TypeId::new(TypeIdData::Identifier(Rc::from(<>))),
+    <data:TypePointer> => TypeId::new(data),
+};
+
+TypePointer: TypeIdData = {
+    <refs:AmpFollow+> <first:TypeIdentifier> => {
+        let mut type_id = first.clone();
+        for _ in refs {
+            type_id = TypeIdData::Pointer(Box::new(TypeId::new(type_id)));
+        }
+        type_id
+    },
+    TypeIdentifier,
+};
+
+TypeIdentifier: TypeIdData = {
+    <Identifier> => TypeIdData::Identifier(Rc::from(<>)),
 };
 
 TypeSpecifier: TypeId = {
@@ -322,6 +337,7 @@ extern {
         "," => lexer::Tok::Comma,
         "." => lexer::Tok::Dot,
         ":" => lexer::Tok::Colon,
+        AmpFollow => lexer::Tok::AmpFollow,
         "@" => lexer::Tok::At,
         "@[" => lexer::Tok::AtBracket,
         "[" => lexer::Tok::LeftBracket,

@@ -147,7 +147,7 @@ impl Node for Value {
     visitable!(visit_value);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeId {
     pub data: TypeIdData,
     pub typed: RefCell<Option<Type>>,
@@ -167,9 +167,10 @@ impl TypeId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeIdData {
     Identifier(Rc<str>),
+    Pointer(Box<TypeId>),
 }
 
 #[derive(Debug)]

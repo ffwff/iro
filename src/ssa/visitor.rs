@@ -87,7 +87,7 @@ impl<'a> SSAVisitor<'a> {
         Self {
             context: Context::new(Rc::from("main")),
             envs: vec![],
-            top_level: top_level,
+            top_level,
             has_direct_return: false,
         }
     }
@@ -96,7 +96,7 @@ impl<'a> SSAVisitor<'a> {
         Self {
             context,
             envs: vec![],
-            top_level: top_level,
+            top_level,
             has_direct_return: false,
         }
     }
@@ -915,6 +915,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 } else {
                     Err(Error::UnknownType(id.clone()))
                 }
+            }
+            TypeIdData::Pointer(internal) => {
+                self.visit_typeid(&internal)?;
+                let top_level: &TopLevelInfo = &self.top_level.borrow();
+                n.typed.replace(top_level.pointer_type.ptr_for(internal.typed.borrow().clone().unwrap()));
+                Ok(())
             }
         }
     }
