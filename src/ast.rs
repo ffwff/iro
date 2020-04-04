@@ -48,6 +48,7 @@ pub trait Visitor {
     fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult;
     fn visit_letexpr(&mut self, n: &LetExpr) -> VisitorResult;
     fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult;
+    fn visit_asexpr(&mut self, n: &AsExpr) -> VisitorResult;
     fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult;
     fn visit_value(&mut self, n: &Value) -> VisitorResult;
     fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult;
@@ -285,7 +286,7 @@ impl DefStatement {
             if let Some(maybe_declared_rc) = declared_typed.as_ref() {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
                 if let Some(declared_typed) = maybe_declared {
-                    if typed.can_cast_to(declared_typed) {
+                    if typed.can_implicit_cast_to(declared_typed) {
                         casts.push((idx, declared_typed.clone()));
                     } else if *declared_typed != *typed {
                         return ArgCompatibility::None;
@@ -322,15 +323,32 @@ impl Node for ReturnExpr {
     visitable!(visit_return);
 }
 
+#[derive(Debug, Clone)]
+pub enum MemberExprArm {
+    Identifier(Rc<str>),
+    Index(usize),
+}
+
 #[derive(Debug)]
 pub struct MemberExpr {
     pub left: NodeBox,
-    pub right: Rc<str>,
+    pub right: MemberExprArm,
 }
 
 impl Node for MemberExpr {
     debuggable!();
     visitable!(visit_member_expr);
+}
+
+#[derive(Debug)]
+pub struct AsExpr {
+    pub left: NodeBox,
+    pub typed: TypeId,
+}
+
+impl Node for AsExpr {
+    debuggable!();
+    visitable!(visit_asexpr);
 }
 
 #[derive(Debug)]

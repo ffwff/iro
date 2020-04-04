@@ -138,7 +138,7 @@ AndExpr = BinOpTier<AndOp, OrzExpr>;
 OrzExpr = BinOpTier<OrzOp, CmpExpr>;
 CmpExpr = BinOpTier<CmpOp, AddExpr>;
 AddExpr = BinOpTier<AddOp, FacExpr>;
-FacExpr = BinOpTier<FacOp, WhileExpr>;
+FacExpr = BinOpTier<FacOp, AsExpr>;
 
 AsgOp: BinOp = {
     "=" => BinOp::Asg,
@@ -175,6 +175,17 @@ FacOp: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
     "%" => BinOp::Mod,
+};
+
+// As cast expression
+AsExpr: NodeBox = {
+    <left:WhileExpr> "as" <typed:Type> => {
+        NodeBox::new(AsExpr {
+            left,
+            typed
+        })
+    },
+    WhileExpr,
 };
 
 // While expression
@@ -226,20 +237,26 @@ CallExpr: NodeBox = {
 
 // Member expressions
 MemberExpr: NodeBox = {
-    <first:Term> <rest: ("." <Identifier>)+> => {
+    <first:Term> <rest: MemberExprArm+> => {
         let mut memexpr = NodeBox::new(MemberExpr {
             left: first,
-            right: Rc::from(rest[0].clone()),
+            right: rest[0].clone(),
         });
         for right in rest.iter().skip(1) {
             memexpr = NodeBox::new(MemberExpr {
                 left: memexpr,
-                right: Rc::from(right.clone()),
+                right: right.clone(),
             });
         }
         memexpr
     },
     Term,
+};
+
+MemberExprArm: MemberExprArm = {
+    "." <id:Identifier> => MemberExprArm::Identifier(Rc::from(id)),
+    "[" <idx:I32> "]" => MemberExprArm::Index(idx as usize),
+    "[" <idx:I64> "]" => MemberExprArm::Index(idx as usize),
 };
 
 // Literals / terms
@@ -283,6 +300,7 @@ extern {
         "end" => lexer::Tok::End,
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
+        "as" => lexer::Tok::As,
         "==" => lexer::Tok::Equ,
         "!=" => lexer::Tok::Neq,
         "+" => lexer::Tok::Add,

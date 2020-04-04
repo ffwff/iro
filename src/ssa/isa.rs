@@ -565,9 +565,18 @@ impl Type {
         }
     }
 
-    pub fn can_cast_to(&self, other: &Type) -> bool {
+    pub fn can_implicit_cast_to(&self, other: &Type) -> bool {
         match (self, other) {
             (Type::I32, Type::I64) => true,
+            _ => false,
+        }
+    }
+
+    pub fn can_explicit_cast_to(&self, other: &Type) -> bool {
+        match (self, other) {
+            (Type::I32, Type::I64) => true,
+            (Type::I32Ptr(_), Type::I32) => true,
+            (Type::I64Ptr(_), Type::I64) => true,
             _ => false,
         }
     }

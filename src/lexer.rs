@@ -16,6 +16,7 @@ pub enum Tok {
     End,
     And,
     Or,
+    As,
     Equ,
     Neq,
     Add,
@@ -231,6 +232,7 @@ impl<'input> Iterator for Lexer<'input> {
                         "end" => Tok::End,
                         "and" => Tok::And,
                         "or" => Tok::Or,
+                        "as" => Tok::As,
                         _ => Tok::Identifier { value: string },
                     };
                     return Some(Ok((idx0, value, idx1)));

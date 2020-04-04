@@ -508,6 +508,15 @@ where
                 );
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::Cast { var, typed } => {
+                let tmp = match (&context.variables[*var], typed) {
+                    (isa::Type::I64Ptr(_), isa::Type::I64) => {
+                        builder.use_var(to_var(*var))
+                    }
+                    _ => unreachable!()
+                };
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            },
             x => unimplemented!("{:?}", x),
         }
     }

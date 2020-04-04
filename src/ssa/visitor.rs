@@ -38,11 +38,12 @@ impl TopLevelInfo {
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
-            pointer_type: pointer_type,
+            pointer_type: pointer_type.clone(),
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
                 Rc::from("I32") => Type::I32,
                 Rc::from("I64") => Type::I64,
+                Rc::from("ISize") => pointer_type,
                 Rc::from("F64") => Type::F64,
                 Rc::from("Substring") => Type::Substring,
             ],
@@ -742,7 +743,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let left = self.last_retvar().unwrap();
                 n.right.visit(self)?;
                 let mut right = self.last_retvar().unwrap();
-                if self.context.variables[right].can_cast_to(&self.context.variables[left]) {
+                if self.context.variables[right].can_implicit_cast_to(&self.context.variables[left]) {
                     let typed = RefCell::new(Some(self.context.variables[left].clone()));
                     let retvar = self
                         .context
@@ -786,26 +787,50 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
     }
 
-    fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult {
+    fn visit_asexpr(&mut self, n: &AsExpr) -> VisitorResult {
         n.left.visit(self)?;
-        let leftvar = self.last_retvar().unwrap();
-        let mut retvar = None;
-        if self.context.variables[leftvar].clone() == Type::Substring {
-            let top_level = self.top_level.borrow();
-            let substring_struct = top_level.substring_struct.as_ref().unwrap();
-            if let Some(var_data) = substring_struct.values().get(&n.right) {
-                retvar = Some(self.context.insert_var(var_data.typed.clone()));
-            }
-        }
-        self.with_block_mut(|block| {
+        let retvar = self.last_retvar().unwrap();
+        n.typed.visit(self)?;
+        let rettype = n.typed.typed.borrow().clone().unwrap();
+        let new_retvar = self.context.insert_var(rettype.clone());
+        let rettype = RefCell::new(Some(rettype));
+        self.with_block_mut(move |block| {
             block.ins.push(Ins::new(
-                retvar.unwrap(),
-                InsType::MemberReference {
-                    left: leftvar,
-                    right: n.right.clone(),
+                new_retvar,
+                InsType::Cast {
+                    var: retvar,
+                    typed: rettype.replace(None).unwrap(),
                 },
             ));
         });
+        Ok(())
+    }
+
+    fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult {
+        n.left.visit(self)?;
+        let leftvar = self.last_retvar().unwrap();
+        match &n.right {
+            MemberExprArm::Identifier(string) => {
+                let mut retvar = None;
+                if self.context.variables[leftvar].clone() == Type::Substring {
+                    let top_level = self.top_level.borrow();
+                    let substring_struct = top_level.substring_struct.as_ref().unwrap();
+                    if let Some(var_data) = substring_struct.values().get(string) {
+                        retvar = Some(self.context.insert_var(var_data.typed.clone()));
+                    }
+                }
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(
+                        retvar.unwrap(),
+                        InsType::MemberReference {
+                            left: leftvar,
+                            right: string.clone(),
+                        },
+                    ));
+                });
+            },
+            MemberExprArm::Index(idx) => unimplemented!()
+        }
         Ok(())
     }
 
@@ -861,7 +886,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
         match &n.data {
             TypeIdData::Identifier(id) => {
                 let top_level = self.top_level.borrow();
-                if let Some(typed) = top_level.types.get(id) {
+                if n.typed.borrow().is_some() {
+                    Ok(())
+                } else if let Some(typed) = top_level.types.get(id) {
                     n.typed.replace(Some(typed.clone()));
                     Ok(())
                 } else {
