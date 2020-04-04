@@ -266,22 +266,35 @@ pub struct DefStatement {
     pub intrinsic: RefCell<IntrinsicType>,
 }
 
+pub enum ArgCompatibility {
+    None,
+    WithCast(Vec<(usize, Type)>),
+    Full,
+}
+
 impl DefStatement {
-    pub fn is_compatible_with_args(&self, arg_types: &Vec<Type>) -> bool {
+    pub fn compatibility_with_args(&self, arg_types: &Vec<Type>) -> ArgCompatibility {
         if self.args.len() != arg_types.len() {
-            return false;
+            return ArgCompatibility::None;
         }
-        for ((_, declared_typed), typed) in self.args.iter().zip(arg_types.iter()) {
+        let mut casts = vec![];
+        for (idx, ((_, declared_typed), typed)) in self.args.iter().zip(arg_types.iter()).enumerate() {
             if let Some(maybe_declared_rc) = declared_typed.as_ref() {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
                 if let Some(declared_typed) = maybe_declared {
-                    if *declared_typed != *typed {
-                        return false;
+                    if typed.can_cast_to(declared_typed) {
+                        casts.push((idx, declared_typed.clone()));
+                    } else if *declared_typed != *typed {
+                        return ArgCompatibility::None;
                     }
                 }
             }
         }
-        true
+        if casts.is_empty() {
+            ArgCompatibility::Full
+        } else {
+            ArgCompatibility::WithCast(casts)
+        }
     }
 }
 
