@@ -1,6 +1,7 @@
 use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
+use iro::ssa::visitor::TopLevelArch;
 use iro::utils;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -182,6 +183,7 @@ fn while_expr_type() {
     end
     f(10)
     ",
+        TopLevelArch::empty(),
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
@@ -205,6 +207,7 @@ fn while_expr_nil() {
     end
     f(10)
     ",
+        TopLevelArch::empty(),
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);

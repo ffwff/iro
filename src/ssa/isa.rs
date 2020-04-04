@@ -1,3 +1,4 @@
+use crate::codegen::structs::*;
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
@@ -162,6 +163,10 @@ impl Ins {
             }
             InsType::Return(x) => InsType::Return(swap(x)),
             InsType::Phi { .. } => unreachable!(),
+            InsType::MemberReference { left, right } => InsType::MemberReference {
+                left: swap(left),
+                right,
+            },
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
             InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
@@ -222,6 +227,9 @@ impl Ins {
                 for arg in vars {
                     callback(*arg);
                 }
+            }
+            InsType::MemberReference { left, .. } => {
+                callback(*left);
             }
             InsType::Add((x, y))
             | InsType::Sub((x, y))
@@ -361,6 +369,7 @@ pub enum InsType {
     LoadI64(i64),
     LoadF64(u64),
     LoadSubstring(Rc<str>),
+    MemberReference { left: usize, right: Rc<str> },
     Phi {
         vars: Vec<usize>,
         defines: usize,
@@ -499,6 +508,7 @@ impl ToString for FunctionName {
 pub struct Program {
     pub contexts: HashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
+    pub substring_struct: Rc<StructData>,
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -562,6 +572,23 @@ impl Type {
     pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
         match self {
             Type::Union(set) => Some(set.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn int_from_bits(bits: usize) -> Option<Self> {
+        match bits {
+            32 => Some(Type::I32),
+            64 => Some(Type::I64),
+            _ => None,
+        }
+    }
+
+    pub fn bytes(&self) -> Option<usize> {
+        match self {
+            Type::I32 => Some(4),
+            Type::I64 => Some(8),
+            Type::F64 => Some(8),
             _ => None,
         }
     }

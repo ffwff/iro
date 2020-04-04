@@ -48,6 +48,7 @@ pub trait Visitor {
     fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult;
     fn visit_letexpr(&mut self, n: &LetExpr) -> VisitorResult;
     fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult;
+    fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult;
     fn visit_value(&mut self, n: &Value) -> VisitorResult;
     fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult;
 }
@@ -317,6 +318,17 @@ pub struct ReturnExpr {
 impl Node for ReturnExpr {
     debuggable!();
     visitable!(visit_return);
+}
+
+#[derive(Debug)]
+pub struct MemberExpr {
+    pub left: NodeBox,
+    pub right: Rc<str>,
+}
+
+impl Node for MemberExpr {
+    debuggable!();
+    visitable!(visit_member_expr);
 }
 
 #[derive(Debug)]

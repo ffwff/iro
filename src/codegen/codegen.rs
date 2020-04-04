@@ -1,11 +1,12 @@
 use crate::runtime::Runtime;
 use crate::ssa::isa;
+use crate::ssa::visitor::TopLevelArch;
+use crate::codegen::structs::*;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, Value};
-use cranelift_codegen::ir::types;
-use cranelift_codegen::ir::{AbiParam, InstBuilder};
+use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlags, types};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
@@ -14,7 +15,7 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::rc::Rc;
 
 fn to_var(x: usize) -> Variable {
@@ -64,53 +65,9 @@ macro_rules! generate_arithmetic {
     }};
 }
 
-/// Struct builder
-pub struct StructBuilder {
-    offset: u32,
-    data: Vec<u8>,
-    pointer_size: usize,
-}
-
-impl StructBuilder {
-    pub fn new(pointer_type: types::Type) -> Self {
-        StructBuilder {
-            offset: 0,
-            data: vec![],
-            pointer_size: if pointer_type == types::I64 {
-                8
-            } else {
-                4
-            }
-        }
-    }
-
-    pub fn into_vec(mut self) -> Vec<u8> {
-        self.data
-    }
-
-    pub fn append_u32(&mut self, data: u32) -> usize {
-        let offset = self.data.len();
-        for &byte in &data.to_ne_bytes() {
-            self.data.push(byte);
-        }
-        offset
-    }
-
-    pub fn append_u64(&mut self, data: u64) -> usize {
-        let offset = self.data.len();
-        for &byte in &data.to_ne_bytes() {
-            self.data.push(byte);
-        }
-        offset
-    }
-
-    pub fn append_ptr(&mut self) -> usize {
-        match self.pointer_size {
-            4 => self.append_u32(0),
-            8 => self.append_u64(0),
-            _ => unreachable!(),
-        }
-    }
+struct VarStructData {
+    pub symbol_value: Value,
+    pub struct_data: Rc<StructData>,
 }
 
 /// Code generator
@@ -147,7 +104,7 @@ where
                 continue;
             }
             let mut fctx = self.module.make_context();
-            self.visit_context(&context, &mut builder_context, &mut fctx);
+            self.visit_context(&context, &program, &mut builder_context, &mut fctx);
             let id = self
                 .module
                 .declare_function(&func_name.to_string(), Linkage::Local, &fctx.func.signature)
@@ -167,15 +124,14 @@ where
         self.module.isa().pointer_type()
     }
 
-    fn ir_to_cranelift_type(&self, typed: &isa::Type) -> types::Type {
+    fn ir_to_cranelift_type(&self, typed: &isa::Type) -> Option<types::Type> {
         match typed {
-            isa::Type::Nil => types::I32,
-            isa::Type::Bool => types::B1,
-            isa::Type::I32 => types::I32,
-            isa::Type::I64 => types::I64,
-            isa::Type::F64 => types::F64,
-            isa::Type::Substring => self.pointer_type(),
-            _ => unreachable!(),
+            isa::Type::Nil  => Some(types::I32),
+            isa::Type::Bool => Some(types::B1),
+            isa::Type::I32  => Some(types::I32),
+            isa::Type::I64  => Some(types::I64),
+            isa::Type::F64  => Some(types::F64),
+            _ => None,
         }
     }
 
@@ -221,6 +177,7 @@ where
     fn visit_context(
         &mut self,
         context: &isa::Context,
+        program: &isa::Program,
         builder_context: &mut FunctionBuilderContext,
         fctx: &mut Context,
     ) {
@@ -228,13 +185,13 @@ where
             fctx.func
                 .signature
                 .params
-                .push(AbiParam::new(self.ir_to_cranelift_type(&arg)));
+                .push(AbiParam::new(self.ir_to_cranelift_type(&arg).unwrap()));
         }
         if context.rettype != isa::Type::NoReturn {
             fctx.func
                 .signature
                 .returns
-                .push(AbiParam::new(self.ir_to_cranelift_type(&context.rettype)));
+                .push(AbiParam::new(self.ir_to_cranelift_type(&context.rettype).unwrap()));
         }
 
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
@@ -243,26 +200,31 @@ where
             .collect();
 
         for (idx, arg) in context.args.iter().enumerate() {
-            builder.declare_var(
-                Variable::with_u32(idx as u32),
-                self.ir_to_cranelift_type(&arg),
-            );
+            if let Some(typed) = self.ir_to_cranelift_type(&arg) {
+                builder.declare_var(Variable::with_u32(idx as u32), typed);
+            }
         }
         builder.append_block_params_for_function_params(blocks[0]);
 
         for (idx, typed) in context.variables.iter().enumerate() {
-            if typed != &isa::Type::NeverUsed {
-                builder.declare_var(
-                    Variable::with_u32(idx as u32),
-                    self.ir_to_cranelift_type(&typed),
-                );
+            if let Some(typed) = self.ir_to_cranelift_type(&typed) {
+                builder.declare_var(Variable::with_u32(idx as u32), typed);
             }
         }
 
+        let mut var_to_var_struct_data = BTreeMap::new();
         for (cblock, &bblock) in context.blocks.iter().zip(blocks.iter()) {
             builder.switch_to_block(bblock);
             for ins in &cblock.ins {
-                self.visit_ins(&ins, &context, bblock, &blocks, &mut builder);
+                self.visit_ins(
+                    &ins,
+                    &context,
+                    &program,
+                    bblock,
+                    &blocks,
+                    &mut builder,
+                    &mut var_to_var_struct_data
+                );
             }
         }
         builder.seal_all_blocks();
@@ -281,9 +243,11 @@ where
         &mut self,
         ins: &isa::Ins,
         context: &isa::Context,
+        program: &isa::Program,
         bblock: Block,
         bblocks: &Vec<Block>,
         builder: &mut FunctionBuilder,
+        var_to_var_struct_data: &mut BTreeMap<usize, VarStructData>,
     ) {
         match &ins.typed {
             isa::InsType::Nop => (),
@@ -333,9 +297,9 @@ where
                         .expect("able to create data for string");                    
                     let mut data_ctx = DataContext::new();
                     let bytes_value = self.module.declare_data_in_data(bytes_data_id, &mut data_ctx);
-                    let mut struct_builder = StructBuilder::new(self.pointer_type());
-                    let ptr_offset = struct_builder.append_ptr();
-                    struct_builder.append_u32(x.len() as u32);
+                    let mut struct_builder = StructBuilder::new(&program.substring_struct);
+                    let ptr_offset = struct_builder.insert_zeroed("ptr").unwrap();
+                    struct_builder.insert("len", &(x.len() as u32).to_ne_bytes()).unwrap();
                     data_ctx.define(struct_builder.into_vec().into_boxed_slice());
                     data_ctx.write_data_addr(ptr_offset as u32, bytes_value, 0);
                     self.module
@@ -344,8 +308,11 @@ where
                     data_id
                 };
                 let value = self.module.declare_data_in_func(data_id, &mut builder.func);
-                let tmp = builder.ins().symbol_value(self.pointer_type(), value);
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                let symbol_value = builder.ins().symbol_value(self.pointer_type(), value);
+                var_to_var_struct_data.insert(ins.retvar().unwrap(), VarStructData {
+                    symbol_value,
+                    struct_data: program.substring_struct.clone(),
+                });
             }
             isa::InsType::LoadF64(x) => {
                 let tmp = builder.ins().f64const(*x);
@@ -358,12 +325,12 @@ where
                     let name: &isa::FunctionName = name;
                     for arg in &name.arg_types {
                         sig.params
-                            .push(AbiParam::new(self.ir_to_cranelift_type(&arg)));
+                            .push(AbiParam::new(self.ir_to_cranelift_type(&arg).unwrap()));
                     }
                 }
                 if *rettype != isa::Type::NoReturn {
                     sig.returns
-                        .push(AbiParam::new(self.ir_to_cranelift_type(&rettype)));
+                        .push(AbiParam::new(self.ir_to_cranelift_type(&rettype).unwrap()));
                 }
 
                 let callee = if let Some(mapping) = self.extern_mapping.get(&name.clone()) {
@@ -517,6 +484,24 @@ where
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::MemberReference { left, right } => {
+                use std::borrow::Borrow;
+                let struct_data_rc = if context.variables[*left] == isa::Type::Substring {
+                    program.substring_struct.clone()
+                } else {
+                    unimplemented!()
+                };
+                let struct_data: &StructData = struct_data_rc.borrow();
+                let field_data = struct_data.values().get(right).unwrap();
+                let var_struct_data = var_to_var_struct_data.get(&left).unwrap();
+                let tmp = builder.ins().load(
+                    self.ir_to_cranelift_type(&field_data.typed).unwrap(),
+                    MemFlags::trusted(),
+                    var_struct_data.symbol_value,
+                    field_data.offset as i32,
+                );
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
             x => unimplemented!("{:?}", x),
         }
     }
@@ -540,7 +525,7 @@ impl Settings {
         }
     }
 
-    pub fn to_isa(&self) -> Box<dyn TargetIsa> {
+    pub fn generate_arch(&self) -> (TopLevelArch, Box<dyn TargetIsa>) {
         let mut flag_builder = settings::builder();
         match self.opt_level {
             OptLevel::None => flag_builder.set("opt_level", "none"),
@@ -551,14 +536,18 @@ impl Settings {
         let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
             panic!("host machine is not supported: {}", msg);
         });
-        isa_builder.finish(settings::Flags::new(flag_builder))
+        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
+        let arch = TopLevelArch {
+            pointer_bits: isa.pointer_type().bits() as usize,
+        };
+        (arch, isa)
     }
 }
 
 /// Simple JIT Backend
 impl Codegen<SimpleJITBackend> {
     pub fn process_jit(
-        _settings: Settings,
+        isa: Box<dyn TargetIsa>,
         program: &isa::Program,
         runtime: &Runtime,
     ) -> Module<SimpleJITBackend> {
@@ -578,8 +567,7 @@ impl Codegen<SimpleJITBackend> {
 
 /// Object generation backend
 impl Codegen<ObjectBackend> {
-    pub fn process_object(settings: Settings, program: &isa::Program) -> Module<ObjectBackend> {
-        let isa = settings.to_isa();
+    pub fn process_object(isa: Box<dyn TargetIsa>, program: &isa::Program) -> Module<ObjectBackend> {
         let builder = ObjectBuilder::new(isa, "main.o", cranelift_module::default_libcall_names());
         let codegen = Codegen::from_builder(builder);
         codegen.process(program, true)

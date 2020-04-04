@@ -1,6 +1,7 @@
 use iro::codegen::codegen::Settings;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
+use iro::ssa::visitor::TopLevelArch;
 use iro::utils;
 use std::collections::BTreeSet;
 use std::rc::Rc;
@@ -77,13 +78,14 @@ fn if_expr_unify() {
         "
     def f(x)
         return if x > 10
-            0
+            0i32
         else
-            \"ABC\"
+            0i64
         end
     end
     f(10)
     ",
+        TopLevelArch::empty(),
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
@@ -96,7 +98,7 @@ fn if_expr_unify() {
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
     let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::Substring]);
+    assert_eq!(set, &btreeset![Type::I32, Type::I64]);
 }
 
 #[test]
@@ -110,6 +112,7 @@ fn if_expr_unify_true_branch() {
     end
     f(10)
     ",
+        TopLevelArch::empty(),
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);
@@ -137,6 +140,7 @@ fn if_expr_unify_false_branch() {
     end
     f(10)
     ",
+        TopLevelArch::empty(),
     )
     .expect("able to parse_to_ssa");
     println!("{:#?}", program.contexts);

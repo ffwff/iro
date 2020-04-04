@@ -218,8 +218,26 @@ IfExprElse: Vec<NodeBox> = "else" NL+ <Expr*>;
 
 // Call expression
 CallExpr: NodeBox = {
-    <callee:Term> "(" <args:Comma<StandaloneExpr>> ")" => {
+    <callee:MemberExpr> "(" <args:Comma<StandaloneExpr>> ")" => {
         NodeBox::new(CallExpr::new(callee, args))
+    },
+    MemberExpr,
+};
+
+// Member expressions
+MemberExpr: NodeBox = {
+    <first:Term> <rest: ("." <Identifier>)+> => {
+        let mut memexpr = NodeBox::new(MemberExpr {
+            left: first,
+            right: Rc::from(rest[0].clone()),
+        });
+        for right in rest.iter().skip(1) {
+            memexpr = NodeBox::new(MemberExpr {
+                left: memexpr,
+                right: Rc::from(right.clone()),
+            });
+        }
+        memexpr
     },
     Term,
 };
@@ -285,6 +303,7 @@ extern {
         "(" => lexer::Tok::LeftParen,
         ")" => lexer::Tok::RightParen,
         "," => lexer::Tok::Comma,
+        "." => lexer::Tok::Dot,
         ":" => lexer::Tok::Colon,
         "@" => lexer::Tok::At,
         "@[" => lexer::Tok::AtBracket,

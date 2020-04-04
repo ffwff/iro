@@ -3,23 +3,44 @@ use crate::ast::*;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
+use crate::codegen::structs::*;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
+pub struct TopLevelArch {
+    pub pointer_bits: usize,
+}
+
+impl TopLevelArch {
+    pub fn empty() -> Self {
+        TopLevelArch {
+            pointer_bits: 32,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<Rc<DefStatement>>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
+    pub pointer_type: Type,
+    pub substring_struct: Option<Rc<StructData>>,
 }
 
 impl TopLevelInfo {
-    pub fn new() -> Self {
+    pub fn new(arch: TopLevelArch) -> Self {
+        let pointer_type = Type::int_from_bits(arch.pointer_bits).unwrap();
+        let mut substring_struct = StructData::new();
+        substring_struct.append_type(Rc::from("ptr"), pointer_type.clone());
+        substring_struct.append_type(Rc::from("len"), Type::I32);
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
+            pointer_type: pointer_type,
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
                 Rc::from("I32") => Type::I32,
@@ -27,6 +48,7 @@ impl TopLevelInfo {
                 Rc::from("F64") => Type::F64,
                 Rc::from("Substring") => Type::Substring,
             ],
+            substring_struct: Some(Rc::new(substring_struct)),
         }
     }
 
@@ -34,7 +56,9 @@ impl TopLevelInfo {
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
+            pointer_type: Type::Nil,
             types: HashMap::new(),
+            substring_struct: None,
         }
     }
 }
@@ -96,6 +120,7 @@ impl<'a> SSAVisitor<'a> {
                 .map(|(key, value)| (key, value.unwrap()))
                 .collect(),
             entry,
+            substring_struct: top_level.substring_struct.unwrap(),
         }
     }
 
@@ -761,6 +786,26 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
         }
+    }
+
+    fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult {
+        n.left.visit(self)?;
+        let mut leftvar = self.last_retvar().unwrap();
+        let mut retvar = None;
+        if self.context.variables[leftvar].clone() == Type::Substring {
+            let top_level = self.top_level.borrow();
+            let substring_struct = top_level.substring_struct.as_ref().unwrap();
+            if let Some(var_data) = substring_struct.values().get(&n.right) {
+                retvar = Some(self.context.insert_var(var_data.typed.clone()));
+            }
+        }
+        self.with_block_mut(|block| {
+            block.ins.push(Ins::new(retvar.unwrap(), InsType::MemberReference {
+                left: leftvar,
+                right: n.right.clone(),
+            }));
+        });
+        Ok(())
     }
 
     fn visit_value(&mut self, n: &Value) -> VisitorResult {
