@@ -26,7 +26,7 @@ fn const_to_value(builder: &mut FunctionBuilder, c: &isa::Constant) -> Value {
     match c {
         isa::Constant::I32(x) => builder.ins().iconst(types::I32, *x as i64),
         isa::Constant::I64(x) => builder.ins().iconst(types::I64, *x),
-        isa::Constant::F64(_x) => unimplemented!(),
+        isa::Constant::F64(x) => builder.ins().f64const(*x),
     }
 }
 
@@ -128,8 +128,8 @@ where
         match typed {
             isa::Type::Nil => Some(types::I32),
             isa::Type::Bool => Some(types::B1),
-            isa::Type::I32 => Some(types::I32),
-            isa::Type::I64 => Some(types::I64),
+            isa::Type::I32 | isa::Type::I32Ptr(_) => Some(types::I32),
+            isa::Type::I64 | isa::Type::I64Ptr(_) => Some(types::I64),
             isa::Type::F64 => Some(types::F64),
             _ => None,
         }

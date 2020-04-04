@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 #[test]
-fn string_member_expr() {
+fn len() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_i32(n: i32) {
-        assert_eq!(n, 1);
+        assert_eq!(n, 3);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::empty();
@@ -18,7 +18,7 @@ fn string_member_expr() {
         "
     extern def record=\"record_i32\"(n: I32): Nil
 
-    record(\"A\".len)
+    record(\"ABC\".len)
     ",
         runtime,
     )

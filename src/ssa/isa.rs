@@ -519,8 +519,11 @@ pub enum Type {
     NoReturn,
     Nil,
     Bool,
+    I8,
     I32,
     I64,
+    I32Ptr(Rc<Type>),
+    I64Ptr(Rc<Type>),
     F64,
     Substring,
     Union(Rc<BTreeSet<Type>>),
@@ -528,6 +531,14 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn ptr_for(&self, typed: Type) -> Option<Self> {
+        match self {
+            Type::I32 => Some(Type::I32Ptr(Rc::new(typed))),
+            Type::I64 => Some(Type::I64Ptr(Rc::new(typed))),
+            _ => None,
+        }
+    }
+
     pub fn unify(&self, other: &Type) -> Self {
         match (self, other) {
             (left, right) if left == right => left.clone(),
@@ -589,8 +600,9 @@ impl Type {
 
     pub fn bytes(&self) -> Option<usize> {
         match self {
-            Type::I32 => Some(4),
-            Type::I64 => Some(8),
+            Type::I8 => Some(1),
+            Type::I32 | Type::I32Ptr(_) => Some(4),
+            Type::I64 | Type::I64Ptr(_) => Some(8),
             Type::F64 => Some(8),
             _ => None,
         }

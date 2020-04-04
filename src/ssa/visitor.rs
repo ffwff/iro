@@ -33,7 +33,7 @@ impl TopLevelInfo {
     pub fn new(arch: TopLevelArch) -> Self {
         let pointer_type = Type::int_from_bits(arch.pointer_bits).unwrap();
         let mut substring_struct = StructData::new();
-        substring_struct.append_type(Rc::from("ptr"), pointer_type.clone());
+        substring_struct.append_type(Rc::from("ptr"), pointer_type.ptr_for(Type::I8).unwrap());
         substring_struct.append_type(Rc::from("len"), Type::I32);
         TopLevelInfo {
             defstmts: HashMap::new(),
