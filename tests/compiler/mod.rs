@@ -1,7 +1,7 @@
 pub mod arithmetic;
 pub mod cmp;
-pub mod integration;
-pub mod typing;
 pub mod r#if;
-pub mod r#while;
+pub mod integration;
 pub mod r#struct;
+pub mod typing;
+pub mod r#while;

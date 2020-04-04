@@ -32,10 +32,13 @@ impl StructData {
 
     pub fn append_type(&mut self, name: Rc<str>, typed: Type) {
         let type_size = typed.bytes().unwrap();
-        self.values.insert(name, StructFieldData {
-            offset: self.size_of,
-            typed,
-        });
+        self.values.insert(
+            name,
+            StructFieldData {
+                offset: self.size_of,
+                typed,
+            },
+        );
         self.size_of += type_size;
     }
 }

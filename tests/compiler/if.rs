@@ -5,7 +5,7 @@ use iro::ssa::visitor::TopLevelArch;
 use iro::utils;
 use std::collections::BTreeSet;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 #[test]

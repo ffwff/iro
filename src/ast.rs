@@ -279,7 +279,9 @@ impl DefStatement {
             return ArgCompatibility::None;
         }
         let mut casts = vec![];
-        for (idx, ((_, declared_typed), typed)) in self.args.iter().zip(arg_types.iter()).enumerate() {
+        for (idx, ((_, declared_typed), typed)) in
+            self.args.iter().zip(arg_types.iter()).enumerate()
+        {
             if let Some(maybe_declared_rc) = declared_typed.as_ref() {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
                 if let Some(declared_typed) = maybe_declared {

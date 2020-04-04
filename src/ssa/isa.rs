@@ -369,7 +369,10 @@ pub enum InsType {
     LoadI64(i64),
     LoadF64(u64),
     LoadSubstring(Rc<str>),
-    MemberReference { left: usize, right: Rc<str> },
+    MemberReference {
+        left: usize,
+        right: Rc<str>,
+    },
     Phi {
         vars: Vec<usize>,
         defines: usize,

@@ -1,12 +1,12 @@
+use crate::codegen::structs::*;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
 use crate::ssa::visitor::TopLevelArch;
-use crate::codegen::structs::*;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, Value};
-use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlags, types};
+use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
@@ -15,7 +15,7 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 fn to_var(x: usize) -> Variable {
@@ -126,11 +126,11 @@ where
 
     fn ir_to_cranelift_type(&self, typed: &isa::Type) -> Option<types::Type> {
         match typed {
-            isa::Type::Nil  => Some(types::I32),
+            isa::Type::Nil => Some(types::I32),
             isa::Type::Bool => Some(types::B1),
-            isa::Type::I32  => Some(types::I32),
-            isa::Type::I64  => Some(types::I64),
-            isa::Type::F64  => Some(types::F64),
+            isa::Type::I32 => Some(types::I32),
+            isa::Type::I64 => Some(types::I64),
+            isa::Type::F64 => Some(types::F64),
             _ => None,
         }
     }
@@ -188,10 +188,9 @@ where
                 .push(AbiParam::new(self.ir_to_cranelift_type(&arg).unwrap()));
         }
         if context.rettype != isa::Type::NoReturn {
-            fctx.func
-                .signature
-                .returns
-                .push(AbiParam::new(self.ir_to_cranelift_type(&context.rettype).unwrap()));
+            fctx.func.signature.returns.push(AbiParam::new(
+                self.ir_to_cranelift_type(&context.rettype).unwrap(),
+            ));
         }
 
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
@@ -223,7 +222,7 @@ where
                     bblock,
                     &blocks,
                     &mut builder,
-                    &mut var_to_var_struct_data
+                    &mut var_to_var_struct_data,
                 );
             }
         }
@@ -273,7 +272,7 @@ where
                 } else {
                     use std::fmt::Write;
 
-                    let mut bytes_vec = x.as_bytes().to_vec();
+                    let bytes_vec = x.as_bytes().to_vec();
                     let bytes_data_id = {
                         let mut name = String::new();
                         write!(name, "__string_{}_bytes", self.string_mapping.len()).unwrap();
@@ -294,12 +293,16 @@ where
                     let data_id = self
                         .module
                         .declare_data(&name, Linkage::Local, false, false, None)
-                        .expect("able to create data for string");                    
+                        .expect("able to create data for string");
                     let mut data_ctx = DataContext::new();
-                    let bytes_value = self.module.declare_data_in_data(bytes_data_id, &mut data_ctx);
+                    let bytes_value = self
+                        .module
+                        .declare_data_in_data(bytes_data_id, &mut data_ctx);
                     let mut struct_builder = StructBuilder::new(&program.substring_struct);
                     let ptr_offset = struct_builder.insert_zeroed("ptr").unwrap();
-                    struct_builder.insert("len", &(x.len() as u32).to_ne_bytes()).unwrap();
+                    struct_builder
+                        .insert("len", &(x.len() as u32).to_ne_bytes())
+                        .unwrap();
                     data_ctx.define(struct_builder.into_vec().into_boxed_slice());
                     data_ctx.write_data_addr(ptr_offset as u32, bytes_value, 0);
                     self.module
@@ -309,10 +312,13 @@ where
                 };
                 let value = self.module.declare_data_in_func(data_id, &mut builder.func);
                 let symbol_value = builder.ins().symbol_value(self.pointer_type(), value);
-                var_to_var_struct_data.insert(ins.retvar().unwrap(), VarStructData {
-                    symbol_value,
-                    struct_data: program.substring_struct.clone(),
-                });
+                var_to_var_struct_data.insert(
+                    ins.retvar().unwrap(),
+                    VarStructData {
+                        symbol_value,
+                        struct_data: program.substring_struct.clone(),
+                    },
+                );
             }
             isa::InsType::LoadF64(x) => {
                 let tmp = builder.ins().f64const(*x);
@@ -547,7 +553,7 @@ impl Settings {
 /// Simple JIT Backend
 impl Codegen<SimpleJITBackend> {
     pub fn process_jit(
-        isa: Box<dyn TargetIsa>,
+        _isa: Box<dyn TargetIsa>,
         program: &isa::Program,
         runtime: &Runtime,
     ) -> Module<SimpleJITBackend> {
@@ -567,7 +573,10 @@ impl Codegen<SimpleJITBackend> {
 
 /// Object generation backend
 impl Codegen<ObjectBackend> {
-    pub fn process_object(isa: Box<dyn TargetIsa>, program: &isa::Program) -> Module<ObjectBackend> {
+    pub fn process_object(
+        isa: Box<dyn TargetIsa>,
+        program: &isa::Program,
+    ) -> Module<ObjectBackend> {
         let builder = ObjectBuilder::new(isa, "main.o", cranelift_module::default_libcall_names());
         let codegen = Codegen::from_builder(builder);
         codegen.process(program, true)

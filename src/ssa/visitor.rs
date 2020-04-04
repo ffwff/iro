@@ -1,9 +1,9 @@
 use crate::ast;
 use crate::ast::*;
+use crate::codegen::structs::*;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
-use crate::codegen::structs::*;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -16,9 +16,7 @@ pub struct TopLevelArch {
 
 impl TopLevelArch {
     pub fn empty() -> Self {
-        TopLevelArch {
-            pointer_bits: 32,
-        }
+        TopLevelArch { pointer_bits: 32 }
     }
 }
 
@@ -229,7 +227,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_import(&mut self, n: &ImportStatement) -> VisitorResult {
+    fn visit_import(&mut self, _n: &ImportStatement) -> VisitorResult {
         unimplemented!()
     }
 
@@ -599,7 +597,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                         }
                                         usable_defstmt = Some(defstmt.clone());
                                         break;
-                                    },
+                                    }
                                     ArgCompatibility::Full => {
                                         usable_defstmt = Some(defstmt.clone());
                                         break;
@@ -790,7 +788,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult {
         n.left.visit(self)?;
-        let mut leftvar = self.last_retvar().unwrap();
+        let leftvar = self.last_retvar().unwrap();
         let mut retvar = None;
         if self.context.variables[leftvar].clone() == Type::Substring {
             let top_level = self.top_level.borrow();
@@ -800,10 +798,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
             }
         }
         self.with_block_mut(|block| {
-            block.ins.push(Ins::new(retvar.unwrap(), InsType::MemberReference {
-                left: leftvar,
-                right: n.right.clone(),
-            }));
+            block.ins.push(Ins::new(
+                retvar.unwrap(),
+                InsType::MemberReference {
+                    left: leftvar,
+                    right: n.right.clone(),
+                },
+            ));
         });
         Ok(())
     }
