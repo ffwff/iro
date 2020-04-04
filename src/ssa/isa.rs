@@ -198,6 +198,14 @@ impl Ins {
                 var: swap(var),
                 typed,
             },
+            InsType::PointerIndex { var, index } => InsType::PointerIndex {
+                var: swap(var),
+                index: swap(index),
+            },
+            InsType::PointerIndexC { var, offset } => InsType::PointerIndexC {
+                var: swap(var),
+                offset,
+            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
@@ -248,6 +256,13 @@ impl Ins {
                 callback(*condvar);
             }
             InsType::Cast { var, .. } => {
+                callback(*var);
+            }
+            InsType::PointerIndex { var, index } => {
+                callback(*var);
+                callback(*index);
+            }
+            InsType::PointerIndexC { var, offset } => {
                 callback(*var);
             }
             InsType::AddC(rc)
@@ -412,6 +427,14 @@ pub enum InsType {
         iftrue: usize,
         iffalse: usize,
     },
+    PointerIndex {
+        var: usize,
+        index: usize,
+    },
+    PointerIndexC {
+        var: usize,
+        offset: i32,
+    },
     Jmp(usize),
 }
 
@@ -520,6 +543,7 @@ pub enum Type {
     Nil,
     Bool,
     I8,
+    I16,
     I32,
     I64,
     I32Ptr(Rc<Type>),
@@ -592,6 +616,16 @@ impl Type {
         }
     }
 
+    pub fn is_int(&self) -> bool {
+        match self {
+            Type::I8
+            | Type::I16
+            | Type::I32
+            | Type::I64 => true,
+            _ => false,
+        }
+    }
+
     pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
         match self {
             Type::Union(set) => Some(set.clone()),
@@ -601,6 +635,7 @@ impl Type {
 
     pub fn int_from_bits(bits: usize) -> Option<Self> {
         match bits {
+            8 => Some(Type::I8),
             32 => Some(Type::I32),
             64 => Some(Type::I64),
             _ => None,

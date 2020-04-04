@@ -25,3 +25,25 @@ fn len() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn ptr_access() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i8(n: i8) {
+        assert_eq!(n, 'A' as i8);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_i8", record_i8 as extern "C" fn(i8));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_i8\"(n: I8): Nil
+
+    record(\"ABC\".ptr[0])
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}

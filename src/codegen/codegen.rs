@@ -128,6 +128,7 @@ where
         match typed {
             isa::Type::Nil => Some(types::I32),
             isa::Type::Bool => Some(types::B1),
+            isa::Type::I8 => Some(types::I8),
             isa::Type::I32 | isa::Type::I32Ptr(_) => Some(types::I32),
             isa::Type::I64 | isa::Type::I64Ptr(_) => Some(types::I64),
             isa::Type::F64 => Some(types::F64),
@@ -386,7 +387,7 @@ where
                 let left = builder.use_var(to_var(*x));
                 let right = builder.use_var(to_var(*y));
                 match &context.variables[*x] {
-                    isa::Type::I32 | isa::Type::I64 => {
+                    maybe_int if maybe_int.is_int() => {
                         let tmp = builder.ins().icmp(
                             match &ins.typed {
                                 isa::InsType::Lt(_) => IntCC::SignedLessThan,
@@ -420,27 +421,27 @@ where
                 }
             }
             isa::InsType::Add((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, iadd),
+                maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, iadd),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fadd),
                 _ => unimplemented!(),
             },
             isa::InsType::Sub((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, isub),
+                maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, isub),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fsub),
                 _ => unimplemented!(),
             },
             isa::InsType::Mul((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, imul),
+                maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, imul),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fmul),
                 _ => unimplemented!(),
             },
             isa::InsType::Div((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, sdiv),
+                maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, sdiv),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fdiv),
                 _ => unimplemented!(),
             },
             isa::InsType::Mod((x, y)) => match &context.variables[*x] {
-                isa::Type::I32 | isa::Type::I64 => generate_arithmetic!(builder, ins, x, y, srem),
+                maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, srem),
                 _ => unimplemented!(),
             },
             isa::InsType::AddC(regconst)
@@ -450,7 +451,7 @@ where
             | isa::InsType::ModC(regconst) => {
                 let (left, right, typed) = regconst_to_type(builder, &regconst);
                 let tmp = match typed {
-                    types::I32 | types::I64 => match &ins.typed {
+                    maybe_int if maybe_int.is_int() => match &ins.typed {
                         isa::InsType::AddC(_) => builder.ins().iadd(left, right),
                         isa::InsType::SubC(_) => builder.ins().isub(left, right),
                         isa::InsType::MulC(_) => builder.ins().imul(left, right),
@@ -516,7 +517,18 @@ where
                     _ => unreachable!()
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-            },
+            }
+            isa::InsType::PointerIndexC { var, offset } => {
+                let retvar = ins.retvar().unwrap();
+                let ptr = builder.use_var(to_var(*var));
+                let tmp = builder.ins().load(
+                    self.ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    MemFlags::trusted(),
+                    ptr,
+                    *offset,
+                );
+                builder.def_var(to_var(retvar), tmp);
+            }
             x => unimplemented!("{:?}", x),
         }
     }

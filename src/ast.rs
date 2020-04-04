@@ -326,7 +326,7 @@ impl Node for ReturnExpr {
 #[derive(Debug, Clone)]
 pub enum MemberExprArm {
     Identifier(Rc<str>),
-    Index(usize),
+    Index(NodeBox),
 }
 
 #[derive(Debug)]

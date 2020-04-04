@@ -255,8 +255,7 @@ MemberExpr: NodeBox = {
 
 MemberExprArm: MemberExprArm = {
     "." <id:Identifier> => MemberExprArm::Identifier(Rc::from(id)),
-    "[" <idx:I32> "]" => MemberExprArm::Index(idx as usize),
-    "[" <idx:I64> "]" => MemberExprArm::Index(idx as usize),
+    "[" <expr:StandaloneExpr> "]" => MemberExprArm::Index(expr),
 };
 
 // Literals / terms

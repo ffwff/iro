@@ -389,6 +389,19 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                 InsType::Gte((left, right)) => {
                     ins_to_const_ins!(*left, *right, var_to_const, ins, GteC, gte)
                 }
+                InsType::PointerIndex { var, index } => {
+                    if let Some(k) = var_to_const.get(&index) {
+                        let offset_index = match k.to_const().unwrap() {
+                            Constant::I32(x) => x,
+                            Constant::I64(x) => x as i32,
+                            _ => unreachable!()
+                        };
+                        ins.typed = InsType::PointerIndexC {
+                            var: *var,
+                            offset: (context.variables[*var].bytes().unwrap() as i32) * offset_index
+                        };
+                    }
+                }
                 _ => (),
             }
         }

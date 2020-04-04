@@ -41,6 +41,7 @@ impl TopLevelInfo {
             pointer_type: pointer_type.clone(),
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
+                Rc::from("I8") => Type::I8,
                 Rc::from("I32") => Type::I32,
                 Rc::from("I64") => Type::I64,
                 Rc::from("ISize") => pointer_type,
@@ -828,8 +829,28 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         },
                     ));
                 });
-            },
-            MemberExprArm::Index(idx) => unimplemented!()
+            }
+            MemberExprArm::Index(idx) => {
+                idx.visit(self)?;
+                let idx_var = self.last_retvar().unwrap();
+                match self.context.variables[leftvar].clone() {
+                    Type::I32Ptr(typed) |
+                    Type::I64Ptr(typed) => {
+                        assert!(typed.is_int());
+                        let mut retvar = self.context.insert_var((*typed).clone());
+                        self.with_block_mut(|block| {
+                            block.ins.push(Ins::new(
+                                retvar,
+                                InsType::PointerIndex {
+                                    var: leftvar,
+                                    index: idx_var,
+                                },
+                            ));
+                        });
+                    },
+                    _ => unimplemented!(),
+                }
+            }
         }
         Ok(())
     }
