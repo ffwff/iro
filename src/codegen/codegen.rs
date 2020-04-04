@@ -64,6 +64,55 @@ macro_rules! generate_arithmetic {
     }};
 }
 
+/// Struct builder
+pub struct StructBuilder {
+    offset: u32,
+    data: Vec<u8>,
+    pointer_size: usize,
+}
+
+impl StructBuilder {
+    pub fn new(pointer_type: types::Type) -> Self {
+        StructBuilder {
+            offset: 0,
+            data: vec![],
+            pointer_size: if pointer_type == types::I64 {
+                8
+            } else {
+                4
+            }
+        }
+    }
+
+    pub fn into_vec(mut self) -> Vec<u8> {
+        self.data
+    }
+
+    pub fn append_u32(&mut self, data: u32) -> usize {
+        let offset = self.data.len();
+        for &byte in &data.to_ne_bytes() {
+            self.data.push(byte);
+        }
+        offset
+    }
+
+    pub fn append_u64(&mut self, data: u64) -> usize {
+        let offset = self.data.len();
+        for &byte in &data.to_ne_bytes() {
+            self.data.push(byte);
+        }
+        offset
+    }
+
+    pub fn append_ptr(&mut self) -> usize {
+        match self.pointer_size {
+            4 => self.append_u32(0),
+            8 => self.append_u64(0),
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// Code generator
 pub struct Codegen<B: Backend> {
     module: Module<B>,
@@ -125,7 +174,7 @@ where
             isa::Type::I32 => types::I32,
             isa::Type::I64 => types::I64,
             isa::Type::F64 => types::F64,
-            isa::Type::String => self.pointer_type(),
+            isa::Type::Substring => self.pointer_type(),
             _ => unreachable!(),
         }
     }
@@ -254,19 +303,41 @@ where
                 let tmp = builder.ins().iconst(types::I64, *x as i64);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::LoadString(x) => {
+            isa::InsType::LoadSubstring(x) => {
                 let data_id = if let Some(data_id) = self.string_mapping.get(x) {
                     data_id.clone()
                 } else {
+                    use std::fmt::Write;
+
                     let mut bytes_vec = x.as_bytes().to_vec();
-                    bytes_vec.push(0u8);
-                    let name = "__string_".to_owned() + &self.string_mapping.len().to_string();
+                    let bytes_data_id = {
+                        let mut name = String::new();
+                        write!(name, "__string_{}_bytes", self.string_mapping.len()).unwrap();
+                        let data_id = self
+                            .module
+                            .declare_data(&name, Linkage::Local, false, false, None)
+                            .expect("able to create data for string bytes");
+                        let mut data_ctx = DataContext::new();
+                        data_ctx.define(bytes_vec.into_boxed_slice());
+                        self.module
+                            .define_data(data_id, &data_ctx)
+                            .expect("able to define data for string bytes");
+                        data_id
+                    };
+
+                    let mut name = String::new();
+                    write!(name, "__string_{}", self.string_mapping.len()).unwrap();
                     let data_id = self
                         .module
                         .declare_data(&name, Linkage::Local, false, false, None)
-                        .expect("able to create data for string");
+                        .expect("able to create data for string");                    
                     let mut data_ctx = DataContext::new();
-                    data_ctx.define(bytes_vec.into_boxed_slice());
+                    let bytes_value = self.module.declare_data_in_data(bytes_data_id, &mut data_ctx);
+                    let mut struct_builder = StructBuilder::new(self.pointer_type());
+                    let ptr_offset = struct_builder.append_ptr();
+                    struct_builder.append_u32(x.len() as u32);
+                    data_ctx.define(struct_builder.into_vec().into_boxed_slice());
+                    data_ctx.write_data_addr(ptr_offset as u32, bytes_value, 0);
                     self.module
                         .define_data(data_id, &data_ctx)
                         .expect("able to define data for string");

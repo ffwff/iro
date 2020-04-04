@@ -96,7 +96,7 @@ fn if_expr_unify() {
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
     let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::String]);
+    assert_eq!(set, &btreeset![Type::I32, Type::Substring]);
 }
 
 #[test]

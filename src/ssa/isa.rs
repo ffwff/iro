@@ -360,7 +360,7 @@ pub enum InsType {
     LoadI32(i32),
     LoadI64(i64),
     LoadF64(u64),
-    LoadString(Rc<str>),
+    LoadSubstring(Rc<str>),
     Phi {
         vars: Vec<usize>,
         defines: usize,
@@ -425,7 +425,7 @@ impl InsType {
             | InsType::LoadI32(_)
             | InsType::LoadI64(_)
             | InsType::LoadF64(_)
-            | InsType::LoadString(_) => true,
+            | InsType::LoadSubstring(_) => true,
             _ => false,
         }
     }
@@ -509,7 +509,7 @@ pub enum Type {
     I32,
     I64,
     F64,
-    String,
+    Substring,
     Union(Rc<BTreeSet<Type>>),
     NeverUsed,
 }

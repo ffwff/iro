@@ -25,7 +25,7 @@ impl TopLevelInfo {
                 Rc::from("I32") => Type::I32,
                 Rc::from("I64") => Type::I64,
                 Rc::from("F64") => Type::F64,
-                Rc::from("String") => Type::String,
+                Rc::from("Substring") => Type::Substring,
             ],
         }
     }
@@ -544,7 +544,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     }
                 };
 
-                let retvar = self.context.insert_var(if let Some(rettype) = rettype {
+                let rettype = if let Some(rettype) = rettype {
                     rettype
                 } else {
                     let (defstmt, func_insert) = {
@@ -556,9 +556,29 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         let mut usable_defstmt = None;
                         if let Some(vec) = top_level.defstmts.get(id) {
                             for defstmt in vec {
-                                if defstmt.is_compatible_with_args(&arg_types) {
-                                    usable_defstmt = Some(defstmt.clone());
-                                    break;
+                                match defstmt.compatibility_with_args(&arg_types) {
+                                    ArgCompatibility::None => (),
+                                    ArgCompatibility::WithCast(casts) => {
+                                        for (idx, typed) in casts {
+                                            let retvar = self.context.insert_var(typed.clone());
+                                            let var = args[idx];
+                                            self.with_block_mut(move |block| {
+                                                block.ins.push(Ins::new(
+                                                    retvar,
+                                                    InsType::Cast {
+                                                        var,
+                                                        typed: typed.clone(),
+                                                    },
+                                                ));
+                                            });
+                                        }
+                                        usable_defstmt = Some(defstmt.clone());
+                                        break;
+                                    },
+                                    ArgCompatibility::Full => {
+                                        usable_defstmt = Some(defstmt.clone());
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -612,7 +632,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             rettype
                         }
                     }
-                });
+                };
+                let retvar = self.context.insert_var(rettype);
                 {
                     let args = RefCell::new(Some(args));
                     self.with_block_mut(|block| {
@@ -768,11 +789,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
             Value::String(x) => {
-                let retvar = self.context.insert_var(Type::String);
+                let retvar = self.context.insert_var(Type::Substring);
                 self.with_block_mut(|block| {
                     block
                         .ins
-                        .push(Ins::new(retvar, InsType::LoadString(x.clone())));
+                        .push(Ins::new(retvar, InsType::LoadSubstring(x.clone())));
                 });
                 Ok(())
             }
