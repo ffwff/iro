@@ -271,16 +271,17 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_return(&mut self, n: &ReturnExpr) -> VisitorResult {
         n.expr.visit(self)?;
-        let retvar = self.last_retvar.take().unwrap();
-        let rettype = self.context.variables[retvar].clone();
-        if self.context.rettype == Type::NoReturn {
-            self.context.rettype = rettype;
-        } else if rettype != self.context.rettype {
-            self.context.rettype = self.context.rettype.unify(&rettype);
+        if let Some(retvar) = self.last_retvar.take() {
+            let rettype = self.context.variables[retvar].clone();
+            if self.context.rettype == Type::NoReturn {
+                self.context.rettype = rettype;
+            } else if rettype != self.context.rettype {
+                self.context.rettype = self.context.rettype.unify(&rettype);
+            }
+            self.with_block_mut(|block| {
+                block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
+            });
         }
-        self.with_block_mut(|block| {
-            block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
-        });
         self.has_direct_return = true;
         Ok(())
     }
@@ -291,7 +292,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let mut while_retvar = None;
 
         self.envs.push(Env::new());
-        let direct_return = check_direct_return!(self, {
+        check_direct_return!(self, {
             cond_block = Some(self.context.new_block());
             n.cond.visit(self)?;
             if let Some(last_retvar) = self.last_retvar.take() {
@@ -306,7 +307,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     ));
                 });
             } else {
-                unimplemented!()
+                // Condition returns
+                return Ok(());
             }
             if n.exprs.is_empty() {
                 while_block = Some(self.context.new_block());
@@ -345,19 +347,15 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 }
                 if let Some(last_retvar) = self.last_retvar.take() {
                     while_retvar = Some(last_retvar);
+                    self.with_block_mut(|block| {
+                        block
+                            .ins
+                            .push(Ins::new(0, InsType::Jmp(cond_block.unwrap())));
+                    });
                 }
-                self.with_block_mut(|block| {
-                    block
-                        .ins
-                        .push(Ins::new(0, InsType::Jmp(cond_block.unwrap())));
-                });
             }
         });
         self.envs.pop();
-
-        if direct_return {
-            self.has_direct_return = true;
-        }
 
         // Insert jump
         {
@@ -395,11 +393,15 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let treturn = check_direct_return!(self, {
             n.cond.visit(self)?;
             cond = self.context.blocks.len() - 1;
-            condvar = self.last_retvar.take().unwrap();
             if let Some(last_retvar) = self.last_retvar.take() {
+                condvar = last_retvar;
                 if self.context.variables[last_retvar] != Type::Bool {
                     return Err(Error::IncompatibleType);
                 }
+            } else {
+                // condition returns
+                self.envs.pop();
+                return Ok(());
             }
             if !n.exprs.is_empty() {
                 iftrue_start = Some(self.context.new_block());
@@ -472,9 +474,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
         };
         let retvar = retvar_type.map(|typed| self.context.insert_var(typed));
 
-        let outer_block = self.context.new_block();
+        let mut outer_block = if !self.has_direct_return {
+            Some(self.context.new_block())
+        } else {
+            None
+        };
 
-        // Insert jumps
+        // Insert jumps and return values
         {
             let block = &mut self.context.blocks[cond];
             if let Some(retvar) = retvar {
@@ -482,14 +488,16 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     block.ins.push(Ins::new(retvar, InsType::LoadNil));
                 }
             }
-            block.ins.push(Ins::new(
-                0,
-                InsType::IfJmp {
-                    condvar: condvar,
-                    iftrue: iftrue_start.unwrap_or(outer_block),
-                    iffalse: iffalse_start.unwrap_or(outer_block),
-                },
-            ));
+            if !self.has_direct_return {
+                block.ins.push(Ins::new(
+                    0,
+                    InsType::IfJmp {
+                        condvar: condvar,
+                        iftrue: iftrue_start.unwrap_or(outer_block.unwrap()),
+                        iffalse: iffalse_start.unwrap_or(outer_block.unwrap()),
+                    },
+                ));
+            }
         }
         if let Some(iftrue_end) = iftrue_end {
             let block = &mut self.context.blocks[iftrue_end];
@@ -499,7 +507,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     .ins
                     .push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
             }
-            block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+            if let Some(outer_block) = outer_block {
+                block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+            }
         }
         if let Some(iffalse_end) = iffalse_end {
             let block = &mut self.context.blocks[iffalse_end];
@@ -509,7 +519,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     .ins
                     .push(Ins::new(retvar, InsType::LoadVar(last_retvar)));
             }
-            block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+            if let Some(outer_block) = outer_block {
+                block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
+            }
         }
 
         // Load return var

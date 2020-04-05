@@ -4,6 +4,7 @@ use iro::ssa::isa::{FunctionName, Type};
 use iro::ssa::visitor::TopLevelArch;
 use iro::utils;
 use std::rc::Rc;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 #[cfg(test)]
@@ -246,4 +247,56 @@ fn while_loop_nested_with_if() {
         runtime,
     )
     .unwrap();
+}
+
+#[test]
+fn while_expr_cond_return() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        return while return 10
+        end
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    assert_eq!(&function.rettype, &Type::I32);
+}
+
+#[test]
+fn while_expr_body_return() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        while 1
+            return 10
+        end
+        return true
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    let set_rc = function.rettype.as_union().unwrap();
+    let set: &BTreeSet<Type> = &set_rc;
+    assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
 }

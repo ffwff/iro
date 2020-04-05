@@ -179,3 +179,112 @@ fn if_expr_unify_false_branch() {
     let set: &BTreeSet<Type> = &set_rc;
     assert_eq!(set, &btreeset![Type::I32, Type::Nil]);
 }
+
+#[test]
+fn if_expr_cond_return() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        if return 10
+        end
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    assert_eq!(&function.rettype, &Type::I32);
+}
+
+#[test]
+fn if_expr_both_branch_return() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        if true
+            return 10
+        else
+            return 5
+        end
+        return true
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    assert_eq!(&function.rettype, &Type::I32);
+}
+
+#[test]
+fn if_expr_true_branch_return() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        if true
+            return 1
+        end
+        return true
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    let set_rc = function.rettype.as_union().unwrap();
+    let set: &BTreeSet<Type> = &set_rc;
+    assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
+}
+
+#[test]
+fn if_expr_false_branch_return() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        if true
+        else
+            return 1
+        end
+        return true
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    let set_rc = function.rettype.as_union().unwrap();
+    let set: &BTreeSet<Type> = &set_rc;
+    assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
+}
