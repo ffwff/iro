@@ -267,6 +267,10 @@ where
                 let tmp = builder.ins().iconst(types::I64, *x as i64);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::LoadBool(x) => {
+                let tmp = builder.ins().bconst(types::B1, *x);
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
             isa::InsType::LoadSubstring(x) => {
                 let data_id = if let Some(data_id) = self.string_mapping.get(x) {
                     data_id.clone()

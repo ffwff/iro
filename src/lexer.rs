@@ -47,6 +47,8 @@ pub enum Tok {
     AtBracket,
     LeftBracket,
     RightBracket,
+    True,
+    False,
     I32 { value: i32 },
     I64 { value: i64 },
     Float { value: u64 },
@@ -247,6 +249,8 @@ impl<'input> Iterator for Lexer<'input> {
                         "and" => Tok::And,
                         "or" => Tok::Or,
                         "as" => Tok::As,
+                        "true" => Tok::True,
+                        "false" => Tok::False,
                         _ => Tok::Identifier { value: string },
                     };
                     return Some(Ok((idx0, value, idx1)));

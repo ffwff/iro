@@ -270,6 +270,8 @@ Literal: Value = {
     <Float> => Value::Float(<>),
     <String> => Value::String(Rc::from(<>)),
     <Identifier> => Value::Identifier(Rc::from(<>)),
+    "true" => Value::Bool(true),
+    "false" => Value::Bool(false),
 };
 
 // Types
@@ -315,6 +317,8 @@ extern {
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
         "as" => lexer::Tok::As,
+        "true" => lexer::Tok::True,
+        "false" => lexer::Tok::False,
         "==" => lexer::Tok::Equ,
         "!=" => lexer::Tok::Neq,
         "+" => lexer::Tok::Add,

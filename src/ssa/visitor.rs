@@ -399,7 +399,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
     }
 
     fn visit_ifexpr(&mut self, n: &IfExpr) -> VisitorResult {
-        let cond = self.context.blocks.len() - 1;
+        let cond;
         let condvar;
         let mut iftrue_start = None;
         let mut iftrue_end = None;
@@ -412,6 +412,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         self.envs.push(Env::new());
         let treturn = check_direct_return!(self, {
             n.cond.visit(self)?;
+            cond = self.context.blocks.len() - 1;
             condvar = self.last_retvar().unwrap();
             if let Some(last_retvar) = self.last_retvar() {
                 if self.context.variables[last_retvar] != Type::Bool {
@@ -739,6 +740,75 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 }
                 Err(Error::InvalidLHS)
             }
+            BinOp::And | BinOp::Or => {
+                /*
+                --- Short circuiting and expression:
+                [result = left]
+                | jmp(1) if result is false
+                | [result = right]
+                | jmp(1)
+                |-> (1): end block
+
+                --- Short circuiting or expression:
+                [result = left]
+                | jmp(1) if result is true
+                | [result = right]
+                | jmp(1)
+                |-> (1): end block
+                 */
+                let result = self.context.insert_var(Type::Bool);
+
+                let left_block_end;
+                {
+                    self.context.new_block();
+                    n.left.visit(self)?;
+                    let left = self.last_retvar().unwrap();
+
+                    left_block_end = self.context.new_block();
+                    let block = &mut self.context.blocks[left_block_end];
+                    block.ins.push(Ins::new(result, InsType::LoadVar(left)));
+                }
+
+                let (right_block_start, right_block_end);
+                {
+                    right_block_start = self.context.new_block();
+                    n.right.visit(self)?;
+                    let right = self.last_retvar().unwrap();
+
+                    right_block_end = self.context.new_block();
+                    let block = &mut self.context.blocks[right_block_end];
+                    block.ins.push(Ins::new(result, InsType::LoadVar(right)));
+                }
+
+                // Insert retvar
+                let end_block = self.context.new_block();
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(result, InsType::Nop));
+                });
+
+                // Insert jumps
+                {
+                    let block = &mut self.context.blocks[left_block_end];
+                    match &n.op {
+                        BinOp::And => block.ins.push(Ins::new(0, InsType::IfJmp {
+                            condvar: result,
+                            iftrue: right_block_start,
+                            iffalse: end_block,
+                        })),
+                        BinOp::Or => block.ins.push(Ins::new(0, InsType::IfJmp {
+                            condvar: result,
+                            iftrue: end_block,
+                            iffalse: right_block_start,
+                        })),
+                        _ => unreachable!()
+                    }
+                }
+                {
+                    let block = &mut self.context.blocks[right_block_end];
+                    block.ins.push(Ins::new(0, InsType::Jmp(end_block)));
+                }
+                Ok(())
+            }
             op => {
                 n.left.visit(self)?;
                 let left = self.last_retvar().unwrap();
@@ -880,6 +950,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 });
                 Ok(())
             }
+            Value::Bool(x) => {
+                let retvar = self.context.insert_var(Type::Bool);
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(retvar, InsType::LoadBool(*x)));
+                });
+                Ok(())
+            }
             Value::String(x) => {
                 let retvar = self.context.insert_var(Type::Substring);
                 self.with_block_mut(|block| {
@@ -899,7 +976,6 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     Err(Error::UnknownIdentifier(id.clone()))
                 }
             }
-            _ => unimplemented!(),
         }
     }
 

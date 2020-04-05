@@ -137,9 +137,9 @@ pub enum Value {
     I32(i32),
     I64(i64),
     Float(u64),
+    Bool(bool),
     String(Rc<str>),
     Identifier(Rc<str>),
-    Any,
 }
 
 impl Node for Value {

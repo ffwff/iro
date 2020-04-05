@@ -383,6 +383,7 @@ pub enum InsType {
     LoadI32(i32),
     LoadI64(i64),
     LoadF64(u64),
+    LoadBool(bool),
     LoadSubstring(Rc<str>),
     MemberReference {
         left: usize,
@@ -460,6 +461,7 @@ impl InsType {
             | InsType::LoadI32(_)
             | InsType::LoadI64(_)
             | InsType::LoadF64(_)
+            | InsType::LoadBool(_)
             | InsType::LoadSubstring(_) => true,
             _ => false,
         }
