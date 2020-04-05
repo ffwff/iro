@@ -69,6 +69,7 @@ pub struct SSAVisitor<'a> {
     envs: Vec<Env>,
     top_level: &'a RefCell<TopLevelInfo>,
     has_direct_return: bool,
+    last_retvar: Option<usize>,
 }
 
 macro_rules! check_direct_return {
@@ -89,6 +90,7 @@ impl<'a> SSAVisitor<'a> {
             envs: vec![],
             top_level,
             has_direct_return: false,
+            last_retvar: None,
         }
     }
 
@@ -98,6 +100,7 @@ impl<'a> SSAVisitor<'a> {
             envs: vec![],
             top_level,
             has_direct_return: false,
+            last_retvar: None,
         }
     }
 
@@ -124,14 +127,6 @@ impl<'a> SSAVisitor<'a> {
         }
     }
 
-    fn with_block<T, U>(&self, mut callback: T) -> U
-    where
-        T: FnMut(&Block) -> U,
-    {
-        let block = self.context.block();
-        callback(block)
-    }
-
     fn with_block_mut<T, U>(&mut self, mut callback: T) -> U
     where
         T: FnMut(&mut Block) -> U,
@@ -147,16 +142,6 @@ impl<'a> SSAVisitor<'a> {
             }
         }
         None
-    }
-
-    fn last_retvar(&self) -> Option<usize> {
-        self.with_block(|block| {
-            if let Some(ins) = block.ins.last() {
-                ins.retvar()
-            } else {
-                None
-            }
-        })
     }
 
     fn intrinsic_return_type(_intrinsic: &IntrinsicType, _arg_types: &Vec<Type>) -> Option<Type> {
@@ -259,7 +244,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             }
         }
         if !self.has_direct_return {
-            if let Some(retvar) = self.last_retvar() {
+            if let Some(retvar) = self.last_retvar.take() {
                 self.context.rettype = self.context.rettype.unify(&self.context.variables[retvar]);
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
@@ -286,7 +271,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_return(&mut self, n: &ReturnExpr) -> VisitorResult {
         n.expr.visit(self)?;
-        let retvar = self.last_retvar().unwrap();
+        let retvar = self.last_retvar.take().unwrap();
         let rettype = self.context.variables[retvar].clone();
         if self.context.rettype == Type::NoReturn {
             self.context.rettype = rettype;
@@ -309,7 +294,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let direct_return = check_direct_return!(self, {
             cond_block = Some(self.context.new_block());
             n.cond.visit(self)?;
-            if let Some(last_retvar) = self.last_retvar() {
+            if let Some(last_retvar) = self.last_retvar.take() {
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(
                         0,
@@ -350,6 +335,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         unreachable!()
                     }
                 }
+                self.last_retvar = Some(retvar);
                 return Ok(());
             }
             while_block = Some(self.context.new_block());
@@ -357,7 +343,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 for node in &n.exprs {
                     node.visit(self)?;
                 }
-                if let Some(last_retvar) = self.last_retvar() {
+                if let Some(last_retvar) = self.last_retvar.take() {
                     while_retvar = Some(last_retvar);
                 }
                 self.with_block_mut(|block| {
@@ -390,11 +376,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
 
         // Insert retvar
-        let while_retvar = while_retvar.unwrap();
-        self.with_block_mut(|block| {
-            block.ins.push(Ins::new(while_retvar, InsType::Nop));
-        });
-
+        self.last_retvar = while_retvar;
         Ok(())
     }
 
@@ -413,8 +395,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let treturn = check_direct_return!(self, {
             n.cond.visit(self)?;
             cond = self.context.blocks.len() - 1;
-            condvar = self.last_retvar().unwrap();
-            if let Some(last_retvar) = self.last_retvar() {
+            condvar = self.last_retvar.take().unwrap();
+            if let Some(last_retvar) = self.last_retvar.take() {
                 if self.context.variables[last_retvar] != Type::Bool {
                     return Err(Error::IncompatibleType);
                 }
@@ -425,7 +407,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     node.visit(self)?;
                 }
                 iftrue_end = Some(self.context.blocks.len() - 1);
-                if let Some(last_retvar) = self.last_retvar() {
+                if let Some(last_retvar) = self.last_retvar.take() {
                     let retvar = self
                         .context
                         .insert_var(self.context.variables[last_retvar].clone());
@@ -444,8 +426,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
             // Return nil if two branches don't do anything
             let retvar = self.context.insert_var(Type::Nil);
             self.with_block_mut(|block| {
-                block.ins.push(Ins::new(retvar, InsType::Nop));
+                block.ins.push(Ins::new(retvar, InsType::LoadNil));
             });
+            self.last_retvar = Some(retvar);
             return Ok(());
         }
 
@@ -458,7 +441,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     node.visit(self)?;
                 }
                 iffalse_end = Some(self.context.blocks.len() - 1);
-                if let Some(last_retvar) = self.last_retvar() {
+                if let Some(last_retvar) = self.last_retvar.take() {
                     let retvar = self
                         .context
                         .insert_var(self.context.variables[last_retvar].clone());
@@ -530,12 +513,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
 
         // Load return var
-        if let Some(retvar) = retvar {
-            self.with_block_mut(|block| {
-                block.ins.push(Ins::new(retvar, InsType::Nop));
-            });
-        }
-
+        self.last_retvar = retvar;
         Ok(())
     }
 
@@ -546,7 +524,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let mut arg_types = vec![];
                 for arg in &n.args {
                     arg.visit(self)?;
-                    let retvar = self.last_retvar().unwrap();
+                    let retvar = self.last_retvar.take().unwrap();
                     args.push(retvar);
                     arg_types.push(self.context.variables[retvar].clone());
                 }
@@ -672,6 +650,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         ));
                     });
                 }
+                self.last_retvar = Some(retvar);
                 return Ok(());
             }
         }
@@ -680,7 +659,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_letexpr(&mut self, n: &LetExpr) -> VisitorResult {
         n.right.visit(self)?;
-        let right = self.last_retvar().unwrap();
+        let right = self.last_retvar.take().unwrap();
         if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
             if let Value::Identifier(id) = &id {
                 let env = self.envs.last_mut().unwrap();
@@ -688,6 +667,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 return Ok(());
             }
         }
+        self.last_retvar = Some(right);
         Err(Error::InvalidLHS)
     }
 
@@ -698,7 +678,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     if let Value::Identifier(id) = &id {
                         if let Some(var) = self.non_local(&id) {
                             n.right.visit(self)?;
-                            let right = self.last_retvar().unwrap();
+                            let right = self.last_retvar.take().unwrap();
                             match &n.op {
                                 BinOp::Asg => {
                                     self.with_block_mut(|block| {
@@ -732,6 +712,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 }
                                 _ => unreachable!(),
                             }
+                            self.last_retvar = Some(var);
                             return Ok(());
                         } else {
                             return Err(Error::UnknownIdentifier(id.clone()));
@@ -762,7 +743,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 {
                     self.context.new_block();
                     n.left.visit(self)?;
-                    let left = self.last_retvar().unwrap();
+                    let left = self.last_retvar.take().unwrap();
 
                     left_block_end = self.context.new_block();
                     let block = &mut self.context.blocks[left_block_end];
@@ -773,7 +754,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 {
                     right_block_start = self.context.new_block();
                     n.right.visit(self)?;
-                    let right = self.last_retvar().unwrap();
+                    let right = self.last_retvar.take().unwrap();
 
                     right_block_end = self.context.new_block();
                     let block = &mut self.context.blocks[right_block_end];
@@ -782,9 +763,6 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
                 // Insert retvar
                 let end_block = self.context.new_block();
-                self.with_block_mut(|block| {
-                    block.ins.push(Ins::new(result, InsType::Nop));
-                });
 
                 // Insert jumps
                 {
@@ -807,13 +785,15 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     let block = &mut self.context.blocks[right_block_end];
                     block.ins.push(Ins::new(0, InsType::Jmp(end_block)));
                 }
+
+                self.last_retvar = Some(result);
                 Ok(())
             }
             op => {
                 n.left.visit(self)?;
-                let left = self.last_retvar().unwrap();
+                let left = self.last_retvar.take().unwrap();
                 n.right.visit(self)?;
-                let mut right = self.last_retvar().unwrap();
+                let mut right = self.last_retvar.take().unwrap();
                 if self.context.variables[right].can_implicit_cast_to(&self.context.variables[left]) {
                     let typed = RefCell::new(Some(self.context.variables[left].clone()));
                     let retvar = self
@@ -853,6 +833,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         }
                     }));
                 });
+                self.last_retvar = Some(retvar);
                 Ok(())
             }
         }
@@ -860,7 +841,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_asexpr(&mut self, n: &AsExpr) -> VisitorResult {
         n.left.visit(self)?;
-        let retvar = self.last_retvar().unwrap();
+        let retvar = self.last_retvar.take().unwrap();
         n.typed.visit(self)?;
         let rettype = n.typed.typed.borrow().clone().unwrap();
         let new_retvar = self.context.insert_var(rettype.clone());
@@ -874,12 +855,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 },
             ));
         });
+        self.last_retvar = Some(retvar);
         Ok(())
     }
 
     fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult {
         n.left.visit(self)?;
-        let leftvar = self.last_retvar().unwrap();
+        let leftvar = self.last_retvar.take().unwrap();
         match &n.right {
             MemberExprArm::Identifier(string) => {
                 let mut retvar = None;
@@ -890,6 +872,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         retvar = Some(self.context.insert_var(var_data.typed.clone()));
                     }
                 }
+                self.last_retvar = retvar.clone();
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(
                         retvar.unwrap(),
@@ -902,12 +885,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
             }
             MemberExprArm::Index(idx) => {
                 idx.visit(self)?;
-                let idx_var = self.last_retvar().unwrap();
+                let idx_var = self.last_retvar.take().unwrap();
                 match self.context.variables[leftvar].clone() {
                     Type::I32Ptr(typed) |
                     Type::I64Ptr(typed) => {
                         assert!(typed.is_int());
-                        let mut retvar = self.context.insert_var((*typed).clone());
+                        let retvar = self.context.insert_var((*typed).clone());
                         self.with_block_mut(|block| {
                             block.ins.push(Ins::new(
                                 retvar,
@@ -917,6 +900,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 },
                             ));
                         });
+                        self.last_retvar = Some(retvar);
                     },
                     _ => unimplemented!(),
                 }
@@ -934,6 +918,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .ins
                         .push(Ins::new(retvar, InsType::LoadI32(*x as i32)));
                 });
+                self.last_retvar = Some(retvar);
                 Ok(())
             }
             Value::I64(x) => {
@@ -941,6 +926,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, InsType::LoadI64(*x)));
                 });
+                self.last_retvar = Some(retvar);
                 Ok(())
             }
             Value::Float(x) => {
@@ -948,6 +934,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, InsType::LoadF64(*x)));
                 });
+                self.last_retvar = Some(retvar);
                 Ok(())
             }
             Value::Bool(x) => {
@@ -955,6 +942,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, InsType::LoadBool(*x)));
                 });
+                self.last_retvar = Some(retvar);
                 Ok(())
             }
             Value::String(x) => {
@@ -964,13 +952,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .ins
                         .push(Ins::new(retvar, InsType::LoadSubstring(x.clone())));
                 });
+                self.last_retvar = Some(retvar);
                 Ok(())
             }
             Value::Identifier(id) => {
                 if let Some(retvar) = self.non_local(&id) {
-                    self.with_block_mut(|block| {
-                        block.ins.push(Ins::new(retvar, InsType::Nop));
-                    });
+                    self.last_retvar = Some(retvar);
                     Ok(())
                 } else {
                     Err(Error::UnknownIdentifier(id.clone()))

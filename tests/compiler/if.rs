@@ -73,6 +73,30 @@ fn if_expr_elsif() {
 }
 
 #[test]
+fn if_expr_nil() {
+    let program = utils::parse_to_ssa(
+        "
+    def f(x)
+        return if x > 10
+        end
+    end
+    f(10)
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+    println!("{:#?}", program.contexts);
+    let function = program
+        .contexts
+        .get(&FunctionName {
+            name: Rc::from("f"),
+            arg_types: vec![Type::I32],
+        })
+        .expect("f(I32) exists");
+    assert_eq!(&function.rettype, &Type::Nil);
+}
+
+#[test]
 fn if_expr_unify() {
     let program = utils::parse_to_ssa(
         "

@@ -156,7 +156,7 @@ where
             .declare_function("main()", Linkage::Import, &sig)
             .unwrap();
         let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
-        let _call = builder.ins().call(local_callee, &[]);
+        builder.ins().call(local_callee, &[]);
 
         let tmp = builder.ins().iconst(types::I32, 0);
         builder.ins().return_(&[tmp]);

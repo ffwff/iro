@@ -262,7 +262,7 @@ impl Ins {
                 callback(*var);
                 callback(*index);
             }
-            InsType::PointerIndexC { var, offset } => {
+            InsType::PointerIndexC { var, .. } => {
                 callback(*var);
             }
             InsType::AddC(rc)
