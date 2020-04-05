@@ -243,11 +243,25 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 break;
             }
         }
+        let declared_return: Option<Type> = n.return_type.as_ref()
+            .map(|declared_typed| declared_typed.typed.clone().into_inner())
+            .flatten();
         if !self.has_direct_return {
             if let Some(retvar) = self.last_retvar.take() {
                 self.context.rettype = self.context.rettype.unify(&self.context.variables[retvar]);
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
+                });
+            } else if declared_return
+                .map(|typed| typed == Type::Nil)
+                .unwrap_or(false) {
+                self.context.rettype = Type::Nil;
+                let retvar = self.context.insert_var(Type::Nil);
+                self.with_block_mut(|block| {
+                    block.ins.extend_from_slice(&[
+                        Ins::new(retvar, InsType::LoadNil),
+                        Ins::new(0, InsType::Return(retvar)),
+                    ]);
                 });
             } else {
                 self.context.rettype = self.context.rettype.unify(&Type::Nil);
@@ -260,9 +274,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 });
             }
         }
-        if let Some(declared_typed) = n.return_type.as_ref() {
-            let maybe_declared: &Option<Type> = &declared_typed.typed.borrow();
-            if maybe_declared.clone().unwrap() != self.context.rettype {
+        if let Some(declared_return) = declared_return {
+            if declared_return != self.context.rettype {
                 return Err(Error::InvalidReturnType);
             }
         }
