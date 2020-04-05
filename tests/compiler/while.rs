@@ -254,8 +254,9 @@ fn while_expr_cond_return() {
     let program = utils::parse_to_ssa(
         "
     def f(x)
-        return while return 10
+        while return 10
         end
+        return true
     end
     f(10)
     ",

@@ -187,6 +187,7 @@ fn if_expr_cond_return() {
     def f(x)
         if return 10
         end
+        return true
     end
     f(10)
     ",
