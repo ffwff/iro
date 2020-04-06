@@ -641,6 +641,13 @@ impl Type {
         }
     }
 
+    pub fn as_struct(&self) -> Option<StructType> {
+        match self {
+            Type::Struct(struct_data) => Some(struct_data.clone()),
+            _ => None,
+        }
+    }
+
     pub fn int_from_bits(bits: usize) -> Option<Self> {
         match bits {
             8 => Some(Type::I8),

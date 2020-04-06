@@ -5,9 +5,10 @@ use crate::ssa::visitor::TopLevelArch;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::entities::{Block, Value};
+use cranelift_codegen::ir::entities::{Block, Value, StackSlot};
 use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, InstBuilder, MemFlags, Signature};
 use cranelift_codegen::ir::immediates::Offset32;
+use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
@@ -255,39 +256,55 @@ where
         builder_context: &mut FunctionBuilderContext,
         fctx: &mut Context,
     ) {
-        for arg in &context.args {
-            fctx.func
-                .signature
-                .params
-                .push(AbiParam::new(self.ir_to_cranelift_type(&arg).unwrap()));
-        }
+        dbg_println!("codegen: {:#?}", context);
+
+        let mut stack_loads_by_var: Vec<Vec<Offset32>> = vec![vec![]; context.args.len()];
+        self.generate_function_arguments(&context.args, &mut fctx.func.signature, |idx, offset| {
+            stack_loads_by_var[idx].push(offset);
+        });
         if context.rettype != isa::Type::NoReturn {
             fctx.func.signature.returns.push(AbiParam::new(
                 self.ir_to_cranelift_type(&context.rettype).unwrap(),
             ));
         }
 
+        let mut var_to_var_struct_data = BTreeMap::new();
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
         let blocks: Vec<Block> = (0..context.blocks.len())
             .map(|_| builder.create_block())
             .collect();
 
-        for (idx, arg) in context.args.iter().enumerate() {
-            if let Some(typed) = self.ir_to_cranelift_type(&arg) {
-                builder.declare_var(Variable::with_u32(idx as u32), typed);
-            }
-        }
-        builder.append_block_params_for_function_params(blocks[0]);
-
         for (idx, typed) in context.variables.iter().enumerate() {
-            if let Some(typed) = self.ir_to_cranelift_type(&typed) {
-                builder.declare_var(Variable::with_u32(idx as u32), typed);
-            } else {
-                builder.declare_var(Variable::with_u32(idx as u32), types::I64);
+            if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
+                builder.declare_var(Variable::with_u32(idx as u32), cranelift_type);
             }
         }
 
-        let mut var_to_var_struct_data = BTreeMap::new();
+        // Generate stack loads for struct arguments
+        let mut stack_loads_ins: BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)> = btreemap![];
+        for (idx, (typed, stack_loads)) in context.args.iter().zip(stack_loads_by_var.iter()).enumerate() {
+            if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
+                let tmp = builder.append_block_param(blocks[0], cranelift_type);
+                builder.def_var(to_var(idx), tmp);
+            } else if let Some(struct_type) = typed.as_struct() {
+                let struct_data_rc = struct_type.0.clone();
+                let slot = builder.create_stack_slot(
+                    StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        struct_data_rc.size_of() as u32
+                    )
+                );
+                let mut loads_for_struct = vec![];
+                for offset in stack_loads {
+                    let tmp = builder.append_block_param(blocks[0], types::I64);
+                    loads_for_struct.push((*offset, tmp));
+                }
+                stack_loads_ins.insert(idx, (slot, loads_for_struct));
+            } else {
+                unimplemented!()
+            }
+        }
+
         for (cblock, &bblock) in context.blocks.iter().zip(blocks.iter()) {
             builder.switch_to_block(bblock);
             for ins in &cblock.ins {
@@ -297,6 +314,7 @@ where
                     &program,
                     bblock,
                     &blocks,
+                    &stack_loads_ins,
                     &mut builder,
                     &mut var_to_var_struct_data,
                 );
@@ -308,7 +326,7 @@ where
 
         let flags = settings::Flags::new(settings::builder());
         let res = verify_function(&fctx.func, &flags);
-        dbg_println!("{}", fctx.func.display(None));
+        dbg_println!("{:#?}\n{}", context.name, fctx.func.display(None));
         if let Err(errors) = res {
             panic!("{}", errors);
         }
@@ -321,6 +339,7 @@ where
         program: &isa::Program,
         bblock: Block,
         bblocks: &Vec<Block>,
+        stack_loads_ins: &BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)>,
         builder: &mut FunctionBuilder,
         var_to_var_struct_data: &mut BTreeMap<usize, VarStructData>,
     ) {
@@ -331,8 +350,26 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::LoadArg(arg) => {
-                let tmp = builder.block_params(bblock)[*arg];
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                if let Some((slot, struct_ins)) = stack_loads_ins.get(arg) {
+                    for (offset, value) in struct_ins {
+                        builder.ins().stack_store(
+                            *value,
+                            *slot,
+                            *offset
+                        );
+                    }
+                    let pointer = builder.ins().stack_addr(self.pointer_type(), *slot, 0);
+                    var_to_var_struct_data.insert(
+                        ins.retvar().unwrap(),
+                        VarStructData {
+                            pointer,
+                            struct_data: context.args[*arg].as_struct().unwrap().0.clone()
+                        },
+                    );
+                } else {
+                    let tmp = builder.block_params(bblock)[*arg];
+                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                }
             }
             isa::InsType::LoadI32(x) => {
                 let tmp = builder.ins().iconst(types::I32, *x as i64);
@@ -432,7 +469,6 @@ where
                             offset,
                         );
                         arg_values[idx].push(tmp);
-                        builder.def_var(to_var(var), tmp)
                     });
                 }
 

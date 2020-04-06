@@ -32,7 +32,7 @@ pub struct TopLevelInfo {
 impl TopLevelInfo {
     pub fn new(arch: TopLevelArch) -> Self {
         let pointer_type = Type::int_from_bits(arch.pointer_bits).unwrap();
-        let mut substring_struct = StructData::new();
+        let mut substring_struct = StructData::new(Rc::from("Substring"));
         substring_struct.append_type(Rc::from("ptr"), pointer_type.ptr_for(Type::I8).unwrap());
         substring_struct.append_type(Rc::from("len"), Type::I32);
         let substring_struct = Rc::new(substring_struct);
@@ -47,7 +47,7 @@ impl TopLevelInfo {
                 Rc::from("I64") => Type::I64,
                 Rc::from("ISize") => pointer_type,
                 Rc::from("F64") => Type::F64,
-                Rc::from("Substring") => Type::new_struct(substring_struct.clone()),
+                substring_struct.name().clone() => Type::new_struct(substring_struct.clone()),
             ],
             substring_struct: Some(substring_struct),
         }

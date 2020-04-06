@@ -41,15 +41,21 @@ pub struct StructData {
     values: HashMap<Rc<str>, StructFieldData>,
     flattened: Vec<PrimitiveTypeField>,
     size_of: usize,
+    name: Rc<str>
 }
 
 impl StructData {
-    pub fn new() -> Self {
+    pub fn new(name: Rc<str>) -> Self {
         StructData {
             values: HashMap::new(),
             flattened: vec![],
             size_of: 0,
+            name,
         }
+    }
+
+    pub fn name(&self) -> &Rc<str> {
+        &self.name
     }
 
     pub fn values(&self) -> &HashMap<Rc<str>, StructFieldData> {
@@ -82,6 +88,12 @@ impl StructData {
             },
         );
         self.size_of += type_size;
+    }
+}
+
+impl std::fmt::Display for StructData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
