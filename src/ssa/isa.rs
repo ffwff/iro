@@ -524,7 +524,7 @@ impl ToString for FunctionName {
             .iter()
             .map(|typed| {
                 let mut string = String::new();
-                write!(&mut string, "{:?}", typed).unwrap();
+                write!(&mut string, "{}", typed).unwrap();
                 string
             })
             .collect::<Vec<String>>()
@@ -664,6 +664,24 @@ impl Type {
             Type::I64 | Type::I64Ptr(_) => Some(8),
             Type::F64 => Some(8),
             _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Nil => write!(f, "Nil"),
+            Type::Bool => write!(f, "Bool"),
+            Type::I8 => write!(f, "I8"),
+            Type::I16 => write!(f, "I16"),
+            Type::I32 => write!(f, "I32"),
+            Type::I64 => write!(f, "I64"),
+            Type::I32Ptr(typed)
+            | Type::I64Ptr(typed) => write!(f, "&{}", typed),
+            Type::F64 => write!(f, "F64"),
+            Type::Struct(struct_typed) => write!(f, "{}", struct_typed.0),
+            _ => unimplemented!(),
         }
     }
 }
