@@ -35,6 +35,7 @@ impl TopLevelInfo {
         let mut substring_struct = StructData::new();
         substring_struct.append_type(Rc::from("ptr"), pointer_type.ptr_for(Type::I8).unwrap());
         substring_struct.append_type(Rc::from("len"), Type::I32);
+        let substring_struct = Rc::new(substring_struct);
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
@@ -46,9 +47,9 @@ impl TopLevelInfo {
                 Rc::from("I64") => Type::I64,
                 Rc::from("ISize") => pointer_type,
                 Rc::from("F64") => Type::F64,
-                Rc::from("Substring") => Type::Substring,
+                Rc::from("Substring") => Type::new_struct(substring_struct.clone()),
             ],
-            substring_struct: Some(Rc::new(substring_struct)),
+            substring_struct: Some(substring_struct),
         }
     }
 
@@ -253,7 +254,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     block.ins.push(Ins::new(retvar, InsType::Return(retvar)));
                 });
             } else if declared_return
-                .map(|typed| typed == Type::Nil)
+                .as_ref()
+                .map(|typed| *typed == Type::Nil)
                 .unwrap_or(false) {
                 self.context.rettype = Type::Nil;
                 let retvar = self.context.insert_var(Type::Nil);
@@ -889,24 +891,28 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let leftvar = self.last_retvar.take().unwrap();
         match &n.right {
             MemberExprArm::Identifier(string) => {
-                let mut retvar = None;
-                if self.context.variables[leftvar].clone() == Type::Substring {
-                    let top_level = self.top_level.borrow();
-                    let substring_struct = top_level.substring_struct.as_ref().unwrap();
-                    if let Some(var_data) = substring_struct.values().get(string) {
-                        retvar = Some(self.context.insert_var(var_data.typed.clone()));
+                let rettype = if let Type::Struct(struct_data) = self.context.variables[leftvar].clone() {
+                    if let Some(var_data) = struct_data.0.values().get(string) {
+                        Some(var_data.typed.clone())
+                    } else {
+                        None
                     }
+                } else {
+                    None
+                };
+                if let Some(rettype) = rettype {
+                    let retvar = self.context.insert_var(rettype);
+                    self.last_retvar = Some(retvar);
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins::new(
+                            retvar,
+                            InsType::MemberReference {
+                                left: leftvar,
+                                right: string.clone(),
+                            },
+                        ));
+                    });
                 }
-                self.last_retvar = retvar.clone();
-                self.with_block_mut(|block| {
-                    block.ins.push(Ins::new(
-                        retvar.unwrap(),
-                        InsType::MemberReference {
-                            left: leftvar,
-                            right: string.clone(),
-                        },
-                    ));
-                });
             }
             MemberExprArm::Index(idx) => {
                 idx.visit(self)?;
@@ -971,7 +977,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
             Value::String(x) => {
-                let retvar = self.context.insert_var(Type::Substring);
+                let retvar = {
+                    let top_level = self.top_level.borrow();
+                    self.context.insert_var(Type::new_struct(top_level.substring_struct.clone().unwrap()))
+                };
                 self.with_block_mut(|block| {
                     block
                         .ins

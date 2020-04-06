@@ -6,7 +6,7 @@ use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, Value};
-use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
+use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, InstBuilder, MemFlags, Signature};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
@@ -17,6 +17,7 @@ use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
+use std::borrow::Borrow;
 
 fn to_var(x: usize) -> Variable {
     Variable::with_u32(x as u32)
@@ -65,6 +66,7 @@ macro_rules! generate_arithmetic {
     }};
 }
 
+/// Struct data for an SSA variable
 struct VarStructData {
     pub pointer: Value,
     pub struct_data: Rc<StructData>,
@@ -133,6 +135,90 @@ where
             isa::Type::I64 | isa::Type::I64Ptr(_) => Some(types::I64),
             isa::Type::F64 => Some(types::F64),
             _ => None,
+        }
+    }
+
+    fn generate_call(
+        &self,
+        arg_types: &Vec<isa::Type>,
+        sig: &mut Signature,
+        args: &Vec<usize>,
+        builder: &mut FunctionBuilder,
+        var_to_var_struct_data: &BTreeMap<usize, VarStructData>,
+    ) {
+        // Cranelift currently doesn't have any abstractions for structured data,
+        // So we'll have to hand roll our own D:
+        // FIXME: this only generates calls for x86-64's system-v abi
+        for (idx, arg) in arg_types.iter().enumerate() {
+            if let Some(cranelift_type) = self.ir_to_cranelift_type(&arg) {
+                sig.params.push(AbiParam::new(cranelift_type));
+            } else if let isa::Type::Struct(isa::StructType(struct_data_rc)) = arg {
+                let var = args[idx];
+                let var_struct_data = &var_to_var_struct_data[&var];
+                let struct_data: &StructData = struct_data_rc.borrow();
+                if struct_data.size_of() <= 8 {
+                    // For small structs, we pass the struct as a 64-bit integer parameter
+                    let tmp = builder.ins().load(
+                        types::I32,
+                        MemFlags::trusted(),
+                        var_struct_data.pointer,
+                        0,
+                    );
+                    builder.def_var(to_var(var), tmp);
+                    sig.params.push(AbiParam::new(types::I64));
+                } else if struct_data.size_of() > 16 {
+                    // For large structs, push a duplicate of it into the stack
+                    unimplemented!()
+                } else {
+                    // For medium-sized structs, manually classify each eight bytes in the struct
+                    #[derive(Debug, Clone, Copy)]
+                    enum AbiClass {
+                        None,
+                        Memory,
+                        Integer,
+                        SSE,
+                    }
+                    fn classify_type(typed: PrimitiveType) -> AbiClass {
+                        match typed {
+                            PrimitiveType::I8
+                            | PrimitiveType::I16
+                            | PrimitiveType::I32
+                            | PrimitiveType::I64 => AbiClass::Integer,
+                            _ => unimplemented!(),
+                        }
+                    }
+                    let mut eight_bytes = vec![AbiClass::None; (struct_data.size_of() + 7) / 8];
+                    for prim_field in struct_data.flattened() {
+                        let idx = prim_field.offset / 8;
+                        match (classify_type(prim_field.typed), eight_bytes[idx]) {
+                            // If one of the classes is INTEGER, the result is the INTEGER.
+                            (AbiClass::Integer, AbiClass::None) => {
+                                eight_bytes[idx] = AbiClass::Integer;
+                            },
+                            // Otherwise class SSE is used.
+                            (_, AbiClass::None) => {
+                                eight_bytes[idx] = AbiClass::SSE;
+                            },
+                            _ => unreachable!(),
+                        }
+                    }
+                    for (idx, class) in eight_bytes.iter().enumerate() {
+                        match class {
+                            AbiClass::Integer => {
+                                let tmp = builder.ins().load(
+                                    types::I64,
+                                    MemFlags::trusted(),
+                                    var_struct_data.pointer,
+                                    idx as i32 * 8,
+                                );
+                                builder.ins().x86_push(tmp);
+                                sig.params.push(AbiParam::new(types::I64));
+                            },
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -209,6 +295,8 @@ where
         for (idx, typed) in context.variables.iter().enumerate() {
             if let Some(typed) = self.ir_to_cranelift_type(&typed) {
                 builder.declare_var(Variable::with_u32(idx as u32), typed);
+            } else {
+                builder.declare_var(Variable::with_u32(idx as u32), types::I64);
             }
         }
 
@@ -334,10 +422,13 @@ where
                 let rettype = &context.variables[ins.retvar().unwrap()];
                 {
                     let name: &isa::FunctionName = name;
-                    for arg in &name.arg_types {
-                        sig.params
-                            .push(AbiParam::new(self.ir_to_cranelift_type(&arg).unwrap()));
-                    }
+                    self.generate_call(
+                        &name.arg_types,
+                        &mut sig,
+                        &args,
+                        builder,
+                        var_to_var_struct_data
+                    );
                 }
                 if *rettype != isa::Type::NoReturn {
                     sig.returns
@@ -496,12 +587,12 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::MemberReference { left, right } => {
-                use std::borrow::Borrow;
-                let struct_data_rc = if context.variables[*left] == isa::Type::Substring {
-                    program.substring_struct.clone()
-                } else {
-                    unimplemented!()
-                };
+                let struct_data_rc =
+                    if let isa::Type::Struct(isa::StructType(data)) = &context.variables[*left] {
+                        data.clone()
+                    } else {
+                        unimplemented!()
+                    };
                 let struct_data: &StructData = struct_data_rc.borrow();
                 let field_data = struct_data.values().get(right).unwrap();
                 let var_struct_data = var_to_var_struct_data.get(&left).unwrap();

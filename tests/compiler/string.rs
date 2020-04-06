@@ -47,3 +47,30 @@ fn ptr_access() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn substring_passing() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    #[repr(C)]
+    struct IroSubstring {
+        ptr: *mut u8,
+        len: i32,
+    }
+    extern "C" fn record_substr(substring: IroSubstring) {
+        assert_eq!(substring.len, 3);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::empty();
+    runtime.insert_func("record_substr", record_substr as extern "C" fn(IroSubstring));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_substr\"(n: Substring): Nil
+
+    record(\"ABC\")
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}

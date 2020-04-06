@@ -4,6 +4,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::ops::BitAnd;
 use std::rc::Rc;
+use std::hash::{Hash, Hasher};
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntrinsicType {
@@ -551,12 +553,16 @@ pub enum Type {
     I32Ptr(Rc<Type>),
     I64Ptr(Rc<Type>),
     F64,
-    Substring,
+    Struct(StructType),
     Union(Rc<BTreeSet<Type>>),
     NeverUsed,
 }
 
 impl Type {
+    pub fn new_struct(data: Rc<StructData>) -> Self {
+        Type::Struct(StructType(data))
+    }
+
     pub fn ptr_for(&self, typed: Type) -> Option<Self> {
         match self {
             Type::I32 => Some(Type::I32Ptr(Rc::new(typed))),
@@ -652,5 +658,36 @@ impl Type {
             Type::F64 => Some(8),
             _ => None,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StructType(pub Rc<StructData>);
+
+impl PartialEq for StructType {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for StructType {
+}
+
+impl PartialOrd for StructType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for StructType {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.0.borrow() as *const StructData).cmp(&(other.0.borrow() as *const StructData))
+    }
+}
+
+impl Hash for StructType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        use std::borrow::Borrow;
+        (self.0.borrow() as *const StructData).hash(state);
     }
 }
