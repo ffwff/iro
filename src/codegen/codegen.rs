@@ -1,4 +1,5 @@
 use crate::codegen::structs::*;
+use crate::codegen::translator::*;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
 use crate::ssa::visitor::TopLevelArch;
@@ -20,44 +21,6 @@ use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-
-fn to_var(x: usize) -> Variable {
-    Variable::with_u32(x as u32)
-}
-
-fn const_to_value(builder: &mut FunctionBuilder, c: &isa::Constant) -> Value {
-    match c {
-        isa::Constant::I32(x) => builder.ins().iconst(types::I32, *x as i64),
-        isa::Constant::I64(x) => builder.ins().iconst(types::I64, *x),
-        isa::Constant::F64(x) => builder.ins().f64const(*x),
-    }
-}
-
-fn const_to_type(c: &isa::Constant) -> types::Type {
-    match c {
-        isa::Constant::I32(_) => types::I32,
-        isa::Constant::I64(_) => types::I64,
-        isa::Constant::F64(_) => types::F64,
-    }
-}
-
-fn regconst_to_type(
-    builder: &mut FunctionBuilder,
-    rc: &isa::RegConst,
-) -> (Value, Value, types::Type) {
-    match rc {
-        isa::RegConst::RegLeft((reg, value)) => (
-            builder.use_var(to_var(*reg)),
-            const_to_value(builder, value),
-            const_to_type(value),
-        ),
-        isa::RegConst::RegRight((value, reg)) => (
-            const_to_value(builder, value),
-            builder.use_var(to_var(*reg)),
-            const_to_type(value),
-        ),
-    }
-}
 
 macro_rules! generate_arithmetic {
     ($builder:expr, $ins:expr, $x:expr, $y:expr, $fn:tt) => {{
@@ -128,18 +91,6 @@ where
         self.module.isa().pointer_type()
     }
 
-    fn ir_to_cranelift_type(&self, typed: &isa::Type) -> Option<types::Type> {
-        match typed {
-            isa::Type::Nil => Some(types::I32),
-            isa::Type::Bool => Some(types::B1),
-            isa::Type::I8 => Some(types::I8),
-            isa::Type::I32 | isa::Type::I32Ptr(_) => Some(types::I32),
-            isa::Type::I64 | isa::Type::I64Ptr(_) => Some(types::I64),
-            isa::Type::F64 => Some(types::F64),
-            _ => None,
-        }
-    }
-
     fn generate_function_arguments<F>(
         &self,
         arg_types: &Vec<isa::Type>,
@@ -152,7 +103,7 @@ where
         // So we'll have to hand roll our own D:
         // FIXME: this only generates calls for x86-64's system-v abi
         for (idx, arg) in arg_types.iter().enumerate() {
-            if let Some(cranelift_type) = self.ir_to_cranelift_type(&arg) {
+            if let Some(cranelift_type) = ir_to_cranelift_type(&arg) {
                 sig.params.push(AbiParam::new(cranelift_type));
             } else if let isa::Type::Struct(isa::StructType(struct_data_rc)) = arg {
                 let struct_data: &StructData = struct_data_rc.borrow();
@@ -264,7 +215,7 @@ where
         });
         if context.rettype != isa::Type::NoReturn {
             fctx.func.signature.returns.push(AbiParam::new(
-                self.ir_to_cranelift_type(&context.rettype).unwrap(),
+                ir_to_cranelift_type(&context.rettype).unwrap(),
             ));
         }
 
@@ -275,7 +226,7 @@ where
             .collect();
 
         for (idx, typed) in context.variables.iter().enumerate() {
-            if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
+            if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
                 builder.declare_var(Variable::with_u32(idx as u32), cranelift_type);
             }
         }
@@ -288,7 +239,7 @@ where
             .zip(stack_loads_by_var.iter())
             .enumerate()
         {
-            if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
+            if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
             } else if let Some(struct_type) = typed.as_struct() {
                 let struct_data_rc = struct_type.0.clone();
@@ -444,15 +395,12 @@ where
                 let rettype = &context.variables[ins.retvar().unwrap()];
                 if *rettype != isa::Type::NoReturn {
                     sig.returns
-                        .push(AbiParam::new(self.ir_to_cranelift_type(&rettype).unwrap()));
+                        .push(AbiParam::new(ir_to_cranelift_type(&rettype).unwrap()));
                 }
 
                 let mut arg_values = vec![];
                 for arg in args {
-                    if self
-                        .ir_to_cranelift_type(&context.variables[*arg])
-                        .is_some()
-                    {
+                    if ir_to_cranelift_type(&context.variables[*arg]).is_some() {
                         arg_values.push(vec![builder.use_var(to_var(*arg))]);
                     } else {
                         arg_values.push(vec![]);
@@ -632,7 +580,7 @@ where
                 let field_data = struct_data.values().get(right).unwrap();
                 let var_struct_data = var_to_var_struct_data.get(&left).unwrap();
                 let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&field_data.typed).unwrap(),
+                    ir_to_cranelift_type(&field_data.typed).unwrap(),
                     MemFlags::trusted(),
                     var_struct_data.pointer,
                     field_data.offset as i32,
@@ -655,13 +603,12 @@ where
                     .ins()
                     .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
                 let multiplicand_casted = builder.ins().sextend(
-                    self.ir_to_cranelift_type(&context.variables[*var]).unwrap(),
+                    ir_to_cranelift_type(&context.variables[*var]).unwrap(),
                     multiplicand,
                 );
                 let indexed = builder.ins().iadd(ptr, multiplicand_casted);
                 let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&context.variables[retvar])
-                        .unwrap(),
+                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
                     MemFlags::trusted(),
                     indexed,
                     0,
@@ -672,8 +619,7 @@ where
                 let retvar = ins.retvar().unwrap();
                 let ptr = builder.use_var(to_var(*var));
                 let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&context.variables[retvar])
-                        .unwrap(),
+                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
                     MemFlags::trusted(),
                     ptr,
                     *offset,
