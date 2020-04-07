@@ -212,11 +212,11 @@ impl<'input> Iterator for Lexer<'input> {
                     match self.chars.next() {
                         Some((idx1, ch)) if ch.is_whitespace() => {
                             self.last_char = Some((idx1, ch));
-                            return Some(Ok((idx0, Tok::AmpFollow, idx0)));
+                            return Some(Ok((idx0, Tok::Amp, idx0)));
                         },
                         ch => {
                             self.last_char = ch;
-                            return Some(Ok((idx0, Tok::Amp, idx0)));
+                            return Some(Ok((idx0, Tok::AmpFollow, idx0)));
                         }
                     }
                 },
