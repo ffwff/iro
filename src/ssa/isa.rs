@@ -599,14 +599,20 @@ impl Type {
 
     pub fn can_implicit_cast_to(&self, other: &Type) -> bool {
         match (self, other) {
+            // Integers with smaller sizes can cast into bigger sizes implicitly
             (Type::I32, Type::I64) => true,
+            (Type::I16, Type::I64) => true,
+            (Type::I16, Type::I32) => true,
+            (Type::I8, Type::I64) => true,
+            (Type::I8, Type::I32) => true,
+            (Type::I8, Type::I16) => true,
             _ => false,
         }
     }
 
     pub fn can_explicit_cast_to(&self, other: &Type) -> bool {
         match (self, other) {
-            (Type::I32, Type::I64) => true,
+            (left, right) if left.is_int() && right.is_int() => true,
             (Type::I32Ptr(_), Type::I32) => true,
             (Type::I64Ptr(_), Type::I64) => true,
             _ => false,
