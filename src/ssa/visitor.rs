@@ -244,7 +244,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 break;
             }
         }
-        let declared_return: Option<Type> = n.return_type.as_ref()
+        let declared_return: Option<Type> = n
+            .return_type
+            .as_ref()
             .map(|declared_typed| declared_typed.typed.clone().into_inner())
             .flatten();
         if !self.has_direct_return {
@@ -256,7 +258,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
             } else if declared_return
                 .as_ref()
                 .map(|typed| *typed == Type::Nil)
-                .unwrap_or(false) {
+                .unwrap_or(false)
+            {
                 self.context.rettype = Type::Nil;
                 let retvar = self.context.insert_var(Type::Nil);
                 self.with_block_mut(|block| {
@@ -489,7 +492,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         };
         let retvar = retvar_type.map(|typed| self.context.insert_var(typed));
 
-        let mut outer_block = if !self.has_direct_return {
+        let outer_block = if !self.has_direct_return {
             Some(self.context.new_block())
         } else {
             None
@@ -795,17 +798,23 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 {
                     let block = &mut self.context.blocks[left_block_end];
                     match &n.op {
-                        BinOp::And => block.ins.push(Ins::new(0, InsType::IfJmp {
-                            condvar: result,
-                            iftrue: right_block_start,
-                            iffalse: end_block,
-                        })),
-                        BinOp::Or => block.ins.push(Ins::new(0, InsType::IfJmp {
-                            condvar: result,
-                            iftrue: end_block,
-                            iffalse: right_block_start,
-                        })),
-                        _ => unreachable!()
+                        BinOp::And => block.ins.push(Ins::new(
+                            0,
+                            InsType::IfJmp {
+                                condvar: result,
+                                iftrue: right_block_start,
+                                iffalse: end_block,
+                            },
+                        )),
+                        BinOp::Or => block.ins.push(Ins::new(
+                            0,
+                            InsType::IfJmp {
+                                condvar: result,
+                                iftrue: end_block,
+                                iffalse: right_block_start,
+                            },
+                        )),
+                        _ => unreachable!(),
                     }
                 }
                 {
@@ -821,7 +830,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let left = self.last_retvar.take().unwrap();
                 n.right.visit(self)?;
                 let mut right = self.last_retvar.take().unwrap();
-                if self.context.variables[right].can_implicit_cast_to(&self.context.variables[left]) {
+                if self.context.variables[right].can_implicit_cast_to(&self.context.variables[left])
+                {
                     let typed = RefCell::new(Some(self.context.variables[left].clone()));
                     let retvar = self
                         .context
@@ -891,15 +901,16 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let leftvar = self.last_retvar.take().unwrap();
         match &n.right {
             MemberExprArm::Identifier(string) => {
-                let rettype = if let Type::Struct(struct_data) = self.context.variables[leftvar].clone() {
-                    if let Some(var_data) = struct_data.0.values().get(string) {
-                        Some(var_data.typed.clone())
+                let rettype =
+                    if let Type::Struct(struct_data) = self.context.variables[leftvar].clone() {
+                        if let Some(var_data) = struct_data.0.values().get(string) {
+                            Some(var_data.typed.clone())
+                        } else {
+                            None
+                        }
                     } else {
                         None
-                    }
-                } else {
-                    None
-                };
+                    };
                 if let Some(rettype) = rettype {
                     let retvar = self.context.insert_var(rettype);
                     self.last_retvar = Some(retvar);
@@ -918,8 +929,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 idx.visit(self)?;
                 let idx_var = self.last_retvar.take().unwrap();
                 match self.context.variables[leftvar].clone() {
-                    Type::I32Ptr(typed) |
-                    Type::I64Ptr(typed) => {
+                    Type::I32Ptr(typed) | Type::I64Ptr(typed) => {
                         assert!(typed.is_int());
                         let retvar = self.context.insert_var((*typed).clone());
                         self.with_block_mut(|block| {
@@ -932,7 +942,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             ));
                         });
                         self.last_retvar = Some(retvar);
-                    },
+                    }
                     _ => unimplemented!(),
                 }
             }
@@ -979,7 +989,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
             Value::String(x) => {
                 let retvar = {
                     let top_level = self.top_level.borrow();
-                    self.context.insert_var(Type::new_struct(top_level.substring_struct.clone().unwrap()))
+                    self.context.insert_var(Type::new_struct(
+                        top_level.substring_struct.clone().unwrap(),
+                    ))
                 };
                 self.with_block_mut(|block| {
                     block
@@ -1016,7 +1028,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
             TypeIdData::Pointer(internal) => {
                 self.visit_typeid(&internal)?;
                 let top_level: &TopLevelInfo = &self.top_level.borrow();
-                n.typed.replace(top_level.pointer_type.ptr_for(internal.typed.borrow().clone().unwrap()));
+                n.typed.replace(
+                    top_level
+                        .pointer_type
+                        .ptr_for(internal.typed.borrow().clone().unwrap()),
+                );
                 Ok(())
             }
         }

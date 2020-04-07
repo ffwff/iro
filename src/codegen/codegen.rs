@@ -5,10 +5,10 @@ use crate::ssa::visitor::TopLevelArch;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::entities::{Block, Value, StackSlot};
-use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, InstBuilder, MemFlags, Signature};
+use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
+use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Signature};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
@@ -17,9 +17,9 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use std::borrow::Borrow;
 
 fn to_var(x: usize) -> Variable {
     Variable::with_u32(x as u32)
@@ -145,8 +145,8 @@ where
         arg_types: &Vec<isa::Type>,
         sig: &mut Signature,
         mut load_function: F,
-    )
-        where F: FnMut(usize, Offset32)
+    ) where
+        F: FnMut(usize, Offset32),
     {
         // Cranelift currently doesn't have any abstractions for structured data,
         // So we'll have to hand roll our own D:
@@ -188,11 +188,11 @@ where
                             // If one of the classes is INTEGER, the result is the INTEGER.
                             (AbiClass::Integer, AbiClass::None) => {
                                 eight_bytes[idx] = AbiClass::Integer;
-                            },
+                            }
                             // Otherwise class SSE is used.
                             (_, AbiClass::None) => {
                                 eight_bytes[idx] = AbiClass::SSE;
-                            },
+                            }
                             _ => unreachable!(),
                         }
                     }
@@ -201,7 +201,7 @@ where
                             AbiClass::Integer => {
                                 load_function(idx, Offset32::new(struct_idx as i32 * 8));
                                 sig.params.push(AbiParam::new(types::I64));
-                            },
+                            }
                             _ => unreachable!(),
                         }
                     }
@@ -282,17 +282,20 @@ where
 
         // Generate stack loads for struct arguments
         let mut stack_loads_ins: BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)> = btreemap![];
-        for (idx, (typed, stack_loads)) in context.args.iter().zip(stack_loads_by_var.iter()).enumerate() {
+        for (idx, (typed, stack_loads)) in context
+            .args
+            .iter()
+            .zip(stack_loads_by_var.iter())
+            .enumerate()
+        {
             if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
             } else if let Some(struct_type) = typed.as_struct() {
                 let struct_data_rc = struct_type.0.clone();
-                let slot = builder.create_stack_slot(
-                    StackSlotData::new(
-                        StackSlotKind::ExplicitSlot,
-                        struct_data_rc.size_of() as u32
-                    )
-                );
+                let slot = builder.create_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    struct_data_rc.size_of() as u32,
+                ));
                 let mut loads_for_struct = vec![];
                 for offset in stack_loads {
                     let tmp = builder.append_block_param(blocks[0], types::I64);
@@ -351,18 +354,14 @@ where
             isa::InsType::LoadArg(arg) => {
                 if let Some((slot, struct_ins)) = stack_loads_ins.get(arg) {
                     for (offset, value) in struct_ins {
-                        builder.ins().stack_store(
-                            *value,
-                            *slot,
-                            *offset
-                        );
+                        builder.ins().stack_store(*value, *slot, *offset);
                     }
                     let pointer = builder.ins().stack_addr(self.pointer_type(), *slot, 0);
                     var_to_var_struct_data.insert(
                         ins.retvar().unwrap(),
                         VarStructData {
                             pointer,
-                            struct_data: context.args[*arg].as_struct().unwrap().0.clone()
+                            struct_data: context.args[*arg].as_struct().unwrap().0.clone(),
                         },
                     );
                 } else {
@@ -450,8 +449,11 @@ where
 
                 let mut arg_values = vec![];
                 for arg in args {
-                    if self.ir_to_cranelift_type(&context.variables[*arg]).is_some() {
-                        arg_values.push(vec![ builder.use_var(to_var(*arg)) ]);
+                    if self
+                        .ir_to_cranelift_type(&context.variables[*arg])
+                        .is_some()
+                    {
+                        arg_values.push(vec![builder.use_var(to_var(*arg))]);
                     } else {
                         arg_values.push(vec![]);
                     }
@@ -639,13 +641,9 @@ where
             }
             isa::InsType::Cast { var, typed } => {
                 let tmp = match (&context.variables[*var], typed) {
-                    (isa::Type::I32Ptr(_), isa::Type::I32) => {
-                        builder.use_var(to_var(*var))
-                    }
-                    (isa::Type::I64Ptr(_), isa::Type::I64) => {
-                        builder.use_var(to_var(*var))
-                    }
-                    _ => unreachable!()
+                    (isa::Type::I32Ptr(_), isa::Type::I32) => builder.use_var(to_var(*var)),
+                    (isa::Type::I64Ptr(_), isa::Type::I64) => builder.use_var(to_var(*var)),
+                    _ => unreachable!(),
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
@@ -653,20 +651,17 @@ where
                 let retvar = ins.retvar().unwrap();
                 let ptr = builder.use_var(to_var(*var));
                 let index_var = builder.use_var(to_var(*index));
-                let multiplicand = builder.ins().imul_imm(
-                    index_var,
-                    context.variables[retvar].bytes().unwrap() as i64
-                );
+                let multiplicand = builder
+                    .ins()
+                    .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
                 let multiplicand_casted = builder.ins().sextend(
                     self.ir_to_cranelift_type(&context.variables[*var]).unwrap(),
-                    multiplicand
+                    multiplicand,
                 );
-                let indexed = builder.ins().iadd(
-                    ptr,
-                    multiplicand_casted
-                );
+                let indexed = builder.ins().iadd(ptr, multiplicand_casted);
                 let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    self.ir_to_cranelift_type(&context.variables[retvar])
+                        .unwrap(),
                     MemFlags::trusted(),
                     indexed,
                     0,
@@ -677,7 +672,8 @@ where
                 let retvar = ins.retvar().unwrap();
                 let ptr = builder.use_var(to_var(*var));
                 let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    self.ir_to_cranelift_type(&context.variables[retvar])
+                        .unwrap(),
                     MemFlags::trusted(),
                     ptr,
                     *offset,

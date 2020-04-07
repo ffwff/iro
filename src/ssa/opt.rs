@@ -394,11 +394,12 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                         let offset_index = match k.to_const().unwrap() {
                             Constant::I32(x) => x,
                             Constant::I64(x) => x as i32,
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                         ins.typed = InsType::PointerIndexC {
                             var: *var,
-                            offset: (context.variables[*var].bytes().unwrap() as i32) * offset_index
+                            offset: (context.variables[*var].bytes().unwrap() as i32)
+                                * offset_index,
                         };
                     }
                 }
@@ -556,7 +557,10 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
     dbg_println!("{:#?} {:#?}", jmp_map, idx_map);
 
     let map_block_idx = |idx: usize| {
-        let new = jmp_map.get(&idx).copied().unwrap_or_else(|| idx_map.binary_search(&idx).unwrap());
+        let new = jmp_map
+            .get(&idx)
+            .copied()
+            .unwrap_or_else(|| idx_map.binary_search(&idx).unwrap());
         dbg_println!("map {} => {}", idx, new);
         new
     };
@@ -565,7 +569,9 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
     for (idx, mut block) in old_vec.into_iter().enumerate() {
         if !jmp_map.contains_key(&idx) {
             match &mut block.postlude.typed {
-                InsType::IfJmp { iftrue, iffalse, .. } => {
+                InsType::IfJmp {
+                    iftrue, iffalse, ..
+                } => {
                     *iftrue = map_block_idx(*iftrue);
                     *iffalse = map_block_idx(*iffalse);
                 }

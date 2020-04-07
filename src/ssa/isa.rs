@@ -1,11 +1,11 @@
 use crate::codegen::structs::*;
 use std::borrow::Borrow;
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
+use std::hash::{Hash, Hasher};
 use std::ops::BitAnd;
 use std::rc::Rc;
-use std::hash::{Hash, Hasher};
-use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntrinsicType {
@@ -632,10 +632,7 @@ impl Type {
 
     pub fn is_int(&self) -> bool {
         match self {
-            Type::I8
-            | Type::I16
-            | Type::I32
-            | Type::I64 => true,
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => true,
             _ => false,
         }
     }
@@ -683,8 +680,7 @@ impl std::fmt::Display for Type {
             Type::I16 => write!(f, "I16"),
             Type::I32 => write!(f, "I32"),
             Type::I64 => write!(f, "I64"),
-            Type::I32Ptr(typed)
-            | Type::I64Ptr(typed) => write!(f, "&{}", typed),
+            Type::I32Ptr(typed) | Type::I64Ptr(typed) => write!(f, "&{}", typed),
             Type::F64 => write!(f, "F64"),
             Type::Struct(struct_typed) => write!(f, "{}", struct_typed.0),
             _ => unimplemented!(),
@@ -701,8 +697,7 @@ impl PartialEq for StructType {
     }
 }
 
-impl Eq for StructType {
-}
+impl Eq for StructType {}
 
 impl PartialOrd for StructType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -718,7 +713,6 @@ impl Ord for StructType {
 
 impl Hash for StructType {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        use std::borrow::Borrow;
         (self.0.borrow() as *const StructData).hash(state);
     }
 }

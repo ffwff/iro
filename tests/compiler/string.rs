@@ -65,7 +65,10 @@ fn substring_ffi() {
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::empty();
-    runtime.insert_func("record_substr", record_substr as extern "C" fn(IroSubstring));
+    runtime.insert_func(
+        "record_substr",
+        record_substr as extern "C" fn(IroSubstring),
+    );
     utils::parse_and_run(
         Settings::default(),
         "
@@ -96,7 +99,10 @@ fn substring_passing() {
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::empty();
-    runtime.insert_func("record_substr", record_substr as extern "C" fn(IroSubstring));
+    runtime.insert_func(
+        "record_substr",
+        record_substr as extern "C" fn(IroSubstring),
+    );
     utils::parse_and_run(
         Settings::default(),
         "

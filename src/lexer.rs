@@ -208,16 +208,14 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, '@')) => mod_op!(self, idx0, Tok::At, '[', Tok::AtBracket),
                 Some((idx0, '[')) => return Some(Ok((idx0, Tok::LeftBracket, idx0))),
                 Some((idx0, ']')) => return Some(Ok((idx0, Tok::RightBracket, idx0))),
-                Some((idx0, '&')) => {
-                    match self.chars.next() {
-                        Some((idx1, ch)) if ch.is_whitespace() => {
-                            self.last_char = Some((idx1, ch));
-                            return Some(Ok((idx0, Tok::Amp, idx0)));
-                        },
-                        ch => {
-                            self.last_char = ch;
-                            return Some(Ok((idx0, Tok::AmpFollow, idx0)));
-                        }
+                Some((idx0, '&')) => match self.chars.next() {
+                    Some((idx1, ch)) if ch.is_whitespace() => {
+                        self.last_char = Some((idx1, ch));
+                        return Some(Ok((idx0, Tok::Amp, idx0)));
+                    }
+                    ch => {
+                        self.last_char = ch;
+                        return Some(Ok((idx0, Tok::AmpFollow, idx0)));
                     }
                 },
 

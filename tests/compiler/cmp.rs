@@ -16,7 +16,8 @@ macro_rules! cmp {
             }
             let mut runtime = Runtime::empty();
             runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
-            let source = format!("
+            let source = format!(
+                "
             extern def record=\"record_i32\"(n: I32): Nil
 
             def f(x, y)
@@ -26,13 +27,11 @@ macro_rules! cmp {
                 0
             end
             f({}, {})
-            ", $op, $a, $b);
-            utils::parse_and_run(
-                Settings::default(),
-                &source,
-                runtime,
-            )
-            .expect("able to parse_and_run");
+            ",
+                $op, $a, $b
+            );
+            utils::parse_and_run(Settings::default(), &source, runtime)
+                .expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };

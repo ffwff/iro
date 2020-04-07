@@ -41,7 +41,7 @@ pub struct StructData {
     values: HashMap<Rc<str>, StructFieldData>,
     flattened: Vec<PrimitiveTypeField>,
     size_of: usize,
-    name: Rc<str>
+    name: Rc<str>,
 }
 
 impl StructData {

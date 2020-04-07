@@ -16,17 +16,16 @@ macro_rules! load_const {
             }
             let mut runtime = Runtime::empty();
             runtime.insert_func("record", record as extern "C" fn($type));
-            let source = format!("
+            let source = format!(
+                "
             extern def record=\"record\"(n: {}): Nil
 
             record({})
-            ", $irotype, $left);
-            utils::parse_and_run(
-                Settings::default(),
-                &source,
-                runtime,
-            )
-            .expect("able to parse_and_run");
+            ",
+                $irotype, $left
+            );
+            utils::parse_and_run(Settings::default(), &source, runtime)
+                .expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };
@@ -43,20 +42,19 @@ macro_rules! arithmetic {
             }
             let mut runtime = Runtime::empty();
             runtime.insert_func("record", record as extern "C" fn($type));
-            let source = format!("
+            let source = format!(
+                "
             extern def record=\"record\"(n: {}): Nil
 
             def f(x, y)
                 return x {} y
             end
             record(f({}, {}))
-            ", $irotype, $op, $a, $b);
-            utils::parse_and_run(
-                Settings::default(),
-                &source,
-                runtime,
-            )
-            .expect("able to parse_and_run");
+            ",
+                $irotype, $op, $a, $b
+            );
+            utils::parse_and_run(Settings::default(), &source, runtime)
+                .expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };
@@ -73,17 +71,16 @@ macro_rules! arithmetic_const {
             }
             let mut runtime = Runtime::empty();
             runtime.insert_func("record", record as extern "C" fn($type));
-            let source = format!("
+            let source = format!(
+                "
             extern def record=\"record\"(n: {}): Nil
 
             record({} {} {})
-            ", $irotype, $a, $op, $b);
-            utils::parse_and_run(
-                Settings::default(),
-                &source,
-                runtime,
-            )
-            .expect("able to parse_and_run");
+            ",
+                $irotype, $a, $op, $b
+            );
+            utils::parse_and_run(Settings::default(), &source, runtime)
+                .expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };
