@@ -640,12 +640,39 @@ where
             }
             isa::InsType::Cast { var, typed } => {
                 let tmp = match (&context.variables[*var], typed) {
+                    (isa::Type::I32Ptr(_), isa::Type::I32) => {
+                        builder.use_var(to_var(*var))
+                    }
                     (isa::Type::I64Ptr(_), isa::Type::I64) => {
                         builder.use_var(to_var(*var))
                     }
                     _ => unreachable!()
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
+            isa::InsType::PointerIndex { var, index } => {
+                let retvar = ins.retvar().unwrap();
+                let ptr = builder.use_var(to_var(*var));
+                let index_var = builder.use_var(to_var(*index));
+                let multiplicand = builder.ins().imul_imm(
+                    index_var,
+                    context.variables[retvar].bytes().unwrap() as i64
+                );
+                let multiplicand_casted = builder.ins().sextend(
+                    self.ir_to_cranelift_type(&context.variables[*var]).unwrap(),
+                    multiplicand
+                );
+                let indexed = builder.ins().iadd(
+                    ptr,
+                    multiplicand_casted
+                );
+                let tmp = builder.ins().load(
+                    self.ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    MemFlags::trusted(),
+                    indexed,
+                    0,
+                );
+                builder.def_var(to_var(retvar), tmp);
             }
             isa::InsType::PointerIndexC { var, offset } => {
                 let retvar = ins.retvar().unwrap();

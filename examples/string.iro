@@ -1,0 +1,12 @@
+extern def putchar(x: I32): I32
+
+def print(s: Substring): I32
+    i := 0
+    while i < s.len
+        putchar(s.ptr[i])
+        i += 1
+    end
+    i
+end
+
+print("Hello World")
