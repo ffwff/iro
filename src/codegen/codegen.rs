@@ -284,8 +284,7 @@ where
         let mut stack_loads_ins: BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)> = btreemap![];
         for (idx, (typed, stack_loads)) in context.args.iter().zip(stack_loads_by_var.iter()).enumerate() {
             if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
-                let tmp = builder.append_block_param(blocks[0], cranelift_type);
-                builder.def_var(to_var(idx), tmp);
+                builder.append_block_param(blocks[0], cranelift_type);
             } else if let Some(struct_type) = typed.as_struct() {
                 let struct_data_rc = struct_type.0.clone();
                 let slot = builder.create_stack_slot(
