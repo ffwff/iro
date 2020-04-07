@@ -257,12 +257,24 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, '"')) => {
                     let mut idx1 = idx0;
                     let mut string = String::new();
-                    // let mut escape = false;
                     loop {
                         match self.chars.next() {
                             Some((_, '"')) => {
                                 idx1 += 1;
                                 break;
+                            }
+                            Some((_, '\\')) => {
+                                idx1 += 1;
+                                match self.chars.next() {
+                                    Some((_, '\'')) => { idx1 += 1; string.push('\'') },
+                                    Some((_, '\"')) => { idx1 += 1; string.push('\"') },
+                                    Some((_, '\\')) => { idx1 += 1; string.push('\\') },
+                                    Some((_, 'n')) =>  { idx1 += 1; string.push('\n') },
+                                    Some((_, 'r')) =>  { idx1 += 1; string.push('\r') },
+                                    Some((_, 't')) =>  { idx1 += 1; string.push('\t') },
+                                    Some((_, ch)) =>   { idx1 += 1; string.push(ch) },
+                                    None => return Some(Err(Error::UnexpectedEof)),
+                                }
                             }
                             Some((_, ch)) => {
                                 idx1 += 1;

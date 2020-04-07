@@ -9,4 +9,4 @@ def print(s: Substring): I32
     i
 end
 
-print("Hello World")
+print("Hello World\n")
