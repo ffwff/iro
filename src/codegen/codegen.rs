@@ -1,3 +1,4 @@
+use crate::codegen::abi;
 use crate::codegen::structs::*;
 use crate::codegen::translator::*;
 use crate::runtime::Runtime;
@@ -9,7 +10,7 @@ use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
-use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Signature};
+use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
@@ -91,76 +92,6 @@ where
         self.module.isa().pointer_type()
     }
 
-    fn generate_function_arguments<F>(
-        &self,
-        arg_types: &Vec<isa::Type>,
-        sig: &mut Signature,
-        mut load_function: F,
-    ) where
-        F: FnMut(usize, Offset32),
-    {
-        // Cranelift currently doesn't have any abstractions for structured data,
-        // So we'll have to hand roll our own D:
-        // FIXME: this only generates calls for x86-64's system-v abi
-        for (idx, arg) in arg_types.iter().enumerate() {
-            if let Some(cranelift_type) = ir_to_cranelift_type(&arg) {
-                sig.params.push(AbiParam::new(cranelift_type));
-            } else if let isa::Type::Struct(isa::StructType(struct_data_rc)) = arg {
-                let struct_data: &StructData = struct_data_rc.borrow();
-                if struct_data.size_of() <= 8 {
-                    // For small structs, we pass the struct as a 64-bit integer parameter
-                    load_function(idx, Offset32::new(0));
-                    sig.params.push(AbiParam::new(types::I64));
-                } else if struct_data.size_of() > 16 {
-                    // For large structs, push a duplicate of it into the stack
-                    unimplemented!()
-                } else {
-                    // For medium-sized structs, manually classify each eight bytes in the struct
-                    #[derive(Debug, Clone, Copy)]
-                    enum AbiClass {
-                        None,
-                        Memory,
-                        Integer,
-                        SSE,
-                    }
-                    fn classify_type(typed: PrimitiveType) -> AbiClass {
-                        match typed {
-                            PrimitiveType::I8
-                            | PrimitiveType::I16
-                            | PrimitiveType::I32
-                            | PrimitiveType::I64 => AbiClass::Integer,
-                            _ => unimplemented!(),
-                        }
-                    }
-                    let mut eight_bytes = vec![AbiClass::None; (struct_data.size_of() + 7) / 8];
-                    for prim_field in struct_data.flattened() {
-                        let idx = prim_field.offset / 8;
-                        match (classify_type(prim_field.typed), eight_bytes[idx]) {
-                            // If one of the classes is INTEGER, the result is the INTEGER.
-                            (AbiClass::Integer, AbiClass::None) => {
-                                eight_bytes[idx] = AbiClass::Integer;
-                            }
-                            // Otherwise class SSE is used.
-                            (_, AbiClass::None) => {
-                                eight_bytes[idx] = AbiClass::SSE;
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    for (struct_idx, class) in eight_bytes.iter().enumerate() {
-                        match class {
-                            AbiClass::Integer => {
-                                load_function(idx, Offset32::new(struct_idx as i32 * 8));
-                                sig.params.push(AbiParam::new(types::I64));
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
         let mut fctx = self.module.make_context();
         fctx.func.signature.params.push(AbiParam::new(types::I32));
@@ -210,9 +141,14 @@ where
         dbg_println!("codegen: {:#?}", context);
 
         let mut stack_loads_by_var: Vec<Vec<Offset32>> = vec![vec![]; context.args.len()];
-        self.generate_function_arguments(&context.args, &mut fctx.func.signature, |idx, offset| {
-            stack_loads_by_var[idx].push(offset);
-        });
+        abi::generate_function_arguments(
+            self.module.isa(),
+            &context.args,
+            &mut fctx.func.signature,
+            |idx, offset| {
+                stack_loads_by_var[idx].push(offset);
+            },
+        );
         if context.rettype != isa::Type::NoReturn {
             fctx.func.signature.returns.push(AbiParam::new(
                 ir_to_cranelift_type(&context.rettype).unwrap(),
@@ -408,17 +344,22 @@ where
                 }
                 {
                     let name: &isa::FunctionName = name;
-                    self.generate_function_arguments(&name.arg_types, &mut sig, |idx, offset| {
-                        let var = args[idx];
-                        let var_struct_data = &var_to_var_struct_data[&var];
-                        let tmp = builder.ins().load(
-                            types::I64,
-                            MemFlags::trusted(),
-                            var_struct_data.pointer,
-                            offset,
-                        );
-                        arg_values[idx].push(tmp);
-                    });
+                    abi::generate_function_arguments(
+                        self.module.isa(),
+                        &name.arg_types,
+                        &mut sig,
+                        |idx, offset| {
+                            let var = args[idx];
+                            let var_struct_data = &var_to_var_struct_data[&var];
+                            let tmp = builder.ins().load(
+                                types::I64,
+                                MemFlags::trusted(),
+                                var_struct_data.pointer,
+                                offset,
+                            );
+                            arg_values[idx].push(tmp);
+                        },
+                    );
                 }
 
                 let callee = if let Some(mapping) = self.extern_mapping.get(&name.clone()) {

@@ -19,6 +19,7 @@ cranelift-frontend ="0.61.0"
 cranelift-simplejit = "0.61.0"
 cranelift-object = "0.61.0"
 tempfile = "3.1.0"
+target-lexicon = "0.10.0"
 
 [dev-dependencies]
 lazy_static = "1.4.0"
