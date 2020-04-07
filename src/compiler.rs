@@ -21,13 +21,6 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn from_error<T: 'static + std::fmt::Display>(error: T, span: (usize, usize)) -> Error {
-        Error {
-            error: Box::new(error),
-            span,
-        }
-    }
-
     pub fn print(&self, source: &String) {
         println!("{}", self.error);
         let mut line_contents = vec![];
@@ -74,8 +67,14 @@ impl From<ParseError> for Error {
     fn from(error: ParseError) -> Self {
         match error {
             ParseError::InvalidToken { location: _ } => unimplemented!(),
-            ParseError::UnrecognizedEOF { location: _, expected: _ } => unimplemented!(),
-            ParseError::UnrecognizedToken { token: _, expected: _ } => unimplemented!(),
+            ParseError::UnrecognizedEOF {
+                location: _,
+                expected: _,
+            } => unimplemented!(),
+            ParseError::UnrecognizedToken {
+                token: _,
+                expected: _,
+            } => unimplemented!(),
             ParseError::ExtraToken { token: _ } => unimplemented!(),
             ParseError::User { error } => error,
         }

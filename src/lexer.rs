@@ -73,6 +73,15 @@ pub enum Error {
     UnexpectedEof,
 }
 
+impl Error {
+    pub fn into_compiler_error(self, location: usize) -> compiler::Error {
+        compiler::Error {
+            error: Box::new(self),
+            span: (location, location),
+        }
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -151,10 +160,8 @@ impl<'input> Iterator for Lexer<'input> {
                                         return Some(Ok((idx0, Tok::I64 { value }, idx1)));
                                     }
                                     _ => {
-                                        return Some(Err(compiler::Error::from_error(
-                                            Error::UnexpectedCharacter('i'),
-                                            (idx1, idx1),
-                                        )));
+                                        return Some(Err(Error::UnexpectedCharacter('i')
+                                            .into_compiler_error(idx0)));
                                     }
                                 }
                             }
@@ -303,10 +310,9 @@ impl<'input> Iterator for Lexer<'input> {
                                         string.push(ch)
                                     }
                                     None => {
-                                        return Some(Err(compiler::Error::from_error(
-                                            Error::UnexpectedEof,
-                                            (self.size, self.size),
-                                        )))
+                                        return Some(Err(
+                                            Error::UnexpectedEof.into_compiler_error(self.size)
+                                        ))
                                     }
                                 }
                             }
@@ -315,10 +321,9 @@ impl<'input> Iterator for Lexer<'input> {
                                 string.push(ch);
                             }
                             None => {
-                                return Some(Err(compiler::Error::from_error(
-                                    Error::UnexpectedEof,
-                                    (self.size, self.size),
-                                )))
+                                return Some(Err(
+                                    Error::UnexpectedEof.into_compiler_error(self.size)
+                                ))
                             }
                         }
                     }
@@ -348,10 +353,9 @@ impl<'input> Iterator for Lexer<'input> {
                 }
                 Some((_, ch)) if ch.is_whitespace() => continue,
                 Some((idx, other)) => {
-                    return Some(Err(compiler::Error::from_error(
-                        Error::UnexpectedCharacter(other),
-                        (idx, idx),
-                    )))
+                    return Some(Err(
+                        Error::UnexpectedCharacter(other).into_compiler_error(idx)
+                    ))
                 }
             }
         }
