@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use crate::ssa::isa::IntrinsicType;
 use crate::ast::*;
 use crate::lexer;
+use crate::compiler;
 
 grammar;
 
@@ -57,19 +58,19 @@ AttributeValue: AttributeValue = {
 
 // Function definitions
 ImportStatement: NodeBox = {
-    "import" <path:String> => {
+    <start:@L> "import" <path:String> <end:@L> => {
         NodeBox::new(ImportStatement {
             path
-        })
+        }, (start, end))
     }
 };
 
 DefStatement: NodeBox = {
-    <attrs:AttributeList?> "def"
+    <start:@L> <attrs:AttributeList?> "def"
         <id:Identifier>
         <args:DefArgumentList?>
         <return_type:TypeSpecifier?>
-    NL+ <exprs:Expr*> "end" => {
+    NL+ <exprs:Expr*> "end" <end:@L> => {
         NodeBox::new(DefStatement {
             id: Rc::from(id),
             args: args.unwrap_or_else(|| vec![]),
@@ -77,7 +78,7 @@ DefStatement: NodeBox = {
             return_type,
             attrs,
             intrinsic: RefCell::new(IntrinsicType::None)
-        })
+        }, (start, end))
     },
 };
 
@@ -92,11 +93,12 @@ DefArgument: (Rc<str>, Option<TypeId>) = {
 };
 
 ExternDefStatement: NodeBox = {
-    "extern" "def"
+    <start:@L> "extern" "def"
         <id:Identifier>
         <symbol:ExternSymbol?>
         <args:DefArgumentList?>
-        <return_type:TypeSpecifier?> => {
+        <return_type:TypeSpecifier?>
+    <end:@L>  => {
         NodeBox::new(DefStatement {
             id: Rc::from(id.clone()),
             args: args.unwrap(),
@@ -104,7 +106,7 @@ ExternDefStatement: NodeBox = {
             return_type: Some(return_type.unwrap()),
             attrs: None,
             intrinsic: RefCell::new(IntrinsicType::Extern(symbol.unwrap_or(id)))
-        })
+        }, (start, end))
     },
 };
 
@@ -112,23 +114,25 @@ ExternSymbol: String = "=" <String>;
 
 // Return expression
 ReturnExpr: NodeBox = {
-    "return" <expr:StandaloneExpr> => {
-        NodeBox::new(ReturnExpr { expr })
+    <start:@L> "return" <expr:StandaloneExpr> <end:@L>  => {
+        NodeBox::new(ReturnExpr { expr }, (start, end))
     },
     LetExpr,
 };
 
 // Let expression
 LetExpr: NodeBox = {
-    <left:Term> ":" "=" <right:StandaloneExpr> => {
-        NodeBox::new(LetExpr{ left, right })
+    <start:@L> <left:Term> ":" "=" <right:StandaloneExpr> <end:@L> => {
+        NodeBox::new(LetExpr{ left, right }, (start, end))
     },
     BinExpr,
 };
 
 // Binary expressions
 BinOpTier<Op,NextTier>: NodeBox = {
-    <left:BinOpTier<Op,NextTier>> <op:Op> <right:NextTier> => NodeBox::new(BinExpr{ left, right, op }),
+    <start:@L>
+        <left:BinOpTier<Op,NextTier>> <op:Op> <right:NextTier>
+    <end:@L> => NodeBox::new(BinExpr{ left, right, op }, (start, end)),
     NextTier
 };
 
@@ -179,43 +183,46 @@ FacOp: BinOp = {
 
 // As cast expression
 AsExpr: NodeBox = {
-    <left:WhileExpr> "as" <typed:Type> => {
+    <start:@L> <left:WhileExpr> "as" <typed:Type> <end:@L> => {
         NodeBox::new(AsExpr {
             left,
             typed
-        })
+        }, (start, end))
     },
     WhileExpr,
 };
 
 // While expression
 WhileExpr: NodeBox = {
-    "while" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" => {
-        NodeBox::new(WhileExpr { cond, exprs })
+    <start:@L> "while" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" <end:@L> => {
+        NodeBox::new(WhileExpr { cond, exprs }, (start, end))
     },
     IfExpr
 };
 
 // If expression
 IfExpr: NodeBox = {
-    "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> <elsif:IfExprElsif*> <elses:IfExprElse?> "end" => {
+    <start:@L> 
+        "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> <elsif:IfExprElsif*> <elses:IfExprElse?> "end"
+    <end:@L> => {
+        let span = (start, end);
         if !elsif.is_empty() {
             let last_elsif = elsif.last().unwrap();
             let mut elsif_expr = NodeBox::new(IfExpr {
                 cond: last_elsif.0.clone(),
                 exprs: last_elsif.1.clone(),
                 elses: elses.unwrap_or_else(|| vec![])
-            });
+            }, span);
             for it_elsif in elsif.iter().rev().skip(1) {
                 elsif_expr = NodeBox::new(IfExpr {
                     cond: it_elsif.0.clone(),
                     exprs: it_elsif.1.clone(),
                     elses: vec![ elsif_expr ],
-                });
+                }, span);
             }
-            return NodeBox::new(IfExpr { cond, exprs, elses: vec![ elsif_expr ] });
+            return NodeBox::new(IfExpr { cond, exprs, elses: vec![ elsif_expr ] }, span);
         }
-        NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) })
+        NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) }, span)
     },
     CallExpr,
 };
@@ -229,24 +236,28 @@ IfExprElse: Vec<NodeBox> = "else" NL+ <Expr*>;
 
 // Call expression
 CallExpr: NodeBox = {
-    <callee:MemberExpr> "(" <args:Comma<StandaloneExpr>> ")" => {
-        NodeBox::new(CallExpr::new(callee, args))
+    <start:@L> 
+        <callee:MemberExpr> "(" <args:Comma<StandaloneExpr>> ")"
+    <end:@L> => {
+        NodeBox::new(CallExpr::new(callee, args), (start, end))
     },
     MemberExpr,
 };
 
 // Member expressions
 MemberExpr: NodeBox = {
-    <first:Term> <rest: MemberExprArm+> => {
+    <start:@L> <first:Term> <rest: MemberExprArm+> <end:@L> => {
+        let span = (start, end);
         let mut memexpr = NodeBox::new(MemberExpr {
             left: first,
             right: rest[0].clone(),
-        });
+        }, span);
         for right in rest.iter().skip(1) {
+            let span = memexpr.span();
             memexpr = NodeBox::new(MemberExpr {
                 left: memexpr,
                 right: right.clone(),
-            });
+            }, span);
         }
         memexpr
     },
@@ -260,7 +271,7 @@ MemberExprArm: MemberExprArm = {
 
 // Literals / terms
 Term: NodeBox = {
-    <Literal> => NodeBox::new(<>),
+    <start:@L> <lit:Literal> <end:@L> => NodeBox::new(lit, (start, end)),
     "(" <StandaloneExpr> ")" => <>,
 };
 
@@ -302,7 +313,7 @@ TypeSpecifier: TypeId = {
 // Hook external lexer:
 extern {
     type Location = usize;
-    type Error = lexer::Error;
+    type Error = compiler::Error;
 
     enum lexer::Tok {
         "import" => lexer::Tok::Import,

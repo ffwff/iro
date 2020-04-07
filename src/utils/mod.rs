@@ -1,4 +1,3 @@
-use crate::ast;
 use crate::ast::Visitor;
 use crate::codegen::codegen::{Codegen, Settings};
 use crate::compiler;
@@ -9,14 +8,10 @@ use crate::ssa;
 use crate::ssa::visitor::TopLevelArch;
 use cranelift_module::FuncOrDataId;
 use std::cell::RefCell;
-use std::error::Error;
 
 pub mod pipeline;
 
-pub type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, lexer::Error>;
-pub type ParseResult = Result<ast::Program, ParseError>;
-
-pub fn parse_to_ssa(input: &str, arch: TopLevelArch) -> Result<ssa::isa::Program, Box<dyn Error>> {
+pub fn parse_to_ssa(input: &str, arch: TopLevelArch) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer)?;
     let top_level_info = RefCell::new(ssa::visitor::TopLevelInfo::new(arch));
@@ -34,7 +29,7 @@ pub fn parse_and_run(
     settings: Settings,
     input: &str,
     runtime: runtime::Runtime,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), compiler::Error> {
     let (arch, isa) = settings.generate_arch();
     let program = parse_to_ssa(input, arch)?;
     let mut module = Codegen::process_jit(isa, &program, &runtime);
@@ -52,7 +47,7 @@ pub fn parse_and_run(
     Ok(())
 }
 
-pub fn parse_to_object(settings: Settings, input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn parse_to_object(settings: Settings, input: &str) -> Result<Vec<u8>, compiler::Error> {
     let (arch, isa) = settings.generate_arch();
     let program = parse_to_ssa(input, arch)?;
     let module = Codegen::process_object(isa, &program);

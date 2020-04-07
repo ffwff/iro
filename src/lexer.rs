@@ -1,3 +1,4 @@
+use crate::compiler;
 use std::convert::TryInto;
 use std::str::CharIndices;
 use unicode_xid::UnicodeXID;
@@ -68,18 +69,21 @@ pub type Spanned<T> = (usize, T, usize);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    UnexpectedCharacter((usize, char)),
+    UnexpectedCharacter(char),
     UnexpectedEof,
-    DuplicateArguments,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Error::UnexpectedCharacter(ch) => write!(f, "Unexpected character '{}'", ch),
+            Error::UnexpectedEof => write!(f, "Unexpected end of file"),
+        }
     }
 }
 
 pub struct Lexer<'input> {
+    size: usize,
     chars: CharIndices<'input>,
     last_char: Option<(usize, char)>,
     outputted_eof: bool,
@@ -88,6 +92,7 @@ pub struct Lexer<'input> {
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
         Lexer {
+            size: input.len(),
             chars: input.char_indices(),
             last_char: None,
             outputted_eof: false,
@@ -113,7 +118,7 @@ macro_rules! mod_op {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Result<Spanned<Tok>, Error>;
+    type Item = Result<Spanned<Tok>, compiler::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -146,7 +151,10 @@ impl<'input> Iterator for Lexer<'input> {
                                         return Some(Ok((idx0, Tok::I64 { value }, idx1)));
                                     }
                                     _ => {
-                                        return Some(Err(Error::UnexpectedCharacter((idx1, 'i'))));
+                                        return Some(Err(compiler::Error::from_error(
+                                            Error::UnexpectedCharacter('i'),
+                                            (idx1, idx1),
+                                        )));
                                     }
                                 }
                             }
@@ -266,21 +274,52 @@ impl<'input> Iterator for Lexer<'input> {
                             Some((_, '\\')) => {
                                 idx1 += 1;
                                 match self.chars.next() {
-                                    Some((_, '\'')) => { idx1 += 1; string.push('\'') },
-                                    Some((_, '\"')) => { idx1 += 1; string.push('\"') },
-                                    Some((_, '\\')) => { idx1 += 1; string.push('\\') },
-                                    Some((_, 'n')) =>  { idx1 += 1; string.push('\n') },
-                                    Some((_, 'r')) =>  { idx1 += 1; string.push('\r') },
-                                    Some((_, 't')) =>  { idx1 += 1; string.push('\t') },
-                                    Some((_, ch)) =>   { idx1 += 1; string.push(ch) },
-                                    None => return Some(Err(Error::UnexpectedEof)),
+                                    Some((_, '\'')) => {
+                                        idx1 += 1;
+                                        string.push('\'')
+                                    }
+                                    Some((_, '\"')) => {
+                                        idx1 += 1;
+                                        string.push('\"')
+                                    }
+                                    Some((_, '\\')) => {
+                                        idx1 += 1;
+                                        string.push('\\')
+                                    }
+                                    Some((_, 'n')) => {
+                                        idx1 += 1;
+                                        string.push('\n')
+                                    }
+                                    Some((_, 'r')) => {
+                                        idx1 += 1;
+                                        string.push('\r')
+                                    }
+                                    Some((_, 't')) => {
+                                        idx1 += 1;
+                                        string.push('\t')
+                                    }
+                                    Some((_, ch)) => {
+                                        idx1 += 1;
+                                        string.push(ch)
+                                    }
+                                    None => {
+                                        return Some(Err(compiler::Error::from_error(
+                                            Error::UnexpectedEof,
+                                            (self.size, self.size),
+                                        )))
+                                    }
                                 }
                             }
                             Some((_, ch)) => {
                                 idx1 += 1;
                                 string.push(ch);
                             }
-                            None => return Some(Err(Error::UnexpectedEof)),
+                            None => {
+                                return Some(Err(compiler::Error::from_error(
+                                    Error::UnexpectedEof,
+                                    (self.size, self.size),
+                                )))
+                            }
                         }
                     }
                     return Some(Ok((idx0, Tok::String { value: string }, idx1)));
@@ -308,7 +347,12 @@ impl<'input> Iterator for Lexer<'input> {
                     return Some(Ok((idx0, Tok::Newline, idx1)));
                 }
                 Some((_, ch)) if ch.is_whitespace() => continue,
-                Some(other) => return Some(Err(Error::UnexpectedCharacter(other))),
+                Some((idx, other)) => {
+                    return Some(Err(compiler::Error::from_error(
+                        Error::UnexpectedCharacter(other),
+                        (idx, idx),
+                    )))
+                }
             }
         }
     }

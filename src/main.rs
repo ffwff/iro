@@ -2,6 +2,7 @@
 extern crate maplit;
 extern crate tempfile;
 use iro::codegen::codegen::{OptLevel, Settings};
+use iro::compiler;
 use iro::runtime;
 use iro::utils;
 use std::collections::BTreeMap;
@@ -49,13 +50,23 @@ impl<'a> Options<'a> {
 
 type CommandFn = fn(Options);
 
+fn compiler_error(opts: Options, source: String, error: compiler::Error) -> ! {
+    print!("\x1b[1m\x1b[38;5;11m{}:\x1b[0m ", opts.args[0]);
+    error.print(&source);
+    std::process::exit(-1)
+}
+
 fn run(opts: Options) {
     let input_name = opts
         .arg(1)
         .unwrap_or_else(|| fatal!(opts, "No input specified"));
     match std::fs::read_to_string(input_name) {
         Ok(source) => {
-            utils::parse_and_run(opts.to_settings(), &source, runtime::Runtime::new()).unwrap();
+            if let Err(error) =
+                utils::parse_and_run(opts.to_settings(), &source, runtime::Runtime::new())
+            {
+                compiler_error(opts, source, error);
+            }
         }
         Err(err) => {
             fatal!(opts, "{}", err);
@@ -69,7 +80,10 @@ fn build(opts: Options) {
         .unwrap_or_else(|| fatal!(opts, "No input specified"));
     match std::fs::read_to_string(input_name) {
         Ok(source) => {
-            let bytes = utils::parse_to_object(opts.to_settings(), &source).unwrap();
+            let bytes = match utils::parse_to_object(opts.to_settings(), &source) {
+                Ok(x) => x,
+                Err(error) => compiler_error(opts, source, error),
+            };
             if opts.output_type == OutputType::Object {
                 let output_name = opts
                     .arg(2)
@@ -113,11 +127,12 @@ fn usage(program: &String, commands: &BTreeMap<&str, (&str, CommandFn)>) {
         println!("\t{}: {}", name, desc);
     }
     println!("\nOptions:");
-    let options = [
+    let mut options = [
         ("-obj", "generate an object file instead of executable"),
         ("-O", "optimize for size and speed"),
         ("-Ospeed", "optimize for speed"),
     ];
+    options.sort_by_key(|k| k.0);
     for (name, desc) in &options {
         println!("\t{}: {}", name, desc)
     }

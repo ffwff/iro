@@ -1,3 +1,4 @@
+use crate::compiler;
 use crate::ssa::isa::{IntrinsicType, Type};
 use downcast_rs::Downcast;
 use std::borrow::Borrow;
@@ -20,38 +21,49 @@ pub enum Error {
     InvalidReturnType,
 }
 
-impl std::error::Error for Error {
-    fn description(&self) -> &str {
-        "invalid first item to double"
-    }
-
-    fn cause(&self) -> Option<&(dyn std::error::Error)> {
-        None
+impl Error {
+    pub fn into_compiler_error(self, ast: &NodeBox) -> compiler::Error {
+        compiler::Error {
+            error: Box::new(self),
+            span: ast.span(),
+        }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Error::InternalError => write!(f, "Internal error"),
+            Error::InvalidLHS => write!(f, "Invalid left-hand-side expression"),
+            Error::IncompatibleType => write!(f, "Incompatible type"),
+            Error::CannotInfer => write!(f, "Cannot infer type for value"),
+            Error::UnknownIdentifier(id) => write!(f, "Unknown identifier {:?}", id),
+            Error::UnknownType(id) => write!(f, "Unknown type {:?}", id),
+            Error::UnknownAttribute(id) => write!(f, "Unknown attribute {:?}", id),
+            Error::UnknownStatic(id) => write!(f, "Unknown external function {:?}", id),
+            Error::NotEnoughArguments => write!(f, "Not enough arguments for function"),
+            Error::InvalidArguments => write!(f, "Invalid arguments for function"),
+            Error::InvalidReturnType => write!(f, "Invalid return type"),
+        }
     }
 }
 
-pub type VisitorResult = Result<(), Error>;
+pub type VisitorResult = Result<(), compiler::Error>;
 
 pub trait Visitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult;
-    fn visit_import(&mut self, n: &ImportStatement) -> VisitorResult;
-    fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult;
-    fn visit_return(&mut self, n: &ReturnExpr) -> VisitorResult;
-    fn visit_whileexpr(&mut self, n: &WhileExpr) -> VisitorResult;
-    fn visit_ifexpr(&mut self, n: &IfExpr) -> VisitorResult;
-    fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult;
-    fn visit_letexpr(&mut self, n: &LetExpr) -> VisitorResult;
-    fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult;
-    fn visit_asexpr(&mut self, n: &AsExpr) -> VisitorResult;
-    fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult;
-    fn visit_value(&mut self, n: &Value) -> VisitorResult;
-    fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult;
+    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult;
+    fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult;
+    fn visit_return(&mut self, n: &ReturnExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_whileexpr(&mut self, n: &WhileExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_ifexpr(&mut self, n: &IfExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_letexpr(&mut self, n: &LetExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_asexpr(&mut self, n: &AsExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult;
+    fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult;
+    fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult;
 }
 
 pub trait Node: Downcast {
@@ -59,7 +71,7 @@ pub trait Node: Downcast {
         Ok(())
     }
 
-    fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult;
+    fn visit(&self, visitor: &mut dyn Visitor, b: &NodeBox) -> VisitorResult;
 }
 impl_downcast!(Node);
 
@@ -78,15 +90,17 @@ impl std::fmt::Debug for dyn Node {
 #[derive(Debug, Clone)]
 pub struct NodeBox {
     data: Rc<dyn Node>,
+    span: (usize, usize),
 }
 
 impl NodeBox {
-    pub fn new<T: 'static>(node: T) -> Self
+    pub fn new<T: 'static>(node: T, span: (usize, usize)) -> Self
     where
         T: Node,
     {
         NodeBox {
             data: Rc::new(node),
+            span,
         }
     }
 
@@ -94,12 +108,16 @@ impl NodeBox {
         self.data.clone()
     }
 
+    pub fn span(&self) -> (usize, usize) {
+        self.span.clone()
+    }
+
     pub fn borrow(&self) -> &dyn Node {
         self.data.borrow()
     }
 
     pub fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult {
-        self.borrow().visit(visitor)
+        self.borrow().visit(visitor, self)
     }
 }
 
@@ -113,8 +131,8 @@ macro_rules! debuggable {
 
 macro_rules! visitable {
     ($x:tt) => {
-        fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult {
-            visitor.$x(self)
+        fn visit(&self, visitor: &mut dyn Visitor, b: &NodeBox) -> VisitorResult {
+            visitor.$x(self, b)
         }
     };
 }
@@ -127,7 +145,7 @@ pub struct Program {
 impl Node for Program {
     debuggable!();
 
-    fn visit(&self, _visitor: &mut dyn Visitor) -> VisitorResult {
+    fn visit(&self, _visitor: &mut dyn Visitor, _b: &NodeBox) -> VisitorResult {
         unimplemented!()
     }
 }

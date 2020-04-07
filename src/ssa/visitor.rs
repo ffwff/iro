@@ -22,7 +22,7 @@ impl TopLevelArch {
 
 #[derive(Debug)]
 pub struct TopLevelInfo {
-    pub defstmts: HashMap<Rc<str>, Vec<Rc<DefStatement>>>,
+    pub defstmts: HashMap<Rc<str>, Vec<NodeBox>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
     pub pointer_type: Type,
@@ -149,14 +149,14 @@ impl<'a> SSAVisitor<'a> {
         Some(Type::Nil)
     }
 
-    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement) -> VisitorResult {
+    fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement, b: &NodeBox) -> VisitorResult {
         for (_, typed) in &defstmt.args {
             if let Some(typed) = typed {
-                self.visit_typeid(&typed)?;
+                self.visit_typeid(&typed, b)?;
             }
         }
         if let Some(typed) = defstmt.return_type.as_ref() {
-            self.visit_typeid(&typed)?;
+            self.visit_typeid(&typed, b)?;
         }
         if let Some(attrs) = &defstmt.attrs {
             for attr in attrs {
@@ -166,7 +166,11 @@ impl<'a> SSAVisitor<'a> {
                             .intrinsic
                             .replace(IntrinsicType::Extern(attr.args[0].to_string()));
                     }
-                    _ => return Err(Error::UnknownAttribute(attr.name.clone())),
+                    _ => {
+                        return Err(
+                            Error::UnknownAttribute(attr.name.clone()).into_compiler_error(b)
+                        )
+                    }
                 }
             }
         }
@@ -180,13 +184,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
                 let mut top_level = self.top_level.borrow_mut();
-                let defstmt_rc = expr.rc().downcast_rc::<DefStatement>().unwrap();
                 if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
-                    vec.push(defstmt_rc);
+                    vec.push(expr.clone());
                 } else {
                     top_level
                         .defstmts
-                        .insert(defstmt.id.clone(), vec![defstmt_rc]);
+                        .insert(defstmt.id.clone(), vec![expr.clone()]);
                 }
             } else {
                 outerstmts.push(expr);
@@ -196,9 +199,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
         {
             let top_level: &TopLevelInfo = &self.top_level.borrow();
             for (_, defstmt_vec) in &top_level.defstmts {
-                for defstmt_rc in defstmt_vec {
-                    let defstmt: &DefStatement = defstmt_rc.borrow();
-                    self.top_level_visit_defstmt(&defstmt)?;
+                for boxed in defstmt_vec {
+                    let defstmt: &DefStatement =
+                        boxed.borrow().downcast_ref::<DefStatement>().unwrap();
+                    self.top_level_visit_defstmt(&defstmt, &boxed)?;
                 }
             }
         }
@@ -215,11 +219,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_import(&mut self, _n: &ImportStatement) -> VisitorResult {
+    fn visit_import(&mut self, _n: &ImportStatement, _b: &NodeBox) -> VisitorResult {
         unimplemented!()
     }
 
-    fn visit_defstmt(&mut self, n: &DefStatement) -> VisitorResult {
+    fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult {
         {
             let mut env = Env::new();
             for (idx, (name, _)) in n.args.iter().enumerate() {
@@ -281,13 +285,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
         if let Some(declared_return) = declared_return {
             if declared_return != self.context.rettype {
-                return Err(Error::InvalidReturnType);
+                return Err(Error::InvalidReturnType.into_compiler_error(b));
             }
         }
         Ok(())
     }
 
-    fn visit_return(&mut self, n: &ReturnExpr) -> VisitorResult {
+    fn visit_return(&mut self, n: &ReturnExpr, _b: &NodeBox) -> VisitorResult {
         n.expr.visit(self)?;
         if let Some(retvar) = self.last_retvar.take() {
             let rettype = self.context.variables[retvar].clone();
@@ -304,7 +308,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_whileexpr(&mut self, n: &WhileExpr) -> VisitorResult {
+    fn visit_whileexpr(&mut self, n: &WhileExpr, _b: &NodeBox) -> VisitorResult {
         let cond_block;
         let while_block;
         let mut while_retvar = None;
@@ -396,7 +400,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_ifexpr(&mut self, n: &IfExpr) -> VisitorResult {
+    fn visit_ifexpr(&mut self, n: &IfExpr, b: &NodeBox) -> VisitorResult {
         let cond;
         let condvar;
         let mut iftrue_start = None;
@@ -414,7 +418,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             if let Some(last_retvar) = self.last_retvar.take() {
                 condvar = last_retvar;
                 if self.context.variables[last_retvar] != Type::Bool {
-                    return Err(Error::IncompatibleType);
+                    return Err(Error::IncompatibleType.into_compiler_error(b));
                 }
             } else {
                 // condition returns
@@ -547,7 +551,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_callexpr(&mut self, n: &CallExpr) -> VisitorResult {
+    fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult {
         if let Some(id) = n.callee.borrow().downcast_ref::<Value>() {
             if let Value::Identifier(id) = &id {
                 let mut args = vec![];
@@ -574,7 +578,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     } else if top_level.defstmts.contains_key(id) {
                         None
                     } else {
-                        return Err(Error::UnknownIdentifier(id.clone()));
+                        return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
                     }
                 };
 
@@ -589,7 +593,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             .is_some();
                         let mut usable_defstmt = None;
                         if let Some(vec) = top_level.defstmts.get(id) {
-                            for defstmt in vec {
+                            for boxed in vec {
+                                let defstmt = boxed.rc().downcast_rc::<DefStatement>().unwrap();
                                 match defstmt.compatibility_with_args(&arg_types) {
                                     ArgCompatibility::None => (),
                                     ArgCompatibility::WithCast(casts) => {
@@ -619,7 +624,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         (usable_defstmt, func_insert)
                     };
                     if defstmt.is_none() {
-                        return Err(Error::InvalidArguments);
+                        return Err(Error::InvalidArguments.into_compiler_error(b));
                     }
                     let defstmt = defstmt.unwrap();
                     if func_insert {
@@ -627,7 +632,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         if let Some(declared_typed) = defstmt.return_type.as_ref() {
                             declared_typed.typed.borrow().clone().unwrap()
                         } else {
-                            return Err(Error::CannotInfer);
+                            return Err(Error::CannotInfer.into_compiler_error(b));
                         }
                     } else {
                         // Properly compute the return type
@@ -650,14 +655,14 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                     .insert(func_name.clone(), Some(context));
                                 rettype
                             } else {
-                                return Err(Error::InternalError);
+                                return Err(Error::InternalError.into_compiler_error(b));
                             }
                         } else {
                             let (func_name, context) = {
                                 let func_context = Context::with_args(id.clone(), arg_types);
                                 let mut visitor =
                                     SSAVisitor::with_context(func_context, self.top_level);
-                                visitor.visit_defstmt(defstmt.borrow())?;
+                                visitor.visit_defstmt(defstmt.borrow(), b)?;
                                 (func_name.clone(), visitor.into_context())
                             };
                             let mut top_level = self.top_level.borrow_mut();
@@ -684,10 +689,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 return Ok(());
             }
         }
-        Err(Error::InvalidLHS)
+        Err(Error::InvalidLHS.into_compiler_error(b))
     }
 
-    fn visit_letexpr(&mut self, n: &LetExpr) -> VisitorResult {
+    fn visit_letexpr(&mut self, n: &LetExpr, b: &NodeBox) -> VisitorResult {
         n.right.visit(self)?;
         let right = self.last_retvar.take().unwrap();
         if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
@@ -698,10 +703,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
             }
         }
         self.last_retvar = Some(right);
-        Err(Error::InvalidLHS)
+        Err(Error::InvalidLHS.into_compiler_error(b))
     }
 
-    fn visit_binexpr(&mut self, n: &BinExpr) -> VisitorResult {
+    fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult {
         match &n.op {
             BinOp::Asg | BinOp::Adds | BinOp::Subs | BinOp::Muls | BinOp::Divs | BinOp::Mods => {
                 if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
@@ -745,11 +750,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             self.last_retvar = Some(var);
                             return Ok(());
                         } else {
-                            return Err(Error::UnknownIdentifier(id.clone()));
+                            return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
                         }
                     }
                 }
-                Err(Error::InvalidLHS)
+                Err(Error::InvalidLHS.into_compiler_error(b))
             }
             BinOp::And | BinOp::Or => {
                 /*
@@ -847,7 +852,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     });
                     right = retvar;
                 } else if self.context.variables[left] != self.context.variables[right] {
-                    return Err(Error::IncompatibleType);
+                    return Err(Error::IncompatibleType.into_compiler_error(b));
                 }
                 let retvar = self.context.insert_var(match op {
                     BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte | BinOp::Equ => Type::Bool,
@@ -876,10 +881,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
     }
 
-    fn visit_asexpr(&mut self, n: &AsExpr) -> VisitorResult {
+    fn visit_asexpr(&mut self, n: &AsExpr, b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         let retvar = self.last_retvar.take().unwrap();
-        n.typed.visit(self)?;
+        n.typed.visit(self, b)?;
         let rettype = n.typed.typed.borrow().clone().unwrap();
         let new_retvar = self.context.insert_var(rettype.clone());
         let rettype = RefCell::new(Some(rettype));
@@ -896,7 +901,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_member_expr(&mut self, n: &MemberExpr) -> VisitorResult {
+    fn visit_member_expr(&mut self, n: &MemberExpr, _b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         let leftvar = self.last_retvar.take().unwrap();
         match &n.right {
@@ -950,7 +955,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_value(&mut self, n: &Value) -> VisitorResult {
+    fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult {
         match n {
             Value::I32(x) => {
                 let retvar = self.context.insert_var(Type::I32);
@@ -1006,13 +1011,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     self.last_retvar = Some(retvar);
                     Ok(())
                 } else {
-                    Err(Error::UnknownIdentifier(id.clone()))
+                    Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b))
                 }
             }
         }
     }
 
-    fn visit_typeid(&mut self, n: &TypeId) -> VisitorResult {
+    fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult {
         match &n.data {
             TypeIdData::Identifier(id) => {
                 let top_level = self.top_level.borrow();
@@ -1022,11 +1027,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     n.typed.replace(Some(typed.clone()));
                     Ok(())
                 } else {
-                    Err(Error::UnknownType(id.clone()))
+                    Err(Error::UnknownType(id.clone()).into_compiler_error(b))
                 }
             }
             TypeIdData::Pointer(internal) => {
-                self.visit_typeid(&internal)?;
+                self.visit_typeid(&internal, b)?;
                 let top_level: &TopLevelInfo = &self.top_level.borrow();
                 n.typed.replace(
                     top_level
