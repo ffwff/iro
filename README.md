@@ -21,3 +21,7 @@ end
 
 print(fib(46i64))
 ```
+
+## License
+
+MIT License
