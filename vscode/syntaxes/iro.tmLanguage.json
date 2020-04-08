@@ -7,16 +7,20 @@
 			"match": "\\b(extern|def|return|while|if|elsif|else|unsafe|end)\\b"
 		},
 		{
+			"name": "keyword.operator.misc.iro",
+			"match": "\\b(import|as)\\b"
+		},
+		{
+			"name": "keyword.operator.iro",
+			"match": "==|\\!=|[\\+\\-\\*/\\<\\>]=?|,|;|:|\\[|\\]|\\b(and|or)\\b"
+		},
+		{
 			"name": "storage.type.built-in.primitive.iro",
-			"match": "\\b(I32|I64|F32|F64|Nil)\\b"
+			"match": "\\b(I8|I16|I32|I64|ISize|F32|F64|Nil)\\b"
 		},
 		{
 			"name": "entity.name.type.iro",
 			"match": "\\b[A-Z\\x{80}-\\x{10FFFF}][0-9a-zA-Z\\x{80}-\\x{10FFFF}]*\\b"
-		},
-		{
-			"name": "keyword.operator.iro",
-			"match": "==|\\!=|[\\+\\-\\*/\\<\\>]=?|,|:|\\[|\\]|\\b(and|or)\\b"
 		},
 		{
 			"name": "meta.attribute.iro",
@@ -59,10 +63,6 @@
 					"name": "punctuation.section.function.iro"
 				}
 			}
-		},
-		{
-			"name": "keyword.operator.misc.iro",
-			"match": "\\b(import|as)\\b"
 		}
 	],
 	"scopeName": "source.iro"

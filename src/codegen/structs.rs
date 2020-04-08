@@ -18,14 +18,14 @@ pub enum PrimitiveType {
 }
 
 impl PrimitiveType {
-    pub fn from_type(typed: &Type) -> Self {
+    pub fn from_type(typed: &Type) -> Option<Self> {
         match typed {
-            Type::I8 => PrimitiveType::I8,
-            Type::I16 => PrimitiveType::I16,
-            Type::I32 | Type::I32Ptr(_) => PrimitiveType::I32,
-            Type::I64 | Type::I64Ptr(_) => PrimitiveType::I64,
-            Type::F64 => PrimitiveType::F64,
-            _ => unimplemented!(),
+            Type::I8 => Some(PrimitiveType::I8),
+            Type::I16 => Some(PrimitiveType::I16),
+            Type::I32 | Type::I32Ptr(_) => Some(PrimitiveType::I32),
+            Type::I64 | Type::I64Ptr(_) => Some(PrimitiveType::I64),
+            Type::F64 => Some(PrimitiveType::F64),
+            _ => None,
         }
     }
 }
@@ -78,7 +78,7 @@ impl StructData {
         self.size_of = align(self.size_of, type_size);
         self.flattened.push(PrimitiveTypeField {
             offset: self.size_of,
-            typed: PrimitiveType::from_type(&typed),
+            typed: PrimitiveType::from_type(&typed).unwrap(),
         });
         self.values.insert(
             name,

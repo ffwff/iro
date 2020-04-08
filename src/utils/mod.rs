@@ -1,5 +1,5 @@
 use crate::ast::Visitor;
-use crate::codegen::codegen::{Codegen, Settings};
+use crate::codegen::cranelift::{Codegen, Settings};
 use crate::compiler;
 use crate::lexer;
 use crate::parser;

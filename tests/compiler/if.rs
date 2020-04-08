@@ -1,4 +1,4 @@
-use iro::codegen::codegen::Settings;
+use iro::codegen::cranelift::Settings;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
 use iro::ssa::visitor::TopLevelArch;

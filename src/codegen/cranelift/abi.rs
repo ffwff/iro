@@ -1,5 +1,5 @@
 use crate::codegen::structs::*;
-use crate::codegen::translator::*;
+use crate::codegen::cranelift::translator::*;
 use crate::ssa::isa;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{types, AbiParam, Signature};

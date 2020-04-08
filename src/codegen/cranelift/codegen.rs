@@ -1,6 +1,6 @@
-use crate::codegen::abi;
 use crate::codegen::structs::*;
-use crate::codegen::translator::*;
+use crate::codegen::cranelift::abi;
+use crate::codegen::cranelift::translator::*;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
 use crate::ssa::visitor::TopLevelArch;
