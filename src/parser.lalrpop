@@ -292,7 +292,7 @@ Type: TypeId = {
 };
 
 TypePointer: TypeIdData = {
-    AmpFollow <first:Type> => {
+    Amp <first:Type> => {
         TypeIdData::Pointer(Box::new(first.clone()))
     },
     TypeIdentifier,
@@ -308,7 +308,7 @@ TypeSlice: TypeIdData = {
 };
 
 TypeIdentifier: TypeIdData = {
-    <Identifier> => TypeIdData::Identifier(Rc::from(<>)),
+    <CapitalIdentifier> => TypeIdData::Identifier(Rc::from(<>)),
 };
 
 TypeSpecifier: TypeId = {
@@ -359,7 +359,7 @@ extern {
         "." => lexer::Tok::Dot,
         ":" => lexer::Tok::Colon,
         ";" => lexer::Tok::Semicolon,
-        AmpFollow => lexer::Tok::AmpFollow,
+        Amp => lexer::Tok::Amp,
         "@" => lexer::Tok::At,
         "@[" => lexer::Tok::AtBracket,
         "[" => lexer::Tok::LeftBracket,
@@ -370,6 +370,7 @@ extern {
         I64 => lexer::Tok::I64 { value : <i64> },
         Float => lexer::Tok::Float { value : <u64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
+        CapitalIdentifier => lexer::Tok::CapitalIdentifier { value : <String> },
         String => lexer::Tok::String { value : <String> },
     }
 }

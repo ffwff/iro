@@ -41,7 +41,6 @@ pub enum Tok {
     Comma,
     Dot,
     Amp,
-    AmpFollow,
     Colon,
     Semicolon,
     Newline,
@@ -55,6 +54,7 @@ pub enum Tok {
     I64 { value: i64 },
     Float { value: u64 },
     Identifier { value: String },
+    CapitalIdentifier { value: String },
     String { value: String },
 }
 
@@ -62,7 +62,59 @@ impl Eq for Tok {}
 
 impl std::fmt::Display for Tok {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Tok::EOF => write!(f, "end of file"),
+            Tok::Import => write!(f, "import"),
+            Tok::Def => write!(f, "def"),
+            Tok::Extern => write!(f, "extern"),
+            Tok::Return => write!(f, "return"),
+            Tok::While => write!(f, "while"),
+            Tok::If => write!(f, "if"),
+            Tok::Else => write!(f, "else"),
+            Tok::Elsif => write!(f, "elsif"),
+            Tok::End => write!(f, "end"),
+            Tok::And => write!(f, "and"),
+            Tok::Or => write!(f, "or"),
+            Tok::As => write!(f, "as"),
+            Tok::Equ => write!(f, "=="),
+            Tok::Neq => write!(f, "!="),
+            Tok::Add => write!(f, "+"),
+            Tok::Sub => write!(f, "-"),
+            Tok::Mul => write!(f, "*"),
+            Tok::Div => write!(f, "/"),
+            Tok::Not => write!(f, "not"),
+            Tok::Asg => write!(f, "="),
+            Tok::Mod => write!(f, "%"),
+            Tok::Adds => write!(f, "+="),
+            Tok::Subs => write!(f, "-="),
+            Tok::Muls => write!(f, "*="),
+            Tok::Divs => write!(f, "/="),
+            Tok::Mods => write!(f, "%="),
+            Tok::Lt => write!(f, "<"),
+            Tok::Gt => write!(f, ">"),
+            Tok::Lte => write!(f, "<="),
+            Tok::Gte => write!(f, ">="),
+            Tok::LeftParen => write!(f, "("),
+            Tok::RightParen => write!(f, ")"),
+            Tok::Comma => write!(f, ","),
+            Tok::Dot => write!(f, "."),
+            Tok::Amp => write!(f, "&"),
+            Tok::Colon => write!(f, ","),
+            Tok::Semicolon => write!(f, "semicolon"),
+            Tok::Newline => write!(f, "newline"),
+            Tok::At => write!(f, "@"),
+            Tok::AtBracket => write!(f, "@["),
+            Tok::LeftBracket => write!(f, "["),
+            Tok::RightBracket => write!(f, "]"),
+            Tok::True => write!(f, "true"),
+            Tok::False => write!(f, "false"),
+            Tok::I32 { value } => write!(f, "integer value {:?}", value),
+            Tok::I64 { value } => write!(f, "integer value {:?}", value),
+            Tok::Float { value } => write!(f, "floating point value {:?}", value),
+            Tok::Identifier { value } => write!(f, "identifier {:?}", value),
+            Tok::CapitalIdentifier { value } => write!(f, "type identifier {:?}", value),
+            Tok::String { value } => write!(f, "string {:?}", value),
+        }
     }
 }
 
@@ -225,16 +277,7 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, '@')) => mod_op!(self, idx0, Tok::At, '[', Tok::AtBracket),
                 Some((idx0, '[')) => return Some(Ok((idx0, Tok::LeftBracket, idx0))),
                 Some((idx0, ']')) => return Some(Ok((idx0, Tok::RightBracket, idx0))),
-                Some((idx0, '&')) => match self.chars.next() {
-                    Some((idx1, ch)) if ch.is_whitespace() => {
-                        self.last_char = Some((idx1, ch));
-                        return Some(Ok((idx0, Tok::Amp, idx0)));
-                    }
-                    ch => {
-                        self.last_char = ch;
-                        return Some(Ok((idx0, Tok::AmpFollow, idx0)));
-                    }
-                },
+                Some((idx0, '&')) => return Some(Ok((idx0, Tok::Amp, idx0))),
 
                 Some((idx0, ch)) if UnicodeXID::is_xid_start(ch) => {
                     let mut idx1 = idx0;
@@ -250,6 +293,9 @@ impl<'input> Iterator for Lexer<'input> {
                                 break;
                             }
                         }
+                    }
+                    if string.chars().next().unwrap().is_uppercase() {
+                        return Some(Ok((idx0, Tok::CapitalIdentifier { value: string }, idx0)));
                     }
                     let value = match string.as_str() {
                         "import" => Tok::Import,

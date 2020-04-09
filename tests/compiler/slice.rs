@@ -20,10 +20,10 @@ fn index() {
         "
     extern def record=\"record_i32\"(i: I32, n: I32): Nil
 
-    X := [1, 2, 3]
-    record(0, X[0])
-    record(1, X[1])
-    record(2, X[2])
+    x := [1, 2, 3]
+    record(0, x[0])
+    record(1, x[1])
+    record(2, x[2])
     ",
         runtime,
     )

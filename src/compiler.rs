@@ -62,21 +62,56 @@ impl std::fmt::Debug for Error {
     }
 }
 
-type ParseError = lalrpop_util::ParseError<usize, lexer::Tok, Error>;
-impl From<ParseError> for Error {
-    fn from(error: ParseError) -> Self {
+type LalrParseError = lalrpop_util::ParseError<usize, lexer::Tok, Error>;
+impl From<LalrParseError> for Error {
+    fn from(error: LalrParseError) -> Error {
         match error {
-            ParseError::InvalidToken { location: _ } => unimplemented!(),
+            LalrParseError::InvalidToken { location } => {
+                Error {
+                    error: Box::new(ParseError::InvalidToken),
+                    span: (location, location)
+                }
+            }
+            LalrParseError::UnrecognizedEOF { location, expected } => {
+                Error {
+                    error: Box::new(ParseError::UnrecognizedEOF { expected }),
+                    span: (location, location)
+                }
+            }
+            LalrParseError::UnrecognizedToken { token: (start, token, end), expected } => {
+                Error {
+                    error: Box::new(ParseError::UnrecognizedToken { token, expected }),
+                    span: (start, end)
+                }
+            }
+            LalrParseError::ExtraToken { token: _ } => unimplemented!(),
+            LalrParseError::User { error } => error,
+        }
+    }
+}
+
+enum ParseError {
+    InvalidToken,
+    UnrecognizedEOF {
+        expected: Vec<String>
+    },
+    UnrecognizedToken {
+        token: lexer::Tok,
+        expected: Vec<String>
+    },
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::InvalidToken => write!(f, "Invalid token"),
             ParseError::UnrecognizedEOF {
-                location: _,
-                expected: _,
-            } => unimplemented!(),
+                expected
+            } => write!(f, "Unexpected end of file, expected {},...", expected[0..3].join(", ")),
             ParseError::UnrecognizedToken {
-                token: _,
-                expected: _,
-            } => unimplemented!(),
-            ParseError::ExtraToken { token: _ } => unimplemented!(),
-            ParseError::User { error } => error,
+                token,
+                expected,
+            } => write!(f, "Unexpected token (got {}, expected {},...)", token, expected[0..3].join(", ")),
         }
     }
 }
