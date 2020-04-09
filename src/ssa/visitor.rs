@@ -70,7 +70,7 @@ pub struct SSAVisitor<'a> {
     envs: Vec<Env>,
     top_level: &'a RefCell<TopLevelInfo>,
     has_direct_return: bool,
-    last_retvar: Option<usize>,
+    last_retvar: Option<Variable>,
 }
 
 macro_rules! check_direct_return {
@@ -1144,7 +1144,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     retvars.push(retvar);
                 }
                 if let Some(typed) = typed {
-                    let retvar = self.context.insert_var(typed.slice(slice.len()));
+                    let retvar = self.context.insert_var(typed.slice(slice.len() as u32));
                     self.with_block_mut(|block| {
                         block.ins.push(Ins::new(
                             retvar,
@@ -1189,7 +1189,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
             } => {
                 self.visit_typeid(&internal, b)?;
                 let typed: &Option<Type> = &internal.typed.borrow();
-                n.typed.replace(Some(typed.clone().unwrap().slice(*length)));
+                if let Some(length) = length {
+                    n.typed.replace(Some(typed.clone().unwrap().slice(*length)));
+                } else {
+                    n.typed.replace(Some(typed.clone().unwrap().dyn_slice()));
+                }
                 Ok(())
             }
         }

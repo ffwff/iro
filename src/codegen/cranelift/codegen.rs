@@ -319,7 +319,7 @@ where
                 let (slice_bytes, instance_bytes) = {
                     let slice = typed.as_slice().unwrap();
                     (
-                        slice.typed.bytes().unwrap() * slice.length.unwrap(),
+                        slice.typed.bytes().unwrap() * (slice.len.unwrap() as usize),
                         slice.typed.bytes().unwrap(),
                     )
                 };
@@ -630,7 +630,7 @@ where
                         let slice_type: &isa::SliceType = &slice_rc.borrow();
                         builder
                             .ins()
-                            .iconst(self.pointer_type(), slice_type.length.unwrap() as i64)
+                            .iconst(self.pointer_type(), slice_type.len.unwrap() as i64)
                     }
                     _ => unreachable!(),
                 };

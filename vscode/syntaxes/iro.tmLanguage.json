@@ -8,7 +8,7 @@
 		},
 		{
 			"name": "keyword.operator.misc.iro",
-			"match": "\\b(import|as)\\b"
+			"match": "\\b(import|as|mut|true|false)\\b"
 		},
 		{
 			"name": "keyword.operator.iro",

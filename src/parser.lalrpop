@@ -299,10 +299,10 @@ TypePointer: TypeIdData = {
 };
 
 TypeSlice: TypeIdData = {
-    "[" <typed:Type> ";" <length:I32> "]" => {
+    "[" <typed:Type> <length:(";" <I32>)?> "]" => {
         TypeIdData::Slice {
             typed: Box::new(typed.clone()),
-            length: length as usize
+            length: length.map(|length| length as u32)
         }
     },
 };

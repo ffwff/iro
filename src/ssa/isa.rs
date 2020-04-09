@@ -19,6 +19,8 @@ impl IntrinsicType {
     }
 }
 
+pub type Variable = usize;
+
 #[derive(Debug, Clone)]
 pub struct Context {
     pub blocks: Vec<Block>,
@@ -76,7 +78,7 @@ impl Context {
         }
     }
 
-    pub fn insert_var(&mut self, typed: Type) -> usize {
+    pub fn insert_var(&mut self, typed: Type) -> Variable {
         self.variables.push(typed);
         self.variables.len() - 1
     }
@@ -101,10 +103,10 @@ pub struct Block {
     pub postlude: Ins,
     pub preds: Vec<usize>,
     pub succs: Vec<usize>,
-    pub vars_in: BTreeSet<usize>,
-    pub vars_out: BTreeSet<usize>,
-    pub vars_declared_in_this_block: BTreeSet<usize>,
-    pub vars_used: BTreeSet<usize>,
+    pub vars_in: BTreeSet<Variable>,
+    pub vars_out: BTreeSet<Variable>,
+    pub vars_declared_in_this_block: BTreeSet<Variable>,
+    pub vars_used: BTreeSet<Variable>,
 }
 
 impl Block {
@@ -124,16 +126,16 @@ impl Block {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Ins {
-    retvar: usize,
+    retvar: Variable,
     pub typed: InsType,
 }
 
 impl Ins {
-    pub fn new(retvar: usize, typed: InsType) -> Self {
+    pub fn new(retvar: Variable, typed: InsType) -> Self {
         Ins { retvar, typed }
     }
 
-    pub fn retvar(&self) -> Option<usize> {
+    pub fn retvar(&self) -> Option<Variable> {
         if self.typed.is_jmp() {
             None
         } else {
@@ -141,7 +143,7 @@ impl Ins {
         }
     }
 
-    pub fn mut_retvar(&mut self) -> Option<&mut usize> {
+    pub fn mut_retvar(&mut self) -> Option<&mut Variable> {
         if self.typed.is_jmp() {
             None
         } else {
@@ -151,7 +153,7 @@ impl Ins {
 
     pub fn rename_var_by<T>(&mut self, mut swap: T)
     where
-        T: FnMut(usize) -> usize,
+        T: FnMut(Variable) -> Variable,
     {
         let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
         let new_typed = match old_typed {
@@ -236,13 +238,13 @@ impl Ins {
         std::mem::replace(&mut self.typed, new_typed);
     }
 
-    pub fn rename_var(&mut self, oldvar: usize, newvar: usize) {
+    pub fn rename_var(&mut self, oldvar: Variable, newvar: Variable) {
         self.rename_var_by(|var| if var == oldvar { newvar } else { var })
     }
 
     pub fn each_used_var<T>(&self, mut callback: T)
     where
-        T: FnMut(usize),
+        T: FnMut(Variable),
     {
         match &self.typed {
             InsType::LoadVar(x) => {
@@ -415,8 +417,8 @@ impl Constant {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum RegConst {
-    RegLeft((usize, Constant)),
-    RegRight((Constant, usize)),
+    RegLeft((Variable, Constant)),
+    RegRight((Constant, Variable)),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -428,40 +430,40 @@ pub enum TrapType {
 pub enum InsType {
     Nop,
     LoadNil,
-    LoadVar(usize),
+    LoadVar(Variable),
     LoadArg(usize),
     LoadI32(i32),
     LoadI64(i64),
     LoadF64(u64),
     LoadBool(bool),
     LoadSubstring(Rc<str>),
-    LoadSlice(Vec<usize>),
+    LoadSlice(Vec<Variable>),
     MemberReference {
-        left: usize,
+        left: Variable,
         right: Rc<str>,
     },
     Phi {
-        vars: Vec<usize>,
-        defines: usize,
+        vars: Vec<Variable>,
+        defines: Variable,
     },
     Call {
         name: Rc<FunctionName>,
-        args: Vec<usize>,
+        args: Vec<Variable>,
     },
-    Return(usize),
+    Return(Variable),
     Trap(TrapType),
     Exit,
-    Add((usize, usize)),
-    Sub((usize, usize)),
-    Mul((usize, usize)),
-    Div((usize, usize)),
-    Mod((usize, usize)),
-    Lt((usize, usize)),
-    Gt((usize, usize)),
-    Lte((usize, usize)),
-    Gte((usize, usize)),
-    Equ((usize, usize)),
-    Neq((usize, usize)),
+    Add((Variable, Variable)),
+    Sub((Variable, Variable)),
+    Mul((Variable, Variable)),
+    Div((Variable, Variable)),
+    Mod((Variable, Variable)),
+    Lt ((Variable, Variable)),
+    Gt ((Variable, Variable)),
+    Lte((Variable, Variable)),
+    Gte((Variable, Variable)),
+    Equ((Variable, Variable)),
+    Neq((Variable, Variable)),
     AddC(RegConst),
     SubC(RegConst),
     MulC(RegConst),
@@ -472,36 +474,36 @@ pub enum InsType {
     LteC(RegConst),
     GteC(RegConst),
     Cast {
-        var: usize,
+        var: Variable,
         typed: Type,
     },
     IfJmp {
-        condvar: usize,
+        condvar: Variable,
         iftrue: usize,
         iffalse: usize,
     },
     PointerIndex {
-        var: usize,
-        index: usize,
+        var: Variable,
+        index: Variable,
     },
     PointerIndexC {
-        var: usize,
+        var: Variable,
         offset: i32,
     },
     FatIndex {
-        var: usize,
-        index: usize,
+        var: Variable,
+        index: Variable,
     },
     FatIndexC {
-        var: usize,
+        var: Variable,
         offset: i32,
     },
     BoundsCheck {
-        var: usize,
-        index: usize,
+        var: Variable,
+        index: Variable,
     },
     BoundsCheckC {
-        var: usize,
+        var: Variable,
         offset: i32,
     },
     Jmp(usize),
@@ -643,17 +645,17 @@ impl Type {
         }
     }
 
-    pub fn slice(self, length: usize) -> Self {
+    pub fn slice(self, len: u32) -> Self {
         Type::Slice(Rc::new(SliceType {
             typed: self,
-            length: Some(length),
+            len: Some(len),
         }))
     }
 
     pub fn dyn_slice(self) -> Self {
         Type::Slice(Rc::new(SliceType {
             typed: self,
-            length: None,
+            len: None,
         }))
     }
 
@@ -771,9 +773,9 @@ impl Type {
             Type::F64 => Some(8),
             Type::Slice(slice_rc) => {
                 let slice: &SliceType = &slice_rc.borrow();
-                if let Some(length) = slice.length {
+                if let Some(length) = slice.len {
                     if let Some(bytes) = slice.typed.bytes() {
-                        return Some(bytes * length);
+                        return Some(bytes * length as usize);
                     }
                 }
                 None
@@ -798,7 +800,7 @@ impl std::fmt::Display for Type {
             Type::Struct(struct_typed) => write!(f, "{}", struct_typed.0),
             Type::Slice(slice_rc) => {
                 let slice: &SliceType = slice_rc.borrow();
-                if let Some(length) = slice.length.clone() {
+                if let Some(length) = slice.len.clone() {
                     write!(f, "[{}; {}]", slice.typed, length)
                 } else {
                     write!(f, "[{}]", slice.typed)
@@ -842,11 +844,11 @@ impl Hash for StructType {
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct SliceType {
     pub typed: Type,
-    pub length: Option<usize>,
+    pub len: Option<u32>,
 }
 
 impl SliceType {
     pub fn is_dyn(&self) -> bool {
-        self.length.is_none()
+        self.len.is_none()
     }
 }

@@ -130,7 +130,7 @@ impl<'a> StructBuilder<'a> {
 
     pub fn insert_zeroed(&mut self, name: &str) -> Option<usize> {
         if let Some(data) = self.data.values().get(name) {
-            for i in data.offset..(data.offset + data.typed.bytes().unwrap()) {
+            for i in data.offset..(data.offset + data.typed.bytes().unwrap() as usize) {
                 self.vec[i] = 0;
             }
             return Some(data.offset);
