@@ -654,16 +654,19 @@ where
                     _ => unreachable!(),
                 };
                 let index_var = match &ins.typed {
-                    isa::InsType::BoundsCheck { index, .. } => builder.use_var(to_var(*index)),
+                    isa::InsType::BoundsCheck { index, .. } => {
+                        let tmp = builder.use_var(to_var(*index));
+                        // FIXME: remove this once we have a ISize type
+                        builder.ins().sextend(self.pointer_type(), tmp)
+                    }
                     isa::InsType::BoundsCheckC { offset, .. } => {
-                        builder.ins().iconst(types::I32, *offset as i64)
+                        builder.ins().iconst(self.pointer_type(), *offset as i64)
                     }
                     _ => unreachable!(),
                 };
-                let index_casted = builder.ins().sextend(self.pointer_type(), index_var);
                 let tmp = builder
                     .ins()
-                    .icmp(IntCC::UnsignedLessThan, index_casted, len);
+                    .icmp(IntCC::UnsignedLessThan, index_var, len);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::Trap(cond) => {
