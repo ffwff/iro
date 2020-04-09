@@ -26,16 +26,15 @@ pub struct TopLevelInfo {
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
     pub pointer_type: Type,
-    pub substring_struct: Option<Rc<StructData>>,
+    pub generic_fat_pointer_struct: Option<StructData>,
 }
 
 impl TopLevelInfo {
     pub fn new(arch: TopLevelArch) -> Self {
         let pointer_type = Type::int_from_bits(arch.pointer_bits).unwrap();
-        let mut substring_struct = StructData::new(Rc::from("Substring"));
-        substring_struct.append_type(Rc::from("ptr"), pointer_type.ptr_for(Type::I8).unwrap());
-        substring_struct.append_type(Rc::from("len"), Type::I32);
-        let substring_struct = Rc::new(substring_struct);
+        let mut generic_fat_pointer_struct = StructData::new(Rc::from("(fat pointer)"));
+        generic_fat_pointer_struct.append_type(Rc::from("address"), pointer_type.clone());
+        generic_fat_pointer_struct.append_type(Rc::from("len"), pointer_type.clone());
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
@@ -47,9 +46,9 @@ impl TopLevelInfo {
                 Rc::from("I64") => Type::I64,
                 Rc::from("ISize") => pointer_type,
                 Rc::from("F64") => Type::F64,
-                substring_struct.name().clone() => Type::new_struct(substring_struct.clone()),
+                Rc::from("Substring") => Type::I8.dyn_slice(),
             ],
-            substring_struct: Some(substring_struct),
+            generic_fat_pointer_struct: Some(generic_fat_pointer_struct),
         }
     }
 
@@ -59,7 +58,7 @@ impl TopLevelInfo {
             func_contexts: HashMap::new(),
             pointer_type: Type::Nil,
             types: HashMap::new(),
-            substring_struct: None,
+            generic_fat_pointer_struct: None,
         }
     }
 }
@@ -124,7 +123,7 @@ impl<'a> SSAVisitor<'a> {
                 .map(|(key, value)| (key, value.unwrap()))
                 .collect(),
             entry,
-            substring_struct: top_level.substring_struct.unwrap(),
+            generic_fat_pointer_struct: top_level.generic_fat_pointer_struct.unwrap(),
         }
     }
 
@@ -906,36 +905,58 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let leftvar = self.last_retvar.take().unwrap();
         match &n.right {
             MemberExprArm::Identifier(string) => {
-                let rettype =
-                    if let Type::Struct(struct_data) = self.context.variables[leftvar].clone() {
+                let rettype = match &self.context.variables[leftvar] {
+                    Type::Struct(struct_data) => {
                         if let Some(var_data) = struct_data.0.values().get(string) {
-                            Some(var_data.typed.clone())
+                            var_data.typed.clone()
                         } else {
-                            None
+                            unimplemented!()
                         }
-                    } else {
-                        None
-                    };
-                if let Some(rettype) = rettype {
-                    let retvar = self.context.insert_var(rettype);
-                    self.last_retvar = Some(retvar);
-                    self.with_block_mut(|block| {
-                        block.ins.push(Ins::new(
-                            retvar,
-                            InsType::MemberReference {
-                                left: leftvar,
-                                right: string.clone(),
-                            },
-                        ));
-                    });
-                }
+                    }
+                    typed if typed.is_fat_pointer() => {
+                        let top_level = self.top_level.borrow();
+                        let struct_data = top_level.generic_fat_pointer_struct.as_ref().unwrap();
+                        if let Some(var_data) = struct_data.values().get(string) {
+                            var_data.typed.clone()
+                        } else {
+                            unimplemented!()
+                        }
+                    }
+                    _ => unimplemented!(),
+                };
+                let retvar = self.context.insert_var(rettype);
+                self.last_retvar = Some(retvar);
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(
+                        retvar,
+                        InsType::MemberReference {
+                            left: leftvar,
+                            right: string.clone(),
+                        },
+                    ));
+                });
             }
             MemberExprArm::Index(idx) => {
                 idx.visit(self)?;
                 let idx_var = self.last_retvar.take().unwrap();
                 match self.context.variables[leftvar].clone() {
                     Type::I32Ptr(typed) | Type::I64Ptr(typed) => {
-                        assert!(typed.is_int());
+                        if let Type::Slice(slice_type) = typed.borrow() {
+                            if slice_type.is_dyn() {
+                                let retvar = self.context.insert_var(slice_type.typed.clone());
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(
+                                        retvar,
+                                        InsType::FatIndex {
+                                            var: leftvar,
+                                            index: idx_var,
+                                        },
+                                    ));
+                                });
+                                self.last_retvar = Some(retvar);
+                                return Ok(());
+                            }
+                        }
                         let retvar = self.context.insert_var((*typed).clone());
                         self.with_block_mut(|block| {
                             block.ins.push(Ins::new(
@@ -948,7 +969,21 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         });
                         self.last_retvar = Some(retvar);
                     }
-                    _ => unimplemented!(),
+                    Type::Slice(slice_rc) => {
+                        let slice_type: &SliceType = &slice_rc.borrow();
+                        let retvar = self.context.insert_var(slice_type.typed.clone());
+                        self.with_block_mut(|block| {
+                            block.ins.push(Ins::new(
+                                retvar,
+                                InsType::PointerIndex {
+                                    var: leftvar,
+                                    index: idx_var,
+                                },
+                            ));
+                        });
+                        self.last_retvar = Some(retvar);
+                    }
+                    other => unimplemented!("{:#?}", other),
                 }
             }
         }
@@ -994,9 +1029,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
             Value::String(x) => {
                 let retvar = {
                     let top_level = self.top_level.borrow();
-                    self.context.insert_var(Type::new_struct(
-                        top_level.substring_struct.clone().unwrap(),
-                    ))
+                    self.context.insert_var(
+                        top_level
+                            .pointer_type
+                            .ptr_for(Type::I8.dyn_slice())
+                            .unwrap(),
+                    )
                 };
                 self.with_block_mut(|block| {
                     block
@@ -1012,6 +1050,33 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     Ok(())
                 } else {
                     Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b))
+                }
+            }
+            Value::Slice(slice) => {
+                let mut typed = None;
+                let mut retvars = vec![];
+                for item in slice {
+                    item.visit(self)?;
+                    let retvar = self.last_retvar.unwrap();
+                    if let Some(old_typed) = typed {
+                        typed = Some(self.context.variables[retvar].unify(&old_typed));
+                    } else {
+                        typed = Some(self.context.variables[retvar].clone());
+                    }
+                    retvars.push(retvar);
+                }
+                if let Some(typed) = typed {
+                    let retvar = self.context.insert_var(typed.slice(slice.len()));
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins::new(
+                            retvar,
+                            InsType::LoadSlice(std::mem::replace(&mut retvars, vec![])),
+                        ));
+                    });
+                    self.last_retvar = Some(retvar);
+                    Ok(())
+                } else {
+                    Err(Error::CannotInfer.into_compiler_error(b))
                 }
             }
         }
@@ -1038,6 +1103,15 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .pointer_type
                         .ptr_for(internal.typed.borrow().clone().unwrap()),
                 );
+                Ok(())
+            }
+            TypeIdData::Slice {
+                typed: internal,
+                length,
+            } => {
+                self.visit_typeid(&internal, b)?;
+                let typed: &Option<Type> = &internal.typed.borrow();
+                n.typed.replace(Some(typed.clone().unwrap().slice(*length)));
                 Ok(())
             }
         }

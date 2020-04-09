@@ -1,4 +1,4 @@
 pub mod abi;
-pub mod translator;
 mod codegen;
+pub mod translator;
 pub use codegen::*;

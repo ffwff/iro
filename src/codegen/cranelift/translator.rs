@@ -46,8 +46,10 @@ pub fn ir_to_cranelift_type(typed: &isa::Type) -> Option<types::Type> {
         isa::Type::Nil => Some(types::I32),
         isa::Type::Bool => Some(types::B1),
         isa::Type::I8 => Some(types::I8),
-        isa::Type::I32 | isa::Type::I32Ptr(_) => Some(types::I32),
-        isa::Type::I64 | isa::Type::I64Ptr(_) => Some(types::I64),
+        isa::Type::I32 => Some(types::I32),
+        isa::Type::I64 => Some(types::I64),
+        isa::Type::I32Ptr(_) if !typed.is_fat_pointer() => Some(types::I32),
+        isa::Type::I64Ptr(_) if !typed.is_fat_pointer() => Some(types::I64),
         isa::Type::F64 => Some(types::F64),
         _ => None,
     }

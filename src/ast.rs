@@ -158,6 +158,7 @@ pub enum Value {
     Bool(bool),
     String(Rc<str>),
     Identifier(Rc<str>),
+    Slice(Vec<NodeBox>),
 }
 
 impl Node for Value {
@@ -189,6 +190,7 @@ impl TypeId {
 pub enum TypeIdData {
     Identifier(Rc<str>),
     Pointer(Box<TypeId>),
+    Slice { typed: Box<TypeId>, length: usize },
 }
 
 #[derive(Debug)]

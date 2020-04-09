@@ -156,6 +156,13 @@ impl Ins {
         let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
         let new_typed = match old_typed {
             InsType::LoadVar(x) => InsType::LoadVar(swap(x)),
+            InsType::LoadSlice(mut args) => {
+                for arg in &mut args {
+                    let oldvar = *arg;
+                    *arg = swap(oldvar);
+                }
+                InsType::LoadSlice(args)
+            }
             InsType::Call { name, mut args } => {
                 for arg in &mut args {
                     let oldvar = *arg;
@@ -208,6 +215,14 @@ impl Ins {
                 var: swap(var),
                 offset,
             },
+            InsType::FatIndex { var, index } => InsType::FatIndex {
+                var: swap(var),
+                index: swap(index),
+            },
+            InsType::FatIndexC { var, offset } => InsType::FatIndexC {
+                var: swap(var),
+                offset,
+            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
@@ -224,6 +239,11 @@ impl Ins {
         match &self.typed {
             InsType::LoadVar(x) => {
                 callback(*x);
+            }
+            InsType::LoadSlice(args) => {
+                for arg in args {
+                    callback(*arg);
+                }
             }
             InsType::Call { name: _, args } => {
                 for arg in args {
@@ -265,6 +285,13 @@ impl Ins {
                 callback(*index);
             }
             InsType::PointerIndexC { var, .. } => {
+                callback(*var);
+            }
+            InsType::FatIndex { var, index } => {
+                callback(*var);
+                callback(*index);
+            }
+            InsType::FatIndexC { var, .. } => {
                 callback(*var);
             }
             InsType::AddC(rc)
@@ -387,6 +414,7 @@ pub enum InsType {
     LoadF64(u64),
     LoadBool(bool),
     LoadSubstring(Rc<str>),
+    LoadSlice(Vec<usize>),
     MemberReference {
         left: usize,
         right: Rc<str>,
@@ -435,6 +463,14 @@ pub enum InsType {
         index: usize,
     },
     PointerIndexC {
+        var: usize,
+        offset: i32,
+    },
+    FatIndex {
+        var: usize,
+        index: usize,
+    },
+    FatIndexC {
         var: usize,
         offset: i32,
     },
@@ -538,7 +574,7 @@ impl ToString for FunctionName {
 pub struct Program {
     pub contexts: HashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
-    pub substring_struct: Rc<StructData>,
+    pub generic_fat_pointer_struct: StructData,
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -550,10 +586,11 @@ pub enum Type {
     I16,
     I32,
     I64,
-    I32Ptr(Rc<Type>),
-    I64Ptr(Rc<Type>),
+    I32Ptr(Box<Type>),
+    I64Ptr(Box<Type>),
     F64,
     Struct(StructType),
+    Slice(Rc<SliceType>),
     Union(Rc<BTreeSet<Type>>),
     NeverUsed,
 }
@@ -565,10 +602,24 @@ impl Type {
 
     pub fn ptr_for(&self, typed: Type) -> Option<Self> {
         match self {
-            Type::I32 => Some(Type::I32Ptr(Rc::new(typed))),
-            Type::I64 => Some(Type::I64Ptr(Rc::new(typed))),
+            Type::I32 => Some(Type::I32Ptr(Box::new(typed))),
+            Type::I64 => Some(Type::I64Ptr(Box::new(typed))),
             _ => None,
         }
+    }
+
+    pub fn slice(self, length: usize) -> Self {
+        Type::Slice(Rc::new(SliceType {
+            typed: self,
+            length: Some(length),
+        }))
+    }
+
+    pub fn dyn_slice(self) -> Self {
+        Type::Slice(Rc::new(SliceType {
+            typed: self,
+            length: None,
+        }))
     }
 
     pub fn unify(&self, other: &Type) -> Self {
@@ -637,6 +688,16 @@ impl Type {
         }
     }
 
+    pub fn is_fat_pointer(&self) -> bool {
+        match self {
+            Type::I32Ptr(typed) | Type::I64Ptr(typed) => match &typed.borrow() {
+                Type::Slice(slice) => slice.is_dyn(),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
         match self {
             Type::Union(set) => Some(set.clone()),
@@ -647,6 +708,13 @@ impl Type {
     pub fn as_struct(&self) -> Option<StructType> {
         match self {
             Type::Struct(struct_data) => Some(struct_data.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_slice(&self) -> Option<Rc<SliceType>> {
+        match self {
+            Type::Slice(slice) => Some(slice.clone()),
             _ => None,
         }
     }
@@ -666,6 +734,15 @@ impl Type {
             Type::I32 | Type::I32Ptr(_) => Some(4),
             Type::I64 | Type::I64Ptr(_) => Some(8),
             Type::F64 => Some(8),
+            Type::Slice(slice_rc) => {
+                let slice: &SliceType = &slice_rc.borrow();
+                if let Some(length) = slice.length {
+                    if let Some(bytes) = slice.typed.bytes() {
+                        return Some(bytes * length);
+                    }
+                }
+                None
+            }
             _ => None,
         }
     }
@@ -674,6 +751,7 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Type::NoReturn => write!(f, "(no return)"),
             Type::Nil => write!(f, "Nil"),
             Type::Bool => write!(f, "Bool"),
             Type::I8 => write!(f, "I8"),
@@ -683,7 +761,16 @@ impl std::fmt::Display for Type {
             Type::I32Ptr(typed) | Type::I64Ptr(typed) => write!(f, "&{}", typed),
             Type::F64 => write!(f, "F64"),
             Type::Struct(struct_typed) => write!(f, "{}", struct_typed.0),
-            _ => unimplemented!(),
+            Type::Slice(slice_rc) => {
+                let slice: &SliceType = slice_rc.borrow();
+                if let Some(length) = slice.length.clone() {
+                    write!(f, "[{}; {}]", slice.typed, length)
+                } else {
+                    write!(f, "[{}]", slice.typed)
+                }
+            }
+            Type::Union(_) => unimplemented!(),
+            Type::NeverUsed => write!(f, "(never used)"),
         }
     }
 }
@@ -714,5 +801,17 @@ impl Ord for StructType {
 impl Hash for StructType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (self.0.borrow() as *const StructData).hash(state);
+    }
+}
+
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub struct SliceType {
+    pub typed: Type,
+    pub length: Option<usize>,
+}
+
+impl SliceType {
+    pub fn is_dyn(&self) -> bool {
+        self.length.is_none()
     }
 }

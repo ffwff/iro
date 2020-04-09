@@ -337,6 +337,22 @@ macro_rules! ins_to_const_ins {
     }};
 }
 
+macro_rules! ins_index {
+    ($ins:expr, $index:expr, $var:expr, $var_to_const:expr, $context:expr, $method:tt) => {
+        if let Some(k) = $var_to_const.get(&$index) {
+            let offset_index = match k.to_const().unwrap() {
+                Constant::I32(x) => x,
+                Constant::I64(x) => x as i32,
+                _ => unreachable!(),
+            };
+            $ins.typed = InsType::$method {
+                var: *$var,
+                offset: offset_index,
+            };
+        }
+    };
+}
+
 pub fn fold_constants(context: &mut Context) -> Flow {
     dbg_println!("before folding: {:#?}", context);
     let mut var_to_const = BTreeMap::new();
@@ -390,18 +406,10 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                     ins_to_const_ins!(*left, *right, var_to_const, ins, GteC, gte)
                 }
                 InsType::PointerIndex { var, index } => {
-                    if let Some(k) = var_to_const.get(&index) {
-                        let offset_index = match k.to_const().unwrap() {
-                            Constant::I32(x) => x,
-                            Constant::I64(x) => x as i32,
-                            _ => unreachable!(),
-                        };
-                        ins.typed = InsType::PointerIndexC {
-                            var: *var,
-                            offset: (context.variables[*var].bytes().unwrap() as i32)
-                                * offset_index,
-                        };
-                    }
+                    ins_index!(ins, index, var, var_to_const, context, PointerIndexC)
+                }
+                InsType::FatIndex { var, index } => {
+                    ins_index!(ins, index, var, var_to_const, context, FatIndexC)
                 }
                 _ => (),
             }

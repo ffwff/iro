@@ -7,16 +7,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[test]
 fn len() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
-    extern "C" fn record_i32(n: i32) {
+    extern "C" fn record_i64(n: i64) {
         assert_eq!(n, 3);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::empty();
-    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
         "
-    extern def record=\"record_i32\"(n: I32): Nil
+    extern def record=\"record_i64\"(n: I64): Nil
 
     record(\"ABC\".len)
     ",
@@ -40,7 +40,7 @@ fn ptr_access() {
         "
     extern def record=\"record_i8\"(n: I8): Nil
 
-    record(\"ABC\".ptr[0])
+    record(\"ABC\"[0])
     ",
         runtime,
     )
@@ -54,7 +54,7 @@ fn substring_ffi() {
     #[repr(C)]
     struct IroSubstring {
         ptr: *mut u8,
-        len: i32,
+        len: usize,
     }
     extern "C" fn record_substr(substring: IroSubstring) {
         let slice = unsafe {
@@ -72,7 +72,7 @@ fn substring_ffi() {
     utils::parse_and_run(
         Settings::default(),
         "
-    extern def record=\"record_substr\"(n: Substring): Nil
+    extern def record=\"record_substr\"(n: &Substring): Nil
 
     record(\"ABC\")
     ",
@@ -88,7 +88,7 @@ fn substring_passing() {
     #[repr(C)]
     struct IroSubstring {
         ptr: *mut u8,
-        len: i32,
+        len: usize,
     }
     extern "C" fn record_substr(substring: IroSubstring) {
         let slice = unsafe {
@@ -106,7 +106,7 @@ fn substring_passing() {
     utils::parse_and_run(
         Settings::default(),
         "
-    extern def record=\"record_substr\"(n: Substring): Nil
+    extern def record=\"record_substr\"(n: &Substring): Nil
 
     def f(x)
         record(x)
@@ -134,7 +134,7 @@ fn string_dereference() {
         "
     extern def record=\"record_i32\"(n: I32): Nil
 
-    record(\"A\".ptr[0])
+    record(\"A\"[0])
     ",
         runtime,
     )

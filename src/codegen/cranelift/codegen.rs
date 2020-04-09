@@ -1,6 +1,6 @@
-use crate::codegen::structs::*;
 use crate::codegen::cranelift::abi;
 use crate::codegen::cranelift::translator::*;
+use crate::codegen::structs::*;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
 use crate::ssa::visitor::TopLevelArch;
@@ -30,12 +30,6 @@ macro_rules! generate_arithmetic {
         let tmp = $builder.ins().$fn(left, right);
         $builder.def_var(to_var($ins.retvar().unwrap()), tmp);
     }};
-}
-
-/// Struct data for an SSA variable
-struct VarStructData {
-    pub pointer: Value,
-    pub struct_data: Rc<StructData>,
 }
 
 /// Code generator
@@ -143,6 +137,7 @@ where
         let mut stack_loads_by_var: Vec<Vec<Offset32>> = vec![vec![]; context.args.len()];
         abi::generate_function_arguments(
             self.module.isa(),
+            program,
             &context.args,
             &mut fctx.func.signature,
             |idx, offset| {
@@ -155,7 +150,6 @@ where
             ));
         }
 
-        let mut var_to_var_struct_data = BTreeMap::new();
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
         let blocks: Vec<Block> = (0..context.blocks.len())
             .map(|_| builder.create_block())
@@ -177,11 +171,15 @@ where
         {
             if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
-            } else if let Some(struct_type) = typed.as_struct() {
-                let struct_data_rc = struct_type.0.clone();
+            } else {
+                let struct_data = match typed {
+                    isa::Type::Struct(isa::StructType(data)) => data.borrow(),
+                    _ if typed.is_fat_pointer() => &program.generic_fat_pointer_struct,
+                    _ => unimplemented!(),
+                };
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
-                    struct_data_rc.size_of() as u32,
+                    struct_data.size_of() as u32,
                 ));
                 let mut loads_for_struct = vec![];
                 for offset in stack_loads {
@@ -189,8 +187,6 @@ where
                     loads_for_struct.push((*offset, tmp));
                 }
                 stack_loads_ins.insert(idx, (slot, loads_for_struct));
-            } else {
-                unimplemented!()
             }
         }
 
@@ -205,7 +201,6 @@ where
                     &blocks,
                     &stack_loads_ins,
                     &mut builder,
-                    &mut var_to_var_struct_data,
                 );
             }
         }
@@ -230,7 +225,6 @@ where
         bblocks: &Vec<Block>,
         stack_loads_ins: &BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)>,
         builder: &mut FunctionBuilder,
-        var_to_var_struct_data: &mut BTreeMap<usize, VarStructData>,
     ) {
         match &ins.typed {
             isa::InsType::Nop => (),
@@ -244,13 +238,9 @@ where
                         builder.ins().stack_store(*value, *slot, *offset);
                     }
                     let pointer = builder.ins().stack_addr(self.pointer_type(), *slot, 0);
-                    var_to_var_struct_data.insert(
-                        ins.retvar().unwrap(),
-                        VarStructData {
-                            pointer,
-                            struct_data: context.args[*arg].as_struct().unwrap().0.clone(),
-                        },
-                    );
+                    let retvar = ins.retvar().unwrap();
+                    builder.declare_var(to_var(retvar), self.pointer_type());
+                    builder.def_var(to_var(retvar), pointer);
                 } else {
                     let tmp = builder.block_params(bblock)[*arg];
                     builder.def_var(to_var(ins.retvar().unwrap()), tmp);
@@ -300,10 +290,11 @@ where
                     let bytes_value = self
                         .module
                         .declare_data_in_data(bytes_data_id, &mut data_ctx);
-                    let mut struct_builder = StructBuilder::new(&program.substring_struct);
-                    let ptr_offset = struct_builder.insert_zeroed("ptr").unwrap();
+                    let mut struct_builder =
+                        StructBuilder::new(&program.generic_fat_pointer_struct);
+                    let ptr_offset = struct_builder.insert_zeroed("address").unwrap();
                     struct_builder
-                        .insert("len", &(x.len() as u32).to_ne_bytes())
+                        .insert("len", &x.len().to_ne_bytes())
                         .unwrap();
                     data_ctx.define(struct_builder.into_vec().into_boxed_slice());
                     data_ctx.write_data_addr(ptr_offset as u32, bytes_value, 0);
@@ -314,17 +305,37 @@ where
                 };
                 let value = self.module.declare_data_in_func(data_id, &mut builder.func);
                 let pointer = builder.ins().symbol_value(self.pointer_type(), value);
-                var_to_var_struct_data.insert(
-                    ins.retvar().unwrap(),
-                    VarStructData {
-                        pointer,
-                        struct_data: program.substring_struct.clone(),
-                    },
-                );
+                let retvar = ins.retvar().unwrap();
+                builder.declare_var(to_var(retvar), self.pointer_type());
+                builder.def_var(to_var(retvar), pointer);
             }
             isa::InsType::LoadF64(x) => {
                 let tmp = builder.ins().f64const(*x);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
+            isa::InsType::LoadSlice(x) => {
+                let typed = &context.variables[ins.retvar().unwrap()];
+                let (slice_bytes, instance_bytes) = {
+                    let slice = typed.as_slice().unwrap();
+                    (
+                        slice.typed.bytes().unwrap() * slice.length.unwrap(),
+                        slice.typed.bytes().unwrap(),
+                    )
+                };
+                let slot = builder.create_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    slice_bytes as u32,
+                ));
+                let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
+                let retvar = ins.retvar().unwrap();
+                builder.declare_var(to_var(retvar), self.pointer_type());
+                builder.def_var(to_var(retvar), pointer);
+                for (idx, var) in x.iter().enumerate() {
+                    let tmp = builder.use_var(to_var(*var));
+                    builder
+                        .ins()
+                        .stack_store(tmp, slot, (idx * instance_bytes) as i32);
+                }
             }
             isa::InsType::Call { name, args } => {
                 let mut sig = self.module.make_signature();
@@ -346,15 +357,16 @@ where
                     let name: &isa::FunctionName = name;
                     abi::generate_function_arguments(
                         self.module.isa(),
+                        program,
                         &name.arg_types,
                         &mut sig,
                         |idx, offset| {
                             let var = args[idx];
-                            let var_struct_data = &var_to_var_struct_data[&var];
+                            let pointer = builder.use_var(to_var(var));
                             let tmp = builder.ins().load(
                                 types::I64,
                                 MemFlags::trusted(),
-                                var_struct_data.pointer,
+                                pointer,
                                 offset,
                             );
                             arg_values[idx].push(tmp);
@@ -511,19 +523,17 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::MemberReference { left, right } => {
-                let struct_data_rc =
-                    if let isa::Type::Struct(isa::StructType(data)) = &context.variables[*left] {
-                        data.clone()
-                    } else {
-                        unimplemented!()
-                    };
-                let struct_data: &StructData = struct_data_rc.borrow();
+                let struct_data: &StructData = match &context.variables[*left] {
+                    isa::Type::Struct(isa::StructType(data)) => data.borrow(),
+                    typed if typed.is_fat_pointer() => &program.generic_fat_pointer_struct,
+                    _ => unreachable!(),
+                };
                 let field_data = struct_data.values().get(right).unwrap();
-                let var_struct_data = var_to_var_struct_data.get(&left).unwrap();
+                let pointer = builder.use_var(to_var(*left));
                 let tmp = builder.ins().load(
                     ir_to_cranelift_type(&field_data.typed).unwrap(),
                     MemFlags::trusted(),
-                    var_struct_data.pointer,
+                    pointer,
                     field_data.offset as i32,
                 );
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
@@ -563,7 +573,44 @@ where
                     ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
                     MemFlags::trusted(),
                     ptr,
-                    *offset,
+                    (*offset) * context.variables[retvar].bytes().unwrap() as i32,
+                );
+                builder.def_var(to_var(retvar), tmp);
+            }
+            isa::InsType::FatIndex { var, index } => {
+                let retvar = ins.retvar().unwrap();
+                let fat_ptr = builder.use_var(to_var(*var));
+                let ptr = builder
+                    .ins()
+                    .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
+                let index_var = builder.use_var(to_var(*index));
+                let multiplicand = builder
+                    .ins()
+                    .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
+                let multiplicand_casted = builder.ins().sextend(
+                    ir_to_cranelift_type(&context.variables[*var]).unwrap(),
+                    multiplicand,
+                );
+                let indexed = builder.ins().iadd(ptr, multiplicand_casted);
+                let tmp = builder.ins().load(
+                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    MemFlags::trusted(),
+                    indexed,
+                    0,
+                );
+                builder.def_var(to_var(retvar), tmp);
+            }
+            isa::InsType::FatIndexC { var, offset } => {
+                let retvar = ins.retvar().unwrap();
+                let fat_ptr = builder.use_var(to_var(*var));
+                let ptr = builder
+                    .ins()
+                    .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
+                let tmp = builder.ins().load(
+                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    MemFlags::trusted(),
+                    ptr,
+                    (*offset) * context.variables[retvar].bytes().unwrap() as i32,
                 );
                 builder.def_var(to_var(retvar), tmp);
             }
