@@ -346,6 +346,14 @@ pub enum Constant {
 }
 
 impl Constant {
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Constant::I32(x) => Some(*x as i64),
+            Constant::I64(x) => Some(*x),
+            _ => None,
+        }
+    }
+
     pub fn add(&self, right: Constant) -> Constant {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Constant::I32(x + y),
@@ -419,6 +427,22 @@ impl Constant {
 pub enum RegConst {
     RegLeft((Variable, Constant)),
     RegRight((Constant, Variable)),
+}
+
+impl RegConst {
+    pub fn as_reg_left(&self) -> Option<(Variable, Constant)> {
+        match self {
+            RegConst::RegLeft(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    pub fn as_reg_right(&self) -> Option<(Constant, Variable)> {
+        match self {
+            RegConst::RegRight(x) => Some(*x),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

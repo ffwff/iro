@@ -480,6 +480,25 @@ where
             | isa::InsType::SubC(regconst)
             | isa::InsType::MulC(regconst)
             | isa::InsType::DivC(regconst)
+            | isa::InsType::ModC(regconst)
+                if regconst.as_reg_left().map(|(_, k)| k.as_i64().is_some()).is_some() => {
+                let (left, right) = regconst.as_reg_left().unwrap();
+                let int = right.as_i64().unwrap();
+                let var = builder.use_var(to_var(left));
+                let tmp = match &ins.typed {
+                    isa::InsType::AddC(_) => builder.ins().iadd_imm(var, int),
+                    isa::InsType::SubC(_) => builder.ins().iadd_imm(var, -int),
+                    isa::InsType::MulC(_) => builder.ins().imul_imm(var, int),
+                    isa::InsType::DivC(_) => builder.ins().sdiv_imm(var, int),
+                    isa::InsType::ModC(_) => builder.ins().srem_imm(var, int),
+                    _ => unreachable!(),
+                };
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
+            isa::InsType::AddC(regconst)
+            | isa::InsType::MulC(regconst)
+            | isa::InsType::SubC(regconst)
+            | isa::InsType::DivC(regconst)
             | isa::InsType::ModC(regconst) => {
                 let (left, right, typed) = regconst_to_type(builder, &regconst);
                 let tmp = match typed {
