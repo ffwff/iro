@@ -673,13 +673,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 };
                 let retvar = self.context.insert_var(rettype);
                 {
-                    let args = RefCell::new(Some(args));
+                    let mut args = Some(args);
                     self.with_block_mut(|block| {
                         block.ins.push(Ins::new(
                             retvar,
                             InsType::Call {
                                 name: func_name.clone(),
-                                args: args.replace(None).unwrap(),
+                                args: args.take().unwrap(),
                             },
                         ));
                     });
@@ -836,7 +836,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let mut right = self.last_retvar.take().unwrap();
                 if self.context.variables[right].can_implicit_cast_to(&self.context.variables[left])
                 {
-                    let typed = RefCell::new(Some(self.context.variables[left].clone()));
+                    let mut typed = Some(self.context.variables[left].clone());
                     let retvar = self
                         .context
                         .insert_var(self.context.variables[left].clone());
@@ -845,7 +845,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             retvar,
                             InsType::Cast {
                                 var: right,
-                                typed: typed.replace(None).unwrap(),
+                                typed: typed.take().unwrap(),
                             },
                         ));
                     });
@@ -886,13 +886,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
         n.typed.visit(self, b)?;
         let rettype = n.typed.typed.borrow().clone().unwrap();
         let new_retvar = self.context.insert_var(rettype.clone());
-        let rettype = RefCell::new(Some(rettype));
+        let mut rettype = Some(rettype);
         self.with_block_mut(move |block| {
             block.ins.push(Ins::new(
                 new_retvar,
                 InsType::Cast {
                     var: retvar,
-                    typed: rettype.replace(None).unwrap(),
+                    typed: rettype.take().unwrap(),
                 },
             ));
         });
@@ -939,6 +939,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             MemberExprArm::Index(idx) => {
                 idx.visit(self)?;
                 let idx_var = self.last_retvar.take().unwrap();
+                assert!(self.context.variables[idx_var].is_int());
                 match self.context.variables[leftvar].clone() {
                     Type::I32Ptr(typed) | Type::I64Ptr(typed) => {
                         if let Type::Slice(slice_type) = typed.borrow() {
@@ -1002,6 +1003,36 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     Type::Slice(slice_rc) => {
                         let slice_type: &SliceType = &slice_rc.borrow();
                         let retvar = self.context.insert_var(slice_type.typed.clone());
+                        let trap_block = self.context.blocks.len();
+                        let body_block = self.context.blocks.len() + 1;
+                        let condvar = self.context.insert_var(Type::Bool);
+                        self.with_block_mut(|block| {
+                            block.ins.push(Ins::new(
+                                condvar,
+                                InsType::BoundsCheck {
+                                    var: leftvar,
+                                    index: idx_var,
+                                },
+                            ));
+                            block.ins.push(Ins::new(
+                                0,
+                                InsType::IfJmp {
+                                    condvar: condvar,
+                                    iftrue: body_block,
+                                    iffalse: trap_block,
+                                },
+                            ));
+                        });
+                        // Trap block
+                        self.context.new_block();
+                        self.with_block_mut(|block| {
+                            block.ins.push(Ins::new(
+                                0,
+                                InsType::Trap(TrapType::BoundsCheck),
+                            ));
+                        });
+                        // Body continuation block
+                        self.context.new_block();
                         self.with_block_mut(|block| {
                             block.ins.push(Ins::new(
                                 retvar,

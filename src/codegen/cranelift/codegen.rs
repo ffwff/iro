@@ -617,15 +617,24 @@ where
             }
             isa::InsType::BoundsCheck { var, .. }
             | isa::InsType::BoundsCheckC { var, .. } => {
-                let fat_ptr = builder.use_var(to_var(*var));
-                let len = builder
-                    .ins()
-                    .load(
-                        self.pointer_type(),
-                        MemFlags::trusted(),
-                        fat_ptr,
-                        self.pointer_type().bytes() as i32
-                    );
+                let len = match &context.variables[*var] {
+                    maybe_fat if maybe_fat.is_fat_pointer() => {
+                        let fat_ptr = builder.use_var(to_var(*var));
+                        builder
+                            .ins()
+                            .load(
+                                self.pointer_type(),
+                                MemFlags::trusted(),
+                                fat_ptr,
+                                self.pointer_type().bytes() as i32
+                            )
+                    }
+                    isa::Type::Slice(slice_rc) => {
+                        let slice_type: &isa::SliceType = &slice_rc.borrow();
+                        builder.ins().iconst(self.pointer_type(), slice_type.length.unwrap() as i64)
+                    }
+                    _ => unreachable!(),
+                };
                 let index_var = match &ins.typed {
                     isa::InsType::BoundsCheck { index, .. } => builder.use_var(to_var(*index)),
                     isa::InsType::BoundsCheckC { offset, .. } => builder.ins().iconst(types::I32, *offset as i64),

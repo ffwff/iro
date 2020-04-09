@@ -337,6 +337,7 @@ impl std::fmt::Debug for Ins {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Constant {
+    Bool(bool),
     I32(i32),
     I64(i64),
     F64(u64),
@@ -509,6 +510,7 @@ pub enum InsType {
 impl InsType {
     pub fn load_const(c: Constant) -> Self {
         match c {
+            Constant::Bool(x) => InsType::LoadBool(x),
             Constant::I32(x) => InsType::LoadI32(x),
             Constant::I64(x) => InsType::LoadI64(x),
             Constant::F64(x) => InsType::LoadF64(x),

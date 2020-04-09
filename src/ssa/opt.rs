@@ -492,7 +492,6 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         }
         block.vars_declared_in_this_block = vars_declared_in_this_block;
         block.vars_used = vars_used;
-        // dbg_println!("block: {:#?}", block);
     }
 
     while let Some(node) = worklist.pop() {
@@ -537,6 +536,14 @@ pub fn separate_postlude(context: &mut Context) -> Flow {
                 unreachable!()
             }
         }
+    }
+    Flow::Continue
+}
+
+pub fn fuse_postlude(context: &mut Context) -> Flow {
+    for block in &mut context.blocks {
+        let postlude = std::mem::replace(&mut block.postlude, Ins::new(0, InsType::Nop));
+        block.ins.push(postlude);
     }
     Flow::Continue
 }
@@ -681,13 +688,5 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
         }
     }
     dbg_println!("after phis: {:#?}", context);
-    Flow::Continue
-}
-
-pub fn fuse_postlude(context: &mut Context) -> Flow {
-    for block in &mut context.blocks {
-        let postlude = std::mem::replace(&mut block.postlude, Ins::new(0, InsType::Nop));
-        block.ins.push(postlude);
-    }
     Flow::Continue
 }
