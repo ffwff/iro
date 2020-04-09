@@ -122,8 +122,8 @@ ReturnExpr: NodeBox = {
 
 // Let expression
 LetExpr: NodeBox = {
-    <start:@L> <left:Term> ":" "=" <right:StandaloneExpr> <end:@L> => {
-        NodeBox::new(LetExpr{ left, right }, (start, end))
+    <start:@L> <maybe_mut:"mut"?> <left:Term> ":" "=" <right:StandaloneExpr> <end:@L> => {
+        NodeBox::new(LetExpr{ left, right, is_mut: maybe_mut.is_some() }, (start, end))
     },
     BinExpr,
 };
@@ -334,6 +334,7 @@ extern {
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
         "as" => lexer::Tok::As,
+        "mut" => lexer::Tok::Mut,
         "true" => lexer::Tok::True,
         "false" => lexer::Tok::False,
         "==" => lexer::Tok::Equ,

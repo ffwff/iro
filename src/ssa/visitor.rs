@@ -1,6 +1,7 @@
 use crate::ast;
 use crate::ast::*;
 use crate::codegen::structs::*;
+use crate::ssa::env;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
@@ -135,7 +136,7 @@ impl<'a> SSAVisitor<'a> {
         callback(block)
     }
 
-    fn non_local(&self, var: &Rc<str>) -> Option<usize> {
+    fn get_var(&self, var: &Rc<str>) -> Option<env::Variable> {
         for env in self.envs.iter().rev() {
             if let Some(var) = env.vars().get(var) {
                 return Some(*var);
@@ -226,7 +227,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
         {
             let mut env = Env::new();
             for (idx, (name, _)) in n.args.iter().enumerate() {
-                env.vars_mut().insert(name.clone(), idx);
+                env.vars_mut().insert(
+                    name.clone(),
+                    env::Variable {
+                        var: idx,
+                        is_mut: false,
+                    },
+                );
             }
             self.envs.push(env);
         }
@@ -697,7 +704,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
         if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
             if let Value::Identifier(id) = &id {
                 let env = self.envs.last_mut().unwrap();
-                env.vars_mut().insert(id.clone(), right);
+                env.vars_mut().insert(
+                    id.clone(),
+                    env::Variable {
+                        var: right,
+                        is_mut: n.is_mut,
+                    },
+                );
                 return Ok(());
             }
         }
@@ -710,7 +723,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
             BinOp::Asg | BinOp::Adds | BinOp::Subs | BinOp::Muls | BinOp::Divs | BinOp::Mods => {
                 if let Some(id) = n.left.borrow().downcast_ref::<ast::Value>() {
                     if let Value::Identifier(id) = &id {
-                        if let Some(var) = self.non_local(&id) {
+                        if let Some(env_var) = self.get_var(&id) {
+                            if !env_var.is_mut {
+                                return Err(
+                                    Error::MutatingImmutable(id.clone()).into_compiler_error(b)
+                                );
+                            }
+                            let var = env_var.var;
                             n.right.visit(self)?;
                             let right = self.last_retvar.take().unwrap();
                             match &n.op {
@@ -968,10 +987,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 // Trap block
                                 self.context.new_block();
                                 self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        0,
-                                        InsType::Trap(TrapType::BoundsCheck),
-                                    ));
+                                    block
+                                        .ins
+                                        .push(Ins::new(0, InsType::Trap(TrapType::BoundsCheck)));
                                 });
                                 // Body continuation block
                                 self.context.new_block();
@@ -1026,10 +1044,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         // Trap block
                         self.context.new_block();
                         self.with_block_mut(|block| {
-                            block.ins.push(Ins::new(
-                                0,
-                                InsType::Trap(TrapType::BoundsCheck),
-                            ));
+                            block
+                                .ins
+                                .push(Ins::new(0, InsType::Trap(TrapType::BoundsCheck)));
                         });
                         // Body continuation block
                         self.context.new_block();
@@ -1106,8 +1123,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
             Value::Identifier(id) => {
-                if let Some(retvar) = self.non_local(&id) {
-                    self.last_retvar = Some(retvar);
+                if let Some(env_var) = self.get_var(&id) {
+                    self.last_retvar = Some(env_var.var);
                     Ok(())
                 } else {
                     Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b))

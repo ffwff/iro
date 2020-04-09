@@ -6,11 +6,11 @@ use crate::ssa::isa;
 use crate::ssa::visitor::TopLevelArch;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
-use cranelift_codegen::ir::TrapCode;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
+use cranelift_codegen::ir::TrapCode;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings;
@@ -615,40 +615,36 @@ where
                 );
                 builder.def_var(to_var(retvar), tmp);
             }
-            isa::InsType::BoundsCheck { var, .. }
-            | isa::InsType::BoundsCheckC { var, .. } => {
+            isa::InsType::BoundsCheck { var, .. } | isa::InsType::BoundsCheckC { var, .. } => {
                 let len = match &context.variables[*var] {
                     maybe_fat if maybe_fat.is_fat_pointer() => {
                         let fat_ptr = builder.use_var(to_var(*var));
-                        builder
-                            .ins()
-                            .load(
-                                self.pointer_type(),
-                                MemFlags::trusted(),
-                                fat_ptr,
-                                self.pointer_type().bytes() as i32
-                            )
+                        builder.ins().load(
+                            self.pointer_type(),
+                            MemFlags::trusted(),
+                            fat_ptr,
+                            self.pointer_type().bytes() as i32,
+                        )
                     }
                     isa::Type::Slice(slice_rc) => {
                         let slice_type: &isa::SliceType = &slice_rc.borrow();
-                        builder.ins().iconst(self.pointer_type(), slice_type.length.unwrap() as i64)
+                        builder
+                            .ins()
+                            .iconst(self.pointer_type(), slice_type.length.unwrap() as i64)
                     }
                     _ => unreachable!(),
                 };
                 let index_var = match &ins.typed {
                     isa::InsType::BoundsCheck { index, .. } => builder.use_var(to_var(*index)),
-                    isa::InsType::BoundsCheckC { offset, .. } => builder.ins().iconst(types::I32, *offset as i64),
+                    isa::InsType::BoundsCheckC { offset, .. } => {
+                        builder.ins().iconst(types::I32, *offset as i64)
+                    }
                     _ => unreachable!(),
                 };
-                let index_casted = builder.ins().sextend(
-                    self.pointer_type(),
-                    index_var,
-                );
-                let tmp = builder.ins().icmp(
-                    IntCC::UnsignedLessThan,
-                    index_casted,
-                    len,
-                );
+                let index_casted = builder.ins().sextend(self.pointer_type(), index_var);
+                let tmp = builder
+                    .ins()
+                    .icmp(IntCC::UnsignedLessThan, index_casted, len);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::Trap(cond) => {

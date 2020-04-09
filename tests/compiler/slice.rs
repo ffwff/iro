@@ -1,11 +1,6 @@
 use iro::codegen::cranelift::Settings;
 use iro::runtime::Runtime;
-use iro::ssa::isa::{FunctionName, Type};
-use iro::ssa::visitor::TopLevelArch;
 use iro::utils;
-use std::collections::BTreeSet;
-use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 #[cfg(test)]
 #[test]

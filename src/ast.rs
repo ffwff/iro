@@ -19,6 +19,7 @@ pub enum Error {
     NotEnoughArguments,
     InvalidArguments,
     InvalidReturnType,
+    MutatingImmutable(Rc<str>),
 }
 
 impl Error {
@@ -44,6 +45,7 @@ impl fmt::Display for Error {
             Error::NotEnoughArguments => write!(f, "Not enough arguments for function"),
             Error::InvalidArguments => write!(f, "Invalid arguments for function"),
             Error::InvalidReturnType => write!(f, "Invalid return type"),
+            Error::MutatingImmutable(id) => write!(f, "Mutating immutable variable {:?}", id),
         }
     }
 }
@@ -197,6 +199,7 @@ pub enum TypeIdData {
 pub struct LetExpr {
     pub left: NodeBox,
     pub right: NodeBox,
+    pub is_mut: bool,
 }
 
 impl Node for LetExpr {

@@ -22,7 +22,7 @@ fn while_loop() {
         "
     extern def record=\"record_i32\"(n: I32): Nil
 
-    i := 0
+    mut i := 0
     while i < 10
         i += 1
     end
@@ -48,7 +48,7 @@ fn while_loop_set() {
         "
     extern def record=\"record_i32\"(n: I32): Nil
 
-    i := 0
+    mut i := 0
     while i < 10
         record(i)
         i += 1
@@ -77,9 +77,9 @@ fn while_loop_nested() {
         "
     extern def record=\"record_i32\"(i: I32, j: I32): Nil
 
-    i := 0
+    mut i := 0
     while i < 10
-        j := 0
+        mut j := 0
         while j < 5
             record(i, j)
             j += 1
@@ -117,10 +117,10 @@ fn while_loop_nested_x() {
         "
     extern def record=\"record_i32\"(i: I32, j: I32, x: I32): Nil
 
-    i := 0
-    x := 0
+    mut i := 0
+    mut x := 0
     while i < 10
-        j := 0
+        mut j := 0
         while j < 5
             x += 1
             record(i, j, x)
@@ -156,10 +156,10 @@ fn while_loop_nested_post_x() {
         "
     extern def record=\"record_i32\"(x: I32): Nil
 
-    i := 0
-    x := 0
+    mut i := 0
+    mut x := 0
     while i < 10
-        j := 0
+        mut j := 0
         while j < 5
             x += 1
             j += 1
@@ -234,8 +234,8 @@ fn while_loop_nested_with_if() {
         "
     extern def record=\"record_i32\"(x: I32): Nil
 
-    i := 0
-    x := 0
+    mut i := 0
+    mut x := 0
     while i < 10
         if i < 5
             x += 1
