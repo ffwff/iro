@@ -223,6 +223,14 @@ impl Ins {
                 var: swap(var),
                 offset,
             },
+            InsType::BoundsCheck { var, index } => InsType::BoundsCheck {
+                var: swap(var),
+                index: swap(index),
+            },
+            InsType::BoundsCheckC { var, offset } => InsType::BoundsCheckC {
+                var: swap(var),
+                offset,
+            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
@@ -292,6 +300,13 @@ impl Ins {
                 callback(*index);
             }
             InsType::FatIndexC { var, .. } => {
+                callback(*var);
+            }
+            InsType::BoundsCheck { var, index } => {
+                callback(*var);
+                callback(*index);
+            }
+            InsType::BoundsCheckC { var, .. } => {
                 callback(*var);
             }
             InsType::AddC(rc)
@@ -404,6 +419,11 @@ pub enum RegConst {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum TrapType {
+    BoundsCheck,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     Nop,
     LoadNil,
@@ -428,6 +448,7 @@ pub enum InsType {
         args: Vec<usize>,
     },
     Return(usize),
+    Trap(TrapType),
     Exit,
     Add((usize, usize)),
     Sub((usize, usize)),
@@ -474,6 +495,14 @@ pub enum InsType {
         var: usize,
         offset: i32,
     },
+    BoundsCheck {
+        var: usize,
+        index: usize,
+    },
+    BoundsCheckC {
+        var: usize,
+        offset: i32,
+    },
     Jmp(usize),
 }
 
@@ -488,7 +517,11 @@ impl InsType {
 
     pub fn is_jmp(&self) -> bool {
         match self {
-            InsType::IfJmp { .. } | InsType::Jmp(_) | InsType::Return(_) | InsType::Exit => true,
+            InsType::IfJmp { .. }
+            | InsType::Jmp(_)
+            | InsType::Trap(_)
+            | InsType::Return(_)
+            | InsType::Exit => true,
             _ => false,
         }
     }

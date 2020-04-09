@@ -42,7 +42,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
             }
             match &ins.typed {
                 InsType::Nop => false,
-                InsType::Return(_) | InsType::Exit => {
+                InsType::Return(_) | InsType::Trap(_) | InsType::Exit => {
                     jumped = true;
                     true
                 }
@@ -60,9 +60,10 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                     true
                 }
                 _ => {
-                    let retvar = ins.retvar().unwrap();
-                    let set = &mut defsites[retvar];
-                    set.insert(idx);
+                    if let Some(retvar) = ins.retvar() {
+                        let set = &mut defsites[retvar];
+                        set.insert(idx);
+                    }
                     true
                 }
             }
@@ -410,6 +411,9 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                 }
                 InsType::FatIndex { var, index } => {
                     ins_index!(ins, index, var, var_to_const, context, FatIndexC)
+                }
+                InsType::BoundsCheck { var, index } => {
+                    ins_index!(ins, index, var, var_to_const, context, BoundsCheckC)
                 }
                 _ => (),
             }

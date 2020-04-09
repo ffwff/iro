@@ -944,6 +944,36 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         if let Type::Slice(slice_type) = typed.borrow() {
                             if slice_type.is_dyn() {
                                 let retvar = self.context.insert_var(slice_type.typed.clone());
+                                let trap_block = self.context.blocks.len();
+                                let body_block = self.context.blocks.len() + 1;
+                                let condvar = self.context.insert_var(Type::Bool);
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(
+                                        condvar,
+                                        InsType::BoundsCheck {
+                                            var: leftvar,
+                                            index: idx_var,
+                                        },
+                                    ));
+                                    block.ins.push(Ins::new(
+                                        0,
+                                        InsType::IfJmp {
+                                            condvar: condvar,
+                                            iftrue: body_block,
+                                            iffalse: trap_block,
+                                        },
+                                    ));
+                                });
+                                // Trap block
+                                self.context.new_block();
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(
+                                        0,
+                                        InsType::Trap(TrapType::BoundsCheck),
+                                    ));
+                                });
+                                // Body continuation block
+                                self.context.new_block();
                                 self.with_block_mut(|block| {
                                     block.ins.push(Ins::new(
                                         retvar,
