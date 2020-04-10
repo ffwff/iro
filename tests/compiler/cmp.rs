@@ -43,6 +43,12 @@ cmp!(le_than_i32, "<=", 10, 15);
 cmp!(ge_than_i32, ">=", 15, 10);
 cmp!(eq_than_i32, "==", 15, 15);
 
+cmp!(lt_than_i64, "<", "10i64", "15i64");
+cmp!(gt_than_i64, ">", "15i64", "10i64");
+cmp!(le_than_i64, "<=", "10i64", "15i64");
+cmp!(ge_than_i64, ">=", "15i64", "10i64");
+cmp!(eq_than_i64, "==", "15i64", "15i64");
+
 cmp!(lt_than_f64, "<", 10.0, 15.0);
 cmp!(gt_than_f64, ">", 15.0, 10.0);
 cmp!(le_than_f64, "<=", 10.0, 15.0);
@@ -84,6 +90,12 @@ cmp_constant!(gt_than_i32_const, ">", 15, 10);
 cmp_constant!(le_than_i32_const, "<=", 10, 15);
 cmp_constant!(ge_than_i32_const, ">=", 15, 10);
 cmp_constant!(eq_than_i32_const, "==", 15, 15);
+
+cmp_constant!(lt_than_i64_const, "<", "10i64", "15i64");
+cmp_constant!(gt_than_i64_const, ">", "15i64", "10i64");
+cmp_constant!(le_than_i64_const, "<=", "10i64", "15i64");
+cmp_constant!(ge_than_i64_const, ">=", "15i64", "10i64");
+cmp_constant!(eq_than_i64_const, "==", "15i64", "15i64");
 
 cmp_constant!(lt_than_f64_const, "<", 10.0, 15.0);
 cmp_constant!(gt_than_f64_const, ">", 15.0, 10.0);
