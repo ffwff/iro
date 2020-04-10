@@ -562,6 +562,17 @@ where
                 let tmp = match (&context.variables[*var], typed) {
                     (isa::Type::I32Ptr(_), isa::Type::I32) => builder.use_var(to_var(*var)),
                     (isa::Type::I64Ptr(_), isa::Type::I64) => builder.use_var(to_var(*var)),
+                    (left, right) if left.is_int() && right.is_int() => {
+                        let (left_size, right_size) = (left.bytes().unwrap(), right.bytes().unwrap());
+                        let var = builder.use_var(to_var(*var));
+                        if left_size < right_size {
+                            builder.ins().sextend(ir_to_cranelift_type(&right).unwrap(), var)
+                        } else if left_size > right_size {
+                            builder.ins().ireduce(ir_to_cranelift_type(&right).unwrap(), var)
+                        } else {
+                            var
+                        }
+                    }
                     _ => unreachable!(),
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
