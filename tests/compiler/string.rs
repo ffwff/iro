@@ -1,6 +1,6 @@
 use iro::codegen::cranelift::Settings;
-use iro::runtime::Runtime;
 use iro::runtime::pointer::FatPointer;
+use iro::runtime::Runtime;
 use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 

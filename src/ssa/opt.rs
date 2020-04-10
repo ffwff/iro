@@ -326,12 +326,13 @@ macro_rules! ins_to_const_ins {
                 $ins.typed = InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), $right)));
             }
             (Some(kleft), Some(kright)) => {
-                $ins.typed = InsType::load_const(
-                    kleft
-                        .to_const()
-                        .unwrap()
-                        .$method(kright.to_const().unwrap()),
-                );
+                if let Some(eval) = kleft
+                    .to_const()
+                    .unwrap()
+                    .$method(kright.to_const().unwrap())
+                {
+                    $ins.typed = InsType::load_const(eval);
+                }
             }
             (None, None) => (),
         }

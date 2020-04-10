@@ -481,7 +481,11 @@ where
             | isa::InsType::MulC(regconst)
             | isa::InsType::DivC(regconst)
             | isa::InsType::ModC(regconst)
-                if regconst.as_reg_left().map(|(_, k)| k.as_i64().is_some()).is_some() => {
+                if regconst
+                    .as_reg_left()
+                    .map(|(_, k)| k.as_i64().is_some())
+                    .is_some() =>
+            {
                 let (left, right) = regconst.as_reg_left().unwrap();
                 let int = right.as_i64().unwrap();
                 let var = builder.use_var(to_var(left));
@@ -664,9 +668,7 @@ where
                     }
                     _ => unreachable!(),
                 };
-                let tmp = builder
-                    .ins()
-                    .icmp(IntCC::UnsignedLessThan, index_var, len);
+                let tmp = builder.ins().icmp(IntCC::UnsignedLessThan, index_var, len);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::Trap(cond) => {

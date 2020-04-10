@@ -192,7 +192,10 @@ impl TypeId {
 pub enum TypeIdData {
     Identifier(Rc<str>),
     Pointer(Box<TypeId>),
-    Slice { typed: Box<TypeId>, length: Option<u32> },
+    Slice {
+        typed: Box<TypeId>,
+        length: Option<u32>,
+    },
 }
 
 #[derive(Debug)]

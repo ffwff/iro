@@ -6,10 +6,7 @@ pub struct FatPointer<T> {
 
 impl<T: Sized> FatPointer<T> {
     pub fn new(data: *mut T, len: usize) -> Self {
-        Self {
-            data,
-            len,
-        }
+        Self { data, len }
     }
 
     pub fn data(&self) -> *mut T {

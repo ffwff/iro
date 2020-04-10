@@ -354,72 +354,100 @@ impl Constant {
         }
     }
 
-    pub fn add(&self, right: Constant) -> Constant {
+    pub fn add(&self, right: Constant) -> Option<Constant> {
         match (*self, right) {
-            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x + y),
-            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x + y),
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::I32(x + y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::I64(x + y)),
+            (Constant::F64(x), Constant::F64(y)) => Some(Constant::F64(f64::to_bits(
+                f64::from_bits(x) + f64::from_bits(y),
+            ))),
+            (_, _) => None,
+        }
+    }
+
+    pub fn sub(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::I32(x - y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::I64(x - y)),
+            (Constant::F64(x), Constant::F64(y)) => Some(Constant::F64(f64::to_bits(
+                f64::from_bits(x) - f64::from_bits(y),
+            ))),
+            (_, _) => None,
+        }
+    }
+
+    pub fn mul(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::I32(x * y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::I64(x * y)),
+            (Constant::F64(x), Constant::F64(y)) => Some(Constant::F64(f64::to_bits(
+                f64::from_bits(x) * f64::from_bits(y),
+            ))),
+            (_, _) => None,
+        }
+    }
+
+    pub fn div(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::I32(x / y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::I64(x / y)),
+            (Constant::F64(x), Constant::F64(y)) => Some(Constant::F64(f64::to_bits(
+                f64::from_bits(x) + f64::from_bits(y),
+            ))),
+            (_, _) => None,
+        }
+    }
+
+    pub fn imod(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::I32(x % y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::I64(x % y)),
+            (_, _) => None,
+        }
+    }
+
+    pub fn lt(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x < y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::Bool(x < y)),
             (Constant::F64(x), Constant::F64(y)) => {
-                Constant::F64(f64::to_bits(f64::from_bits(x) + f64::from_bits(y)))
+                Some(Constant::Bool(f64::from_bits(x) < f64::from_bits(y)))
             }
-            (_, _) => unreachable!(),
+            (_, _) => None,
         }
     }
 
-    pub fn sub(&self, right: Constant) -> Constant {
+    pub fn gt(&self, right: Constant) -> Option<Constant> {
         match (*self, right) {
-            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x - y),
-            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x - y),
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x > y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::Bool(x > y)),
             (Constant::F64(x), Constant::F64(y)) => {
-                Constant::F64(f64::to_bits(f64::from_bits(x) - f64::from_bits(y)))
+                Some(Constant::Bool(f64::from_bits(x) > f64::from_bits(y)))
             }
-            (_, _) => unreachable!(),
+            (_, _) => None,
         }
     }
 
-    pub fn mul(&self, right: Constant) -> Constant {
+    pub fn lte(&self, right: Constant) -> Option<Constant> {
         match (*self, right) {
-            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x * y),
-            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x * y),
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x <= y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::Bool(x <= y)),
             (Constant::F64(x), Constant::F64(y)) => {
-                Constant::F64(f64::to_bits(f64::from_bits(x) * f64::from_bits(y)))
+                Some(Constant::Bool(f64::from_bits(x) <= f64::from_bits(y)))
             }
-            (_, _) => unreachable!(),
+            (_, _) => None,
         }
     }
 
-    pub fn div(&self, right: Constant) -> Constant {
+    pub fn gte(&self, right: Constant) -> Option<Constant> {
         match (*self, right) {
-            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x / y),
-            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x / y),
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x >= y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::Bool(x >= y)),
             (Constant::F64(x), Constant::F64(y)) => {
-                Constant::F64(f64::to_bits(f64::from_bits(x) + f64::from_bits(y)))
+                Some(Constant::Bool(f64::from_bits(x) >= f64::from_bits(y)))
             }
-            (_, _) => unreachable!(),
+            (_, _) => None,
         }
-    }
-
-    pub fn imod(&self, right: Constant) -> Constant {
-        match (*self, right) {
-            (Constant::I32(x), Constant::I32(y)) => Constant::I32(x % y),
-            (Constant::I64(x), Constant::I64(y)) => Constant::I64(x % y),
-            (_, _) => unreachable!(),
-        }
-    }
-
-    pub fn lt(&self, _right: Constant) -> Constant {
-        unimplemented!()
-    }
-
-    pub fn gt(&self, _right: Constant) -> Constant {
-        unimplemented!()
-    }
-
-    pub fn lte(&self, _right: Constant) -> Constant {
-        unimplemented!()
-    }
-
-    pub fn gte(&self, _right: Constant) -> Constant {
-        unimplemented!()
     }
 }
 
@@ -482,8 +510,8 @@ pub enum InsType {
     Mul((Variable, Variable)),
     Div((Variable, Variable)),
     Mod((Variable, Variable)),
-    Lt ((Variable, Variable)),
-    Gt ((Variable, Variable)),
+    Lt((Variable, Variable)),
+    Gt((Variable, Variable)),
     Lte((Variable, Variable)),
     Gte((Variable, Variable)),
     Equ((Variable, Variable)),
