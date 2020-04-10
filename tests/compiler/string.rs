@@ -1,5 +1,6 @@
 use iro::codegen::cranelift::Settings;
 use iro::runtime::Runtime;
+use iro::runtime::pointer::FatPointer;
 use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -51,23 +52,17 @@ fn ptr_access() {
 #[test]
 fn substring_ffi() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
-    #[repr(C)]
-    struct IroSubstring {
-        ptr: *mut u8,
-        len: usize,
-    }
-    extern "C" fn record_substr(substring: IroSubstring) {
-        let slice = unsafe {
-            std::slice::from_raw_parts::<'static, u8>(substring.ptr, substring.len as usize)
-        };
-        assert_eq!(slice.len(), 3);
-        assert_eq!(std::str::from_utf8(slice).unwrap(), "ABC");
+    extern "C" fn record_substr(substring: FatPointer<u8>) {
+        assert_eq!(substring.len(), 3);
+        unsafe {
+            assert_eq!(std::str::from_utf8(substring.slice()).unwrap(), "ABC");
+        }
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::new();
     runtime.insert_func(
         "record_substr",
-        record_substr as extern "C" fn(IroSubstring),
+        record_substr as extern "C" fn(FatPointer<u8>),
     );
     utils::parse_and_run(
         Settings::default(),
@@ -85,23 +80,17 @@ fn substring_ffi() {
 #[test]
 fn substring_passing() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
-    #[repr(C)]
-    struct IroSubstring {
-        ptr: *mut u8,
-        len: usize,
-    }
-    extern "C" fn record_substr(substring: IroSubstring) {
-        let slice = unsafe {
-            std::slice::from_raw_parts::<'static, u8>(substring.ptr, substring.len as usize)
-        };
-        assert_eq!(slice.len(), 3);
-        assert_eq!(std::str::from_utf8(slice).unwrap(), "ABC");
+    extern "C" fn record_substr(substring: FatPointer<u8>) {
+        assert_eq!(substring.len(), 3);
+        unsafe {
+            assert_eq!(std::str::from_utf8(substring.slice()).unwrap(), "ABC");
+        }
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::new();
     runtime.insert_func(
         "record_substr",
-        record_substr as extern "C" fn(IroSubstring),
+        record_substr as extern "C" fn(FatPointer<u8>),
     );
     utils::parse_and_run(
         Settings::default(),
