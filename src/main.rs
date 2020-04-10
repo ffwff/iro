@@ -109,10 +109,13 @@ fn build(opts: Options) {
                 output_name.to_string_lossy().to_string(),
                 object_name.path().to_string_lossy().to_string(),
             ];
-            Command::new("gcc")
+            let output = Command::new("gcc")
                 .args(&args)
                 .output()
                 .unwrap_or_else(|e| fatal!(opts, "unable to spawn gcc: {}", e));
+            if !output.status.success() {
+                fatal!(opts, "gcc error\n{}", String::from_utf8_lossy(&output.stderr))
+            }
         }
         Err(err) => {
             fatal!(opts, "unable to read from source: {}", err);

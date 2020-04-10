@@ -7,7 +7,7 @@
 			"match": "\\b(extern|def|return|while|if|elsif|else|unsafe|end)\\b"
 		},
 		{
-			"name": "keyword.operator.misc.iro",
+			"name": "keyword.other.iro",
 			"match": "\\b(import|as|mut|true|false)\\b"
 		},
 		{

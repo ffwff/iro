@@ -150,8 +150,8 @@ impl<'a> SSAVisitor<'a> {
     }
 
     fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement, b: &NodeBox) -> VisitorResult {
-        for (_, typed) in &defstmt.args {
-            if let Some(typed) = typed {
+        for def_argument in &defstmt.args {
+            if let Some(typed) = def_argument.type_id.as_ref() {
                 self.visit_typeid(&typed, b)?;
             }
         }
@@ -226,12 +226,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult {
         {
             let mut env = Env::new();
-            for (idx, (name, _)) in n.args.iter().enumerate() {
+            for (idx, def_argument) in n.args.iter().enumerate() {
                 env.vars_mut().insert(
-                    name.clone(),
+                    def_argument.name.clone(),
                     env::Variable {
                         var: idx,
-                        is_mut: false,
+                        is_mut: def_argument.is_mut,
                     },
                 );
             }

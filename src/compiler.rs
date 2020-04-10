@@ -38,7 +38,11 @@ impl Error {
             }
             match ch {
                 '\n' => {
-                    line_contents.push(&source[(row_start + 1)..idx]);
+                    if row_start == 0 {
+                        line_contents.push(&source[0..idx]);
+                    } else {
+                        line_contents.push(&source[(row_start + 1)..idx]);
+                    }
                     col = 0;
                     row += 1;
                     row_start = idx;

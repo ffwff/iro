@@ -294,10 +294,17 @@ impl Node for CallExpr {
     visitable!(visit_callexpr);
 }
 
+#[derive(Debug, Clone)]
+pub struct DefArgument {
+    pub name: Rc<str>,
+    pub type_id: Option<TypeId>,
+    pub is_mut: bool,
+}
+
 #[derive(Debug)]
 pub struct DefStatement {
     pub id: Rc<str>,
-    pub args: Vec<(Rc<str>, Option<TypeId>)>,
+    pub args: Vec<DefArgument>,
     pub exprs: Vec<NodeBox>,
     pub return_type: Option<TypeId>,
     pub attrs: Option<Vec<AttributeValue>>,
@@ -316,10 +323,11 @@ impl DefStatement {
             return ArgCompatibility::None;
         }
         let mut casts = vec![];
-        for (idx, ((_, declared_typed), typed)) in
+        for (idx, (declared_arg, typed)) in
             self.args.iter().zip(arg_types.iter()).enumerate()
         {
-            if let Some(maybe_declared_rc) = declared_typed.as_ref() {
+            let declared_typed = declared_arg.type_id.as_ref();
+            if let Some(maybe_declared_rc) = declared_typed {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();
                 if let Some(declared_typed) = maybe_declared {
                     if typed.can_implicit_cast_to(declared_typed) {

@@ -82,13 +82,17 @@ DefStatement: NodeBox = {
     },
 };
 
-DefArgumentList: Vec<(Rc<str>, Option<TypeId>)> = {
+DefArgumentList: Vec<DefArgument> = {
     "(" <args:Comma<DefArgument>> ")" => args
 };
 
-DefArgument: (Rc<str>, Option<TypeId>) = {
-    <id:Identifier> <type_specifier:TypeSpecifier?> => {
-        (Rc::from(id), type_specifier)
+DefArgument: DefArgument = {
+    <maybe_mut:"mut"?> <id:Identifier> <type_specifier:TypeSpecifier?> => {
+        DefArgument {
+            name: Rc::from(id),
+            type_id: type_specifier,
+            is_mut: maybe_mut.is_some(),
+        }
     },
 };
 
