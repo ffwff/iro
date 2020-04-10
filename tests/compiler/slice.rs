@@ -37,10 +37,7 @@ fn ffi() {
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
     let mut runtime = Runtime::new();
-    runtime.insert_func(
-        "record_slice",
-        record_substr as extern "C" fn([i32; 4]),
-    );
+    runtime.insert_func("record_slice", record_substr as extern "C" fn([i32; 4]));
     utils::parse_and_run(
         Settings::default(),
         "
@@ -53,4 +50,25 @@ fn ffi() {
     )
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
+fn index_assign() {
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 100);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_i32\"(i: I32): Nil
+
+    x:=[1,2,3]
+    x[0] = 100
+    record(x[0])
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
 }

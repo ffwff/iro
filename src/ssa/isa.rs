@@ -137,18 +137,18 @@ impl Ins {
     }
 
     pub fn retvar(&self) -> Option<Variable> {
-        if self.typed.is_jmp() {
-            None
-        } else {
+        if self.typed.has_retvar() {
             Some(self.retvar)
+        } else {
+            None
         }
     }
 
     pub fn mut_retvar(&mut self) -> Option<&mut Variable> {
-        if self.typed.is_jmp() {
-            None
-        } else {
+        if self.typed.has_retvar() {
             Some(&mut self.retvar)
+        } else {
+            None
         }
     }
 
@@ -234,6 +234,16 @@ impl Ins {
                 var: swap(var),
                 offset,
             },
+            InsType::PointerStore { var, index, right } => InsType::PointerStore {
+                var: swap(var),
+                index: swap(index),
+                right: swap(right),
+            },
+            InsType::FatStore { var, index, right } => InsType::FatStore {
+                var: swap(var),
+                index: swap(index),
+                right: swap(right),
+            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
@@ -312,6 +322,16 @@ impl Ins {
             InsType::BoundsCheckC { var, .. } => {
                 callback(*var);
             }
+            InsType::PointerStore { var, index, right } => {
+                callback(*var);
+                callback(*index);
+                callback(*right);
+            }
+            InsType::FatStore { var, index, right } => {
+                callback(*var);
+                callback(*index);
+                callback(*right);
+            }
             InsType::AddC(rc)
             | InsType::SubC(rc)
             | InsType::MulC(rc)
@@ -330,10 +350,10 @@ impl Ins {
 
 impl std::fmt::Debug for Ins {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.typed.is_jmp() {
-            write!(f, "{:?}", self.typed)
-        } else {
+        if self.typed.has_retvar() {
             write!(f, "v{} = {:?}", self.retvar, self.typed)
+        } else {
+            write!(f, "{:?}", self.typed)
         }
     }
 }
@@ -559,6 +579,16 @@ pub enum InsType {
         var: Variable,
         offset: i32,
     },
+    FatStore {
+        var: Variable,
+        index: Variable,
+        right: Variable,
+    },
+    PointerStore {
+        var: Variable,
+        index: Variable,
+        right: Variable,
+    },
     Jmp(usize),
 }
 
@@ -580,6 +610,15 @@ impl InsType {
             | InsType::Return(_)
             | InsType::Exit => true,
             _ => false,
+        }
+    }
+
+    pub fn has_retvar(&self) -> bool {
+        match self {
+            typed if typed.is_jmp() => false,
+            InsType::PointerStore { .. }
+            | InsType::FatStore { .. } => false,
+            _ => true,
         }
     }
 
@@ -616,7 +655,11 @@ impl InsType {
 
     pub fn has_side_effects(&self) -> bool {
         match self {
-            InsType::Call { .. } | InsType::Return(_) | InsType::Exit => true,
+            InsType::PointerStore { .. }
+            | InsType::FatStore { .. }
+            | InsType::Call { .. }
+            | InsType::Return(_)
+            | InsType::Exit => true,
             _ => false,
         }
     }

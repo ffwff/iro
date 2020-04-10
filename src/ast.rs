@@ -156,6 +156,7 @@ impl Node for Program {
 
 #[derive(Debug)]
 pub enum Value {
+    Uninitialized,
     I32(i32),
     I64(i64),
     ISize(i64),
@@ -215,6 +216,7 @@ pub struct LetExpr {
     pub left: NodeBox,
     pub right: NodeBox,
     pub is_mut: bool,
+    pub typed: Option<TypeId>,
 }
 
 impl Node for LetExpr {
@@ -222,7 +224,7 @@ impl Node for LetExpr {
     visitable!(visit_letexpr);
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum BinOp {
     Add,
     Sub,
@@ -326,9 +328,7 @@ impl DefStatement {
             return ArgCompatibility::None;
         }
         let mut casts = vec![];
-        for (idx, (declared_arg, typed)) in
-            self.args.iter().zip(arg_types.iter()).enumerate()
-        {
+        for (idx, (declared_arg, typed)) in self.args.iter().zip(arg_types.iter()).enumerate() {
             let declared_typed = declared_arg.type_id.as_ref();
             if let Some(maybe_declared_rc) = declared_typed {
                 let maybe_declared: &Option<Type> = &maybe_declared_rc.typed.borrow();

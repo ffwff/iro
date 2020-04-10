@@ -563,12 +563,17 @@ where
                     (isa::Type::I32Ptr(_), isa::Type::I32) => builder.use_var(to_var(*var)),
                     (isa::Type::I64Ptr(_), isa::Type::I64) => builder.use_var(to_var(*var)),
                     (left, right) if left.is_int() && right.is_int() => {
-                        let (left_size, right_size) = (left.bytes().unwrap(), right.bytes().unwrap());
+                        let (left_size, right_size) =
+                            (left.bytes().unwrap(), right.bytes().unwrap());
                         let var = builder.use_var(to_var(*var));
                         if left_size < right_size {
-                            builder.ins().sextend(ir_to_cranelift_type(&right).unwrap(), var)
+                            builder
+                                .ins()
+                                .sextend(ir_to_cranelift_type(&right).unwrap(), var)
                         } else if left_size > right_size {
-                            builder.ins().ireduce(ir_to_cranelift_type(&right).unwrap(), var)
+                            builder
+                                .ins()
+                                .ireduce(ir_to_cranelift_type(&right).unwrap(), var)
                         } else {
                             var
                         }
@@ -657,9 +662,7 @@ where
                     _ => unreachable!(),
                 };
                 let index_var = match &ins.typed {
-                    isa::InsType::BoundsCheck { index, .. } => {
-                        builder.use_var(to_var(*index))
-                    }
+                    isa::InsType::BoundsCheck { index, .. } => builder.use_var(to_var(*index)),
                     isa::InsType::BoundsCheckC { offset, .. } => {
                         builder.ins().iconst(self.pointer_type(), *offset as i64)
                     }
@@ -675,6 +678,21 @@ where
                         builder.ins().trap(TrapCode::OutOfBounds);
                     }
                 }
+            }
+            isa::InsType::PointerStore { var, index, right } => {
+                let ptr = builder.use_var(to_var(*var));
+                let index_var = builder.use_var(to_var(*index));
+                let right_var = builder.use_var(to_var(*right));
+                let multiplicand = builder
+                    .ins()
+                    .imul_imm(index_var, context.variables[*right].bytes().unwrap() as i64);
+                let indexed = builder.ins().iadd(ptr, multiplicand);
+                builder.ins().store(
+                    MemFlags::trusted(),
+                    right_var,
+                    indexed,
+                    0,
+                );
             }
             x => unimplemented!("{:?}", x),
         }

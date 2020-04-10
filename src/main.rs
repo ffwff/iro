@@ -114,7 +114,11 @@ fn build(opts: Options) {
                 .output()
                 .unwrap_or_else(|e| fatal!(opts, "unable to spawn gcc: {}", e));
             if !output.status.success() {
-                fatal!(opts, "gcc error\n{}", String::from_utf8_lossy(&output.stderr))
+                fatal!(
+                    opts,
+                    "gcc error\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                )
             }
         }
         Err(err) => {

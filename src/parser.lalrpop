@@ -126,8 +126,8 @@ ReturnExpr: NodeBox = {
 
 // Let expression
 LetExpr: NodeBox = {
-    <start:@L> <maybe_mut:"mut"?> <left:Term> ":" "=" <right:StandaloneExpr> <end:@L> => {
-        NodeBox::new(LetExpr{ left, right, is_mut: maybe_mut.is_some() }, (start, end))
+    <start:@L> <maybe_mut:"mut"?> <left:Term> ":" <typed:Type?> "=" <right:StandaloneExpr> <end:@L> => {
+        NodeBox::new(LetExpr{ left, right, typed, is_mut: maybe_mut.is_some() }, (start, end))
     },
     BinExpr,
 };
@@ -288,6 +288,7 @@ Literal: Value = {
     <Identifier> => Value::Identifier(Rc::from(<>)),
     "true" => Value::Bool(true),
     "false" => Value::Bool(false),
+    "uninitialized" => Value::Uninitialized,
     "[" <values:Comma<StandaloneExpr>> "]" => Value::Slice(values),
 };
 
@@ -356,6 +357,7 @@ extern {
         "mut" => lexer::Tok::Mut,
         "true" => lexer::Tok::True,
         "false" => lexer::Tok::False,
+        "uninitialized" => lexer::Tok::Uninitialized,
         "==" => lexer::Tok::Equ,
         "!=" => lexer::Tok::Neq,
         "+" => lexer::Tok::Add,

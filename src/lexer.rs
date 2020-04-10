@@ -51,6 +51,7 @@ pub enum Tok {
     RightBracket,
     True,
     False,
+    Uninitialized,
     I32 { value: i32 },
     I64 { value: i64 },
     ISize { value: i64 },
@@ -111,6 +112,7 @@ impl std::fmt::Display for Tok {
             Tok::RightBracket => write!(f, "]"),
             Tok::True => write!(f, "true"),
             Tok::False => write!(f, "false"),
+            Tok::Uninitialized => write!(f, "unintialized"),
             Tok::I32 { value } => write!(f, "integer value {:?}", value),
             Tok::I64 { value } => write!(f, "integer value {:?}", value),
             Tok::ISize { value } => write!(f, "integer value {:?}", value),
@@ -205,13 +207,7 @@ impl<'input> Iterator for Lexer<'input> {
                                     (Some((_, 's')), ch) => {
                                         idx1 += 1;
                                         self.last_char = ch;
-                                        return Some(Ok((
-                                            idx0,
-                                            Tok::ISize {
-                                                value,
-                                            },
-                                            idx1,
-                                        )));
+                                        return Some(Ok((idx0, Tok::ISize { value }, idx1)));
                                     }
                                     (Some((_, '3')), Some((_, '2'))) => {
                                         idx1 += 2;
@@ -328,6 +324,7 @@ impl<'input> Iterator for Lexer<'input> {
                         "mut" => Tok::Mut,
                         "true" => Tok::True,
                         "false" => Tok::False,
+                        "uninitialized" => Tok::Uninitialized,
                         _ => Tok::Identifier { value: string },
                     };
                     return Some(Ok((idx0, value, idx1)));

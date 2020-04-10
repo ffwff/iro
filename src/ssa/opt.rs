@@ -446,7 +446,11 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
             return;
         }
         alive.insert(var);
-        var_to_ins[&var].each_used_var(|cvar| trace(cvar, var_to_ins, alive));
+        if let Some(used) = var_to_ins.get(&var) {
+            used.each_used_var(|cvar| trace(cvar, var_to_ins, alive));
+        } else {
+            unreachable!("no entry found for {}", var)
+        }
     }
     for root in roots {
         trace(root, &var_to_ins, &mut alive);

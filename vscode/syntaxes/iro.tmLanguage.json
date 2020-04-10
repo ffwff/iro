@@ -8,11 +8,11 @@
 		},
 		{
 			"name": "keyword.other.iro",
-			"match": "\\b(import|as|mut|true|false)\\b"
+			"match": "\\b(import|as|mut|true|false|uninitialized)\\b"
 		},
 		{
 			"name": "keyword.operator.iro",
-			"match": "==|\\!=|[\\+\\-\\*/\\<\\>]=?|,|;|:|\\[|\\]|\\b(and|or)\\b"
+			"match": "==|\\!=|[\\%\\+\\-\\*/\\<\\>\\:]=?|=|,|;|\\[|\\]|\\b(and|or)\\b"
 		},
 		{
 			"name": "storage.type.built-in.primitive.iro",
