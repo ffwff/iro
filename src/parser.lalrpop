@@ -304,7 +304,7 @@ TypePointer: TypeIdData = {
             pointer_tag,
         }
     },
-    TypeIdentifier,
+    TypeSlice,
 };
 
 TypePointerTag: PointerTag = {
@@ -318,6 +318,7 @@ TypeSlice: TypeIdData = {
             length: length.map(|length| length as u32)
         }
     },
+    TypeIdentifier,
 };
 
 TypeIdentifier: TypeIdData = {

@@ -699,17 +699,26 @@ impl Type {
     }
 
     pub fn slice(self, len: u32) -> Self {
-        Type::Slice(Rc::new(SliceType {
-            typed: self,
-            len: Some(len),
-        }))
+        Type::Slice(Rc::new(SliceType::new(self, Some(len))))
     }
 
     pub fn dyn_slice(self) -> Self {
-        Type::Slice(Rc::new(SliceType {
-            typed: self,
-            len: None,
-        }))
+        Type::Slice(Rc::new(SliceType::new(self, None)))
+    }
+
+    pub fn as_aggregate_data<'a>(&'a self, program: &'a Program) -> Option<&dyn AggregateData> {
+        match self {
+            Type::Struct(StructType(struct_data_rc)) => {
+                let struct_data: &StructData = struct_data_rc.borrow();
+                Some(struct_data)
+            }
+            maybe_ptr if maybe_ptr.is_fat_pointer() => Some(&program.generic_fat_pointer_struct),
+            Type::Slice(slice_rc) => {
+                let slice: &SliceType = &slice_rc.borrow();
+                Some(slice.array_data().unwrap())
+            }
+            _ => None,
+        }
     }
 
     pub fn unify(&self, other: &Type) -> Self {
@@ -898,9 +907,30 @@ impl Hash for StructType {
 pub struct SliceType {
     pub typed: Type,
     pub len: Option<u32>,
+    array_data: Option<ArrayData>,
 }
 
 impl SliceType {
+    pub fn new(typed: Type, len: Option<u32>) -> Self {
+        if let Some(len) = len {
+            SliceType {
+                array_data: Some(ArrayData::new(typed.clone(), len as usize)),
+                typed,
+                len: Some(len),
+            }
+        } else {
+            SliceType {
+                typed,
+                len,
+                array_data: None,
+            }
+        }
+    }
+
+    pub fn array_data(&self) -> Option<&ArrayData> {
+        self.array_data.as_ref()
+    }
+
     pub fn is_dyn(&self) -> bool {
         self.len.is_none()
     }

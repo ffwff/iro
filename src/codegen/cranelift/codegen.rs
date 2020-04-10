@@ -173,14 +173,10 @@ where
             if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
             } else {
-                let struct_data = match typed {
-                    isa::Type::Struct(isa::StructType(data)) => data.borrow(),
-                    _ if typed.is_fat_pointer() => &program.generic_fat_pointer_struct,
-                    _ => unimplemented!(),
-                };
+                let aggregate_data: &dyn AggregateData = typed.as_aggregate_data(program).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
-                    struct_data.size_of() as u32,
+                    aggregate_data.size_of() as u32,
                 ));
                 let mut loads_for_struct = vec![];
                 for offset in stack_loads {

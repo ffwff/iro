@@ -104,14 +104,22 @@ impl std::fmt::Display for ParseError {
             ParseError::InvalidToken => write!(f, "Invalid token"),
             ParseError::UnrecognizedEOF { expected } => write!(
                 f,
-                "Unexpected end of file, expected {},...",
-                expected[0..3].join(", ")
+                "Unexpected end of file, expected {}",
+                if expected.len() >= 3 {
+                    expected[0..3].join(", ") + "..."
+                } else {
+                    expected.join(", ")
+                }
             ),
             ParseError::UnrecognizedToken { token, expected } => write!(
                 f,
-                "Unexpected token (got {}, expected {},...)",
+                "Unexpected token (got {}, expected {})",
                 token,
-                expected[0..3].join(", ")
+                if expected.len() >= 3 {
+                    expected[0..3].join(", ") + "..."
+                } else {
+                    expected.join(", ")
+                }
             ),
         }
     }

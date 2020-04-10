@@ -5,10 +5,11 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct StructFieldData {
     pub offset: usize,
+    pub multiplier: usize,
     pub typed: Type,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
     I8,
     I16,
@@ -28,18 +29,35 @@ impl PrimitiveType {
             _ => None,
         }
     }
+
+    pub fn bytes(&self) -> usize {
+        match self {
+            PrimitiveType::I8 => 1,
+            PrimitiveType::I16 => 2,
+            PrimitiveType::I32 => 4,
+            PrimitiveType::I64 => 8,
+            PrimitiveType::F64 => 8,
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
+pub trait AggregateData {
+    fn flattened_fields(&self) -> &Vec<PrimitiveTypeField>;
+    fn size_of(&self) -> usize;
+}
+
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct PrimitiveTypeField {
     pub offset: usize,
+    pub multiplier: usize,
     pub typed: PrimitiveType,
 }
 
+/// Structure data
 #[derive(Debug, Clone)]
 pub struct StructData {
     values: HashMap<Rc<str>, StructFieldData>,
-    flattened: Vec<PrimitiveTypeField>,
+    flattened_fields: Vec<PrimitiveTypeField>,
     size_of: usize,
     name: Rc<str>,
 }
@@ -48,7 +66,7 @@ impl StructData {
     pub fn new(name: Rc<str>) -> Self {
         StructData {
             values: HashMap::new(),
-            flattened: vec![],
+            flattened_fields: vec![],
             size_of: 0,
             name,
         }
@@ -62,38 +80,81 @@ impl StructData {
         &self.values
     }
 
-    pub fn flattened(&self) -> &Vec<PrimitiveTypeField> {
-        &self.flattened
-    }
-
-    pub fn size_of(&self) -> usize {
-        self.size_of
-    }
-
-    pub fn append_type(&mut self, name: Rc<str>, typed: Type) {
+    pub fn append_array(&mut self, name: Rc<str>, typed: Type, multiplier: usize) {
+        assert!(multiplier > 0);
         fn align(value: usize, to: usize) -> usize {
             (value + to - 1) & !(to - 1)
         }
-        let type_size = typed.bytes().unwrap();
-        self.size_of = align(self.size_of, type_size);
-        self.flattened.push(PrimitiveTypeField {
+        let primitive_type = PrimitiveType::from_type(&typed).unwrap();
+        // TODO: flatten structs in typed
+        self.size_of = align(self.size_of, primitive_type.bytes());
+        self.flattened_fields.push(PrimitiveTypeField {
             offset: self.size_of,
-            typed: PrimitiveType::from_type(&typed).unwrap(),
+            multiplier,
+            typed: primitive_type,
         });
         self.values.insert(
             name,
             StructFieldData {
                 offset: self.size_of,
+                multiplier,
                 typed,
             },
         );
-        self.size_of += type_size;
+        self.size_of += primitive_type.bytes() * multiplier;
+    }
+
+    pub fn append_type(&mut self, name: Rc<str>, typed: Type) {
+        self.append_array(name, typed, 1)
+    }
+}
+
+impl AggregateData for StructData {
+    fn flattened_fields(&self) -> &Vec<PrimitiveTypeField> {
+        &self.flattened_fields
+    }
+
+    fn size_of(&self) -> usize {
+        self.size_of
     }
 }
 
 impl std::fmt::Display for StructData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+/// Array data
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub struct ArrayData {
+    flattened_fields: Vec<PrimitiveTypeField>,
+    size_of: usize,
+}
+
+impl ArrayData {
+    pub fn new(typed: Type, multiplier: usize) -> Self {
+        ArrayData {
+            flattened_fields: vec![
+                // TODO: flatten structs
+                PrimitiveTypeField {
+                    offset: 0,
+                    multiplier,
+                    typed: PrimitiveType::from_type(&typed).unwrap(),
+                },
+            ],
+            size_of: typed.bytes().unwrap() * multiplier,
+        }
+    }
+}
+
+impl AggregateData for ArrayData {
+    fn flattened_fields(&self) -> &Vec<PrimitiveTypeField> {
+        &self.flattened_fields
+    }
+
+    fn size_of(&self) -> usize {
+        self.size_of
     }
 }
 
