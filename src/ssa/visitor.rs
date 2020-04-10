@@ -568,15 +568,16 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     args.push(retvar);
                     arg_types.push(self.context.variables[retvar].clone());
                 }
-                let func_name = Rc::new(FunctionName {
+                let mut func_name = Rc::new(FunctionName {
                     name: id.clone(),
                     arg_types: arg_types.clone(),
                 });
 
                 let rettype = {
                     let top_level = self.top_level.borrow_mut();
-                    if let Some(maybe_context) = top_level.func_contexts.get(&func_name) {
+                    if let Some((key, maybe_context)) = top_level.func_contexts.get_key_value(&func_name) {
                         if let Some(context) = maybe_context {
+                            func_name = key.clone();
                             Some(context.rettype.clone())
                         } else {
                             None
@@ -593,10 +594,6 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 } else {
                     let (defstmt, func_insert) = {
                         let mut top_level = self.top_level.borrow_mut();
-                        let func_insert = top_level
-                            .func_contexts
-                            .insert(func_name.clone(), None)
-                            .is_some();
                         let mut usable_defstmt = None;
                         if let Some(vec) = top_level.defstmts.get(id) {
                             for boxed in vec {
@@ -605,6 +602,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                     ArgCompatibility::None => (),
                                     ArgCompatibility::WithCast(casts) => {
                                         for (idx, typed) in casts {
+                                            Rc::get_mut(&mut func_name).unwrap().arg_types[idx] = typed.clone();
                                             let retvar = self.context.insert_var(typed.clone());
                                             let var = args[idx];
                                             self.with_block_mut(move |block| {
@@ -616,6 +614,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                                     },
                                                 ));
                                             });
+                                            args[idx] = retvar;
                                         }
                                         usable_defstmt = Some(defstmt.clone());
                                         break;
@@ -627,6 +626,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 }
                             }
                         }
+                        let func_insert = top_level
+                            .func_contexts
+                            .insert(func_name.clone(), None)
+                            .is_some();
                         (usable_defstmt, func_insert)
                     };
                     if defstmt.is_none() {
