@@ -41,7 +41,7 @@ fn generate_function_arguments_x86_64_sysv<F>(
                         | PrimitiveType::I16
                         | PrimitiveType::I32
                         | PrimitiveType::I64 => AbiClass::Integer,
-                        _ => unimplemented!(),
+                        PrimitiveType::F64 => AbiClass::SSE,
                     }
                 }
                 let mut eight_bytes = vec![AbiClass::None; (aggregate_data.size_of() + 7) / 8];
@@ -49,16 +49,24 @@ fn generate_function_arguments_x86_64_sysv<F>(
                     for array_idx in 0..prim_field.multiplier {
                         let idx = (prim_field.offset + array_idx * prim_field.typed.bytes()) / 8;
                         match (classify_type(&prim_field.typed), eight_bytes[idx]) {
+                            // If both classes are equal, this is the resulting class.
                             (x, y) if x == y => (),
+                            // If one of the classes is NO_CLASS, the resulting class is the otherclass.
+                            (other, AbiClass::None) => {
+                                eight_bytes[idx] = other;
+                            }
+                            // If one of the classes is MEMORY, the result is the MEMORY.
+                            (AbiClass::Memory, _) | (_, AbiClass::Memory) => {
+                                eight_bytes[idx] = AbiClass::Memory;
+                            }
                             // If one of the classes is INTEGER, the result is the INTEGER.
-                            (AbiClass::Integer, AbiClass::None) => {
+                            (AbiClass::Integer, _) | (_, AbiClass::Integer) => {
                                 eight_bytes[idx] = AbiClass::Integer;
                             }
                             // Otherwise class SSE is used.
-                            (_, AbiClass::None) => {
+                            (_, _) => {
                                 eight_bytes[idx] = AbiClass::SSE;
                             }
-                            classify => unreachable!("{:?}", classify),
                         }
                     }
                 }
