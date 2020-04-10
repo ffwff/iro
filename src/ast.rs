@@ -188,10 +188,19 @@ impl TypeId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub enum PointerTag {
+    Immutable,
+    Mutable,
+}
+
 #[derive(Debug, Clone)]
 pub enum TypeIdData {
     Identifier(Rc<str>),
-    Pointer(Box<TypeId>),
+    Pointer {
+        typed: Box<TypeId>,
+        pointer_tag: PointerTag,
+    },
     Slice {
         typed: Box<TypeId>,
         length: Option<u32>,

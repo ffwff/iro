@@ -293,9 +293,22 @@ Type: TypeId = {
 
 TypePointer: TypeIdData = {
     Amp <first:Type> => {
-        TypeIdData::Pointer(Box::new(first.clone()))
+        TypeIdData::Pointer {
+            typed: Box::new(first.clone()),
+            pointer_tag: PointerTag::Immutable,
+        }
+    },
+    Amp <pointer_tag:TypePointerTag> <first:Type> => {
+        TypeIdData::Pointer {
+            typed: Box::new(first.clone()),
+            pointer_tag,
+        }
     },
     TypeIdentifier,
+};
+
+TypePointerTag: PointerTag = {
+    "mut" => PointerTag::Mutable,
 };
 
 TypeSlice: TypeIdData = {

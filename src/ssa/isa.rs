@@ -1,3 +1,4 @@
+use crate::ast::PointerTag;
 use crate::codegen::structs::*;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
@@ -675,8 +676,8 @@ pub enum Type {
     I16,
     I32,
     I64,
-    I32Ptr(Box<Type>),
-    I64Ptr(Box<Type>),
+    I32Ptr(Rc<PointerType>),
+    I64Ptr(Rc<PointerType>),
     F64,
     Struct(StructType),
     Slice(Rc<SliceType>),
@@ -689,10 +690,10 @@ impl Type {
         Type::Struct(StructType(data))
     }
 
-    pub fn ptr_for(&self, typed: Type) -> Option<Self> {
+    pub fn ptr_for(&self, typed: Type, tag: PointerTag) -> Option<Self> {
         match self {
-            Type::I32 => Some(Type::I32Ptr(Box::new(typed))),
-            Type::I64 => Some(Type::I64Ptr(Box::new(typed))),
+            Type::I32 => Some(Type::I32Ptr(Rc::new(PointerType::new(typed, tag)))),
+            Type::I64 => Some(Type::I64Ptr(Rc::new(PointerType::new(typed, tag)))),
             _ => None,
         }
     }
@@ -779,7 +780,7 @@ impl Type {
 
     pub fn is_fat_pointer(&self) -> bool {
         match self {
-            Type::I32Ptr(typed) | Type::I64Ptr(typed) => match &typed.borrow() {
+            Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => match &ptr_typed.typed {
                 Type::Slice(slice) => slice.is_dyn(),
                 _ => false,
             },
@@ -847,7 +848,7 @@ impl std::fmt::Display for Type {
             Type::I16 => write!(f, "I16"),
             Type::I32 => write!(f, "I32"),
             Type::I64 => write!(f, "I64"),
-            Type::I32Ptr(typed) | Type::I64Ptr(typed) => write!(f, "&{}", typed),
+            Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => write!(f, "&{}", ptr_typed.typed),
             Type::F64 => write!(f, "F64"),
             Type::Struct(struct_typed) => write!(f, "{}", struct_typed.0),
             Type::Slice(slice_rc) => {
@@ -902,5 +903,17 @@ pub struct SliceType {
 impl SliceType {
     pub fn is_dyn(&self) -> bool {
         self.len.is_none()
+    }
+}
+
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub struct PointerType {
+    pub typed: Type,
+    pub tag: PointerTag,
+}
+
+impl PointerType {
+    pub fn new(typed: Type, tag: PointerTag) -> Self {
+        Self { typed, tag }
     }
 }

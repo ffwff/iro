@@ -960,7 +960,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let idx_var = self.last_retvar.take().unwrap();
                 assert!(self.context.variables[idx_var].is_int());
                 match self.context.variables[leftvar].clone() {
-                    Type::I32Ptr(typed) | Type::I64Ptr(typed) => {
+                    Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => {
+                        let typed: &Type = &ptr_typed.typed;
                         if let Type::Slice(slice_type) = typed.borrow() {
                             if slice_type.is_dyn() {
                                 let retvar = self.context.insert_var(slice_type.typed.clone());
@@ -1110,7 +1111,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     self.context.insert_var(
                         top_level
                             .pointer_type
-                            .ptr_for(Type::I8.dyn_slice())
+                            .ptr_for(Type::I8.dyn_slice(), PointerTag::Immutable)
                             .unwrap(),
                     )
                 };
@@ -1173,13 +1174,16 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     Err(Error::UnknownType(id.clone()).into_compiler_error(b))
                 }
             }
-            TypeIdData::Pointer(internal) => {
+            TypeIdData::Pointer {
+                typed: internal,
+                pointer_tag,
+            } => {
                 self.visit_typeid(&internal, b)?;
                 let top_level: &TopLevelInfo = &self.top_level.borrow();
                 n.typed.replace(
                     top_level
                         .pointer_type
-                        .ptr_for(internal.typed.borrow().clone().unwrap()),
+                        .ptr_for(internal.typed.borrow().clone().unwrap(), *pointer_tag),
                 );
                 Ok(())
             }
