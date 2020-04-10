@@ -573,11 +573,7 @@ where
                 let multiplicand = builder
                     .ins()
                     .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
-                let multiplicand_casted = builder.ins().sextend(
-                    ir_to_cranelift_type(&context.variables[*var]).unwrap(),
-                    multiplicand,
-                );
-                let indexed = builder.ins().iadd(ptr, multiplicand_casted);
+                let indexed = builder.ins().iadd(ptr, multiplicand);
                 let tmp = builder.ins().load(
                     ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
                     MemFlags::trusted(),
@@ -607,11 +603,7 @@ where
                 let multiplicand = builder
                     .ins()
                     .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
-                let multiplicand_casted = builder.ins().sextend(
-                    ir_to_cranelift_type(&context.variables[*var]).unwrap(),
-                    multiplicand,
-                );
-                let indexed = builder.ins().iadd(ptr, multiplicand_casted);
+                let indexed = builder.ins().iadd(ptr, multiplicand);
                 let tmp = builder.ins().load(
                     ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
                     MemFlags::trusted(),
@@ -655,9 +647,7 @@ where
                 };
                 let index_var = match &ins.typed {
                     isa::InsType::BoundsCheck { index, .. } => {
-                        let tmp = builder.use_var(to_var(*index));
-                        // FIXME: remove this once we have a ISize type
-                        builder.ins().sextend(self.pointer_type(), tmp)
+                        builder.use_var(to_var(*index))
                     }
                     isa::InsType::BoundsCheckC { offset, .. } => {
                         builder.ins().iconst(self.pointer_type(), *offset as i64)

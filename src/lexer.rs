@@ -53,6 +53,7 @@ pub enum Tok {
     False,
     I32 { value: i32 },
     I64 { value: i64 },
+    ISize { value: i64 },
     Float { value: u64 },
     Identifier { value: String },
     CapitalIdentifier { value: String },
@@ -112,6 +113,7 @@ impl std::fmt::Display for Tok {
             Tok::False => write!(f, "false"),
             Tok::I32 { value } => write!(f, "integer value {:?}", value),
             Tok::I64 { value } => write!(f, "integer value {:?}", value),
+            Tok::ISize { value } => write!(f, "integer value {:?}", value),
             Tok::Float { value } => write!(f, "floating point value {:?}", value),
             Tok::Identifier { value } => write!(f, "identifier {:?}", value),
             Tok::CapitalIdentifier { value } => write!(f, "type identifier {:?}", value),
@@ -200,6 +202,17 @@ impl<'input> Iterator for Lexer<'input> {
                             Some((_, 'i')) => {
                                 idx1 += 1;
                                 match (self.chars.next(), self.chars.next()) {
+                                    (Some((_, 's')), ch) => {
+                                        idx1 += 1;
+                                        self.last_char = ch;
+                                        return Some(Ok((
+                                            idx0,
+                                            Tok::ISize {
+                                                value,
+                                            },
+                                            idx1,
+                                        )));
+                                    }
                                     (Some((_, '3')), Some((_, '2'))) => {
                                         idx1 += 2;
                                         return Some(Ok((

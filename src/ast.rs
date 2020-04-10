@@ -14,6 +14,7 @@ pub enum Error {
     CannotInfer,
     UnknownIdentifier(Rc<str>),
     UnknownType(Rc<str>),
+    UnknownMemberRef(Rc<str>),
     UnknownAttribute(String),
     UnknownStatic(String),
     NotEnoughArguments,
@@ -40,6 +41,7 @@ impl fmt::Display for Error {
             Error::CannotInfer => write!(f, "Cannot infer type for value"),
             Error::UnknownIdentifier(id) => write!(f, "Unknown identifier {:?}", id),
             Error::UnknownType(id) => write!(f, "Unknown type {:?}", id),
+            Error::UnknownMemberRef(id) => write!(f, "Unknown member {:?}", id),
             Error::UnknownAttribute(id) => write!(f, "Unknown attribute {:?}", id),
             Error::UnknownStatic(id) => write!(f, "Unknown external function {:?}", id),
             Error::NotEnoughArguments => write!(f, "Not enough arguments for function"),
@@ -156,6 +158,7 @@ impl Node for Program {
 pub enum Value {
     I32(i32),
     I64(i64),
+    ISize(i64),
     Float(u64),
     Bool(bool),
     String(Rc<str>),

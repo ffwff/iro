@@ -919,7 +919,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         Ok(())
     }
 
-    fn visit_member_expr(&mut self, n: &MemberExpr, _b: &NodeBox) -> VisitorResult {
+    fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         let leftvar = self.last_retvar.take().unwrap();
         match &n.right {
@@ -938,7 +938,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         if let Some(var_data) = struct_data.values().get(string) {
                             var_data.typed.clone()
                         } else {
-                            unimplemented!()
+                            return Err(Error::UnknownMemberRef(string.clone()).into_compiler_error(b));
                         }
                     }
                     _ => unimplemented!(),
@@ -957,8 +957,25 @@ impl<'a> Visitor for SSAVisitor<'a> {
             }
             MemberExprArm::Index(idx) => {
                 idx.visit(self)?;
-                let idx_var = self.last_retvar.take().unwrap();
+                let mut idx_var = self.last_retvar.take().unwrap();
                 assert!(self.context.variables[idx_var].is_int());
+                {
+                    let top_level = self.top_level.borrow();
+                    if self.context.variables[idx_var] != top_level.pointer_type {
+                        let pointer_type = top_level.pointer_type.clone();
+                        let new_retvar = self.context.insert_var(pointer_type.clone());
+                        self.with_block_mut(|block| {
+                            block.ins.push(Ins::new(
+                                new_retvar,
+                                InsType::Cast {
+                                    var: idx_var,
+                                    typed: pointer_type.clone(),
+                                },
+                            ));
+                        });
+                        idx_var = new_retvar;
+                    }
+                };
                 match self.context.variables[leftvar].clone() {
                     Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => {
                         let typed: &Type = &ptr_typed.typed;
@@ -1085,6 +1102,22 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let retvar = self.context.insert_var(Type::I64);
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(retvar, InsType::LoadI64(*x)));
+                });
+                self.last_retvar = Some(retvar);
+                Ok(())
+            }
+            Value::ISize(x) => {
+                let pointer_type = {
+                    let top_level = self.top_level.borrow();
+                    top_level.pointer_type.clone()
+                };
+                let retvar = self.context.insert_var(pointer_type.clone());
+                self.with_block_mut(|block| {
+                    match pointer_type {
+                        Type::I32 => block.ins.push(Ins::new(retvar, InsType::LoadI32(*x as i32))),
+                        Type::I64 => block.ins.push(Ins::new(retvar, InsType::LoadI64(*x))),
+                        _ => unreachable!(),
+                    }
                 });
                 self.last_retvar = Some(retvar);
                 Ok(())

@@ -282,6 +282,7 @@ Term: NodeBox = {
 Literal: Value = {
     <I32> => Value::I32(<>),
     <I64> => Value::I64(<>),
+    <ISize> => Value::ISize(<>),
     <Float> => Value::Float(<>),
     <String> => Value::String(Rc::from(<>)),
     <Identifier> => Value::Identifier(Rc::from(<>)),
@@ -387,6 +388,7 @@ extern {
         EOF => lexer::Tok::EOF,
         I32 => lexer::Tok::I32 { value : <i32> },
         I64 => lexer::Tok::I64 { value : <i64> },
+        ISize => lexer::Tok::ISize { value : <i64> },
         Float => lexer::Tok::Float { value : <u64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
         CapitalIdentifier => lexer::Tok::CapitalIdentifier { value : <String> },
