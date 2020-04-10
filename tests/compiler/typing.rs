@@ -11,7 +11,7 @@ fn cast_on_argument() {
         assert_eq!(n, 10);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
@@ -36,7 +36,7 @@ fn cast_on_binop() {
         assert_eq!(n, 10);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
@@ -61,7 +61,7 @@ fn explicit_cast() {
         assert_eq!(n, 10);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),

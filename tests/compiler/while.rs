@@ -15,7 +15,7 @@ fn while_loop() {
         assert_eq!(n, 10);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
@@ -41,7 +41,7 @@ fn while_loop_set() {
         let prev = RUN_IT.fetch_add(1, Ordering::Relaxed);
         assert_eq!(prev, n);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
@@ -70,7 +70,7 @@ fn while_loop_nested() {
     extern "C" fn record_i32(i: i32, j: i32) {
         OUTPUT.lock().unwrap().borrow_mut().push((i, j));
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
         Settings::default(),
@@ -110,7 +110,7 @@ fn while_loop_nested_x() {
     extern "C" fn record_i32(i: i32, j: i32, x: i32) {
         OUTPUT.lock().unwrap().borrow_mut().push((i, j, x));
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32, i32));
     utils::parse_and_run(
         Settings::default(),
@@ -149,7 +149,7 @@ fn while_loop_nested_post_x() {
     extern "C" fn record_i32(n: i32) {
         assert_eq!(n, 50);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
@@ -227,7 +227,7 @@ fn while_loop_nested_with_if() {
     extern "C" fn record_i32(n: i32) {
         assert_eq!(n, 5);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),

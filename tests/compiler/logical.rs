@@ -8,7 +8,7 @@ fn and_expr() {
     extern "C" fn record_i32(i: i32, n: i32) {
         assert_eq!(i, n);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
         Settings::default(),
@@ -37,7 +37,7 @@ fn or_expr() {
     extern "C" fn record_i32(i: i32, n: i32) {
         assert_eq!(i, n);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
         Settings::default(),

@@ -14,7 +14,7 @@ macro_rules! load_const {
                 assert_eq!(n, $right);
                 RUN_FLAG.store(true, Ordering::Relaxed);
             }
-            let mut runtime = Runtime::empty();
+            let mut runtime = Runtime::new();
             runtime.insert_func("record", record as extern "C" fn($type));
             let source = format!(
                 "
@@ -40,7 +40,7 @@ macro_rules! arithmetic {
                 assert_eq!(n, $c);
                 RUN_FLAG.store(true, Ordering::Relaxed);
             }
-            let mut runtime = Runtime::empty();
+            let mut runtime = Runtime::new();
             runtime.insert_func("record", record as extern "C" fn($type));
             let source = format!(
                 "
@@ -69,7 +69,7 @@ macro_rules! arithmetic_const {
                 assert_eq!(n, $c);
                 RUN_FLAG.store(true, Ordering::Relaxed);
             }
-            let mut runtime = Runtime::empty();
+            let mut runtime = Runtime::new();
             runtime.insert_func("record", record as extern "C" fn($type));
             let source = format!(
                 "

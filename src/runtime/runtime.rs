@@ -1,4 +1,3 @@
-use crate::runtime::functions;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -10,15 +9,6 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> Self {
-        Runtime {
-            funcs: hashmap![
-                "print_i32".to_string() => GenericFunction(functions::print_i32 as _),
-                "print_i64".to_string() => GenericFunction(functions::print_i64 as _),
-            ],
-        }
-    }
-
-    pub fn empty() -> Self {
         Runtime { funcs: hashmap![] }
     }
 

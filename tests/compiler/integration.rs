@@ -11,7 +11,7 @@ fn fib() {
         assert_eq!(n, 89);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
@@ -39,7 +39,7 @@ fn fib64() {
         assert_eq!(n, 89);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),

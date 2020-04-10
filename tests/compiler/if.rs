@@ -15,7 +15,7 @@ fn if_expr() {
         assert_eq!(n, 1);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
@@ -45,7 +45,7 @@ fn if_expr_elsif() {
         assert_eq!(i, n);
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
-    let mut runtime = Runtime::empty();
+    let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
         Settings::default(),

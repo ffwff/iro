@@ -14,7 +14,7 @@ macro_rules! cmp {
                 assert_eq!(n, 1);
                 RUN_FLAG.store(true, Ordering::Relaxed);
             }
-            let mut runtime = Runtime::empty();
+            let mut runtime = Runtime::new();
             runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
             let source = format!(
                 "
