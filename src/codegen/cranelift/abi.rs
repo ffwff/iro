@@ -6,9 +6,10 @@ use cranelift_codegen::ir::{types, AbiParam, Signature};
 use cranelift_codegen::isa::TargetIsa;
 use target_lexicon::{Architecture, CallingConvention, Triple};
 
-fn generate_function_arguments_x86_64_sysv<F>(
+fn generate_function_signature_x86_64_sysv<F>(
     program: &isa::Program,
     arg_types: &Vec<isa::Type>,
+    return_type: &isa::Type,
     sig: &mut Signature,
     mut load_function: F,
 ) where
@@ -82,12 +83,21 @@ fn generate_function_arguments_x86_64_sysv<F>(
             }
         }
     }
+    match *return_type {
+        isa::Type::NoReturn => (),
+        isa::Type::Nil => (),
+        _ => {
+            sig.returns
+                .push(AbiParam::new(ir_to_cranelift_type(&return_type).unwrap()));
+        }
+    }
 }
 
-pub fn generate_function_arguments<F>(
+pub fn generate_function_signature<F>(
     target_isa: &dyn TargetIsa,
     program: &isa::Program,
     arg_types: &Vec<isa::Type>,
+    return_type: &isa::Type,
     sig: &mut Signature,
     load_function: F,
 ) where
@@ -101,7 +111,7 @@ pub fn generate_function_arguments<F>(
             architecture: Architecture::X86_64,
             ..
         } if triple.default_calling_convention().unwrap() == CallingConvention::SystemV => {
-            generate_function_arguments_x86_64_sysv(program, arg_types, sig, load_function);
+            generate_function_signature_x86_64_sysv(program, arg_types, return_type, sig, load_function);
         }
         triple => unimplemented!("{:?}", triple),
     }

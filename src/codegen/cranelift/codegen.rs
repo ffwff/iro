@@ -136,20 +136,16 @@ where
         dbg_println!("codegen: {:#?}", context);
 
         let mut stack_loads_by_var: Vec<Vec<Offset32>> = vec![vec![]; context.args.len()];
-        abi::generate_function_arguments(
+        abi::generate_function_signature(
             self.module.isa(),
             program,
             &context.args,
+            &context.rettype,
             &mut fctx.func.signature,
             |idx, offset| {
                 stack_loads_by_var[idx].push(offset);
             },
         );
-        if context.rettype != isa::Type::NoReturn {
-            fctx.func.signature.returns.push(AbiParam::new(
-                ir_to_cranelift_type(&context.rettype).unwrap(),
-            ));
-        }
 
         let mut builder = FunctionBuilder::new(&mut fctx.func, builder_context);
         let blocks: Vec<Block> = (0..context.blocks.len())
@@ -335,13 +331,17 @@ where
                         .stack_store(tmp, slot, (idx * instance_bytes) as i32);
                 }
             }
+            isa::InsType::LoadNil => {
+                let rettype = &context.variables[ins.retvar().unwrap()];
+                if *rettype == isa::Type::Nil {
+                    return;
+                } else {
+                    unimplemented!()
+                }
+            }
             isa::InsType::Call { name, args } => {
                 let mut sig = self.module.make_signature();
                 let rettype = &context.variables[ins.retvar().unwrap()];
-                if *rettype != isa::Type::NoReturn {
-                    sig.returns
-                        .push(AbiParam::new(ir_to_cranelift_type(&rettype).unwrap()));
-                }
 
                 let mut arg_values = vec![];
                 for arg in args {
@@ -353,10 +353,11 @@ where
                 }
                 {
                     let name: &isa::FunctionName = name;
-                    abi::generate_function_arguments(
+                    abi::generate_function_signature(
                         self.module.isa(),
                         program,
                         &name.arg_types,
+                        rettype,
                         &mut sig,
                         |idx, offset| {
                             let var = args[idx];
@@ -384,8 +385,7 @@ where
 
                 let arg_values: Vec<Value> = arg_values.into_iter().flatten().collect();
                 let call = builder.ins().call(local_callee, &arg_values);
-                if *rettype != isa::Type::NoReturn {
-                    let tmp = builder.inst_results(call)[0];
+                if let Some(tmp) = builder.inst_results(call).first().cloned() {
                     builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
             }
@@ -393,8 +393,13 @@ where
                 builder.ins().return_(&[]);
             }
             isa::InsType::Return(x) => {
-                let arg = builder.use_var(to_var(*x));
-                builder.ins().return_(&[arg]);
+                let rettype = &context.variables[*x];
+                if *rettype == isa::Type::Nil {
+                    builder.ins().return_(&[]);
+                } else {
+                    let arg = builder.use_var(to_var(*x));
+                    builder.ins().return_(&[arg]);
+                }
             }
             isa::InsType::IfJmp {
                 condvar,
@@ -618,12 +623,13 @@ where
                     .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
                 let index_var = builder.use_var(to_var(*index));
                 dbg_println!("{:#?}", context.variables[*var]);
+                let return_instance = context.variables[*var].instance_type().unwrap();
                 let multiplicand = builder
                     .ins()
-                    .imul_imm(index_var, context.variables[*var].instance_bytes().unwrap() as i64);
+                    .imul_imm(index_var, return_instance.bytes().unwrap() as i64);
                 let indexed = builder.ins().iadd(ptr, multiplicand);
                 let tmp = builder.ins().load(
-                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    ir_to_cranelift_type(return_instance).unwrap(),
                     MemFlags::trusted(),
                     indexed,
                     0,
