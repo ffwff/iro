@@ -9,21 +9,24 @@ pub struct Variable {
 
 #[derive(Debug)]
 pub struct Env {
-    vars: HashMap<Rc<str>, Variable>,
+    /// Table of variable identifiers to variable numbers
+    pub vars: HashMap<Rc<str>, Variable>,
+    /// Indices of break instructions in this environment
+    pub break_idx: Option<Vec<(usize, usize)>>,
 }
 
 impl Env {
     pub fn new() -> Self {
         Env {
             vars: HashMap::new(),
+            break_idx: None,
         }
     }
 
-    pub fn vars(&self) -> &HashMap<Rc<str>, Variable> {
-        &self.vars
-    }
-
-    pub fn vars_mut(&mut self) -> &mut HashMap<Rc<str>, Variable> {
-        &mut self.vars
+    pub fn new_breakable() -> Self {
+        Env {
+            vars: HashMap::new(),
+            break_idx: Some(Vec::new()),
+        }
     }
 }

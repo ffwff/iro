@@ -70,17 +70,29 @@ pub struct SSAVisitor<'a> {
     envs: Vec<Env>,
     top_level: &'a RefCell<TopLevelInfo>,
     has_direct_return: bool,
+    has_break: bool,
     last_retvar: Option<Variable>,
 }
 
-macro_rules! check_direct_return {
+macro_rules! check_cf_state {
     ($self:expr, $x:block) => {{
         let _has_direct_return = $self.has_direct_return;
+        let _has_break = $self.has_break;
         $self.has_direct_return = false;
+        $self.has_break = false;
         $x
-        let _retval = $self.has_direct_return;
-        $self.has_direct_return = _has_direct_return;
-        _retval
+        (
+            std::mem::replace(&mut $self.has_direct_return, _has_direct_return),
+            std::mem::replace(&mut $self.has_break, _has_break),
+        )
+    }};
+}
+
+macro_rules! propagate_cf_state {
+    ($self:expr) => {{
+        if $self.has_direct_return || $self.has_break {
+            break;
+        }
     }};
 }
 
@@ -91,6 +103,7 @@ impl<'a> SSAVisitor<'a> {
             envs: vec![],
             top_level,
             has_direct_return: false,
+            has_break: false,
             last_retvar: None,
         }
     }
@@ -101,6 +114,7 @@ impl<'a> SSAVisitor<'a> {
             envs: vec![],
             top_level,
             has_direct_return: false,
+            has_break: false,
             last_retvar: None,
         }
     }
@@ -144,8 +158,17 @@ impl<'a> SSAVisitor<'a> {
 
     fn get_var(&self, var: &Rc<str>) -> Option<env::Variable> {
         for env in self.envs.iter().rev() {
-            if let Some(var) = env.vars().get(var) {
+            if let Some(var) = env.vars.get(var) {
                 return Some(*var);
+            }
+        }
+        None
+    }
+
+    fn get_breakable(&mut self) -> Option<&mut env::Env> {
+        for env in self.envs.iter_mut().rev() {
+            if env.break_idx.is_some() {
+                return Some(env);
             }
         }
         None
@@ -265,7 +288,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         {
             let mut env = Env::new();
             for (idx, def_argument) in n.args.iter().enumerate() {
-                env.vars_mut().insert(
+                env.vars.insert(
                     def_argument.name.clone(),
                     env::Variable {
                         var: idx,
@@ -357,8 +380,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let while_block;
         let mut while_retvar = None;
 
-        self.envs.push(Env::new());
-        check_direct_return!(self, {
+        self.envs.push(Env::new_breakable());
+        check_cf_state!(self, {
             cond_block = Some(self.context.new_block());
             n.cond.visit(self)?;
             if let Some(last_retvar) = self.last_retvar.take() {
@@ -410,6 +433,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             if !n.exprs.is_empty() {
                 for node in &n.exprs {
                     node.visit(self)?;
+                    propagate_cf_state!(self);
                 }
                 if let Some(last_retvar) = self.last_retvar.take() {
                     while_retvar = Some(last_retvar);
@@ -421,11 +445,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 }
             }
         });
-        self.envs.pop();
+        let env = self.envs.pop().unwrap();
 
         // Insert jump
+        let new_block = self.context.new_block();
         {
-            let new_block = self.context.new_block();
             let cond_block = &mut self.context.blocks[cond_block.unwrap()];
             let ins = cond_block.ins.last_mut().unwrap();
             if let InsType::IfJmp {
@@ -434,6 +458,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
             {
                 *iftrue = while_block.unwrap();
                 *iffalse = new_block;
+            } else {
+                unreachable!()
+            }
+        }
+        for (block_idx, idx) in env.break_idx.unwrap() {
+            if let InsType::Jmp(x) = &mut self.context.blocks[block_idx].ins[idx].typed {
+                *x = new_block;
             } else {
                 unreachable!()
             }
@@ -456,7 +487,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
         // If-true branch
         self.envs.push(Env::new());
-        let treturn = check_direct_return!(self, {
+        let (treturn, tbreak) = check_cf_state!(self, {
             n.cond.visit(self)?;
             cond = self.context.blocks.len() - 1;
             if let Some(last_retvar) = self.last_retvar.take() {
@@ -476,6 +507,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 iftrue_start = Some(self.context.new_block());
                 for node in &n.exprs {
                     node.visit(self)?;
+                    propagate_cf_state!(self);
                 }
                 iftrue_end = Some(self.context.blocks.len() - 1);
                 if let Some(last_retvar) = self.last_retvar.take() {
@@ -505,11 +537,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
         // If-false branch
         self.envs.push(Env::new());
-        let freturn = check_direct_return!(self, {
+        let (freturn, fbreak) = check_cf_state!(self, {
             if !n.elses.is_empty() {
                 iffalse_start = Some(self.context.new_block());
                 for node in &n.elses {
                     node.visit(self)?;
+                    propagate_cf_state!(self);
                 }
                 iffalse_end = Some(self.context.blocks.len() - 1);
                 if let Some(last_retvar) = self.last_retvar.take() {
@@ -529,6 +562,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
         if treturn && treturn == freturn {
             self.has_direct_return = true;
+            return Ok(());
+        }
+
+        if tbreak && tbreak == fbreak {
+            self.has_break = true;
+            return Ok(());
         }
 
         let retvar_type = {
@@ -772,7 +811,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 _ => unimplemented!(),
                             }
                             let env = self.envs.last_mut().unwrap();
-                            env.vars_mut().insert(
+                            env.vars.insert(
                                 id.clone(),
                                 env::Variable {
                                     var: retvar,
@@ -789,7 +828,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 n.right.visit(self)?;
                 let right = self.last_retvar.take().unwrap();
                 let env = self.envs.last_mut().unwrap();
-                env.vars_mut().insert(
+                env.vars.insert(
                     id.clone(),
                     env::Variable {
                         var: right,
@@ -1371,6 +1410,18 @@ impl<'a> Visitor for SSAVisitor<'a> {
     }
 
     fn visit_break(&mut self, n: &BreakExpr, b: &NodeBox) -> VisitorResult {
-        unimplemented!()
+        self.has_break = true;
+        let block_idx = self.context.blocks.len() - 1;
+        let idx = self.with_block_mut(|block| {
+            let idx = block.ins.len();
+            block.ins.push(Ins::new(
+                0,
+                InsType::Jmp(0),
+            ));
+            idx
+        });
+        let env = self.get_breakable().unwrap();
+        env.break_idx.as_mut().unwrap().push((block_idx, idx));
+        Ok(())
     }
 }

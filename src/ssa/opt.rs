@@ -573,12 +573,18 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
     }
     idx_map.retain(|n| !jmp_map.contains_key(n));
 
-    // Fix jump targets to new block indices
-    for (_, target) in &mut jmp_map {
-        *target = idx_map.binary_search(target).unwrap();
-    }
-
     dbg_println!("{:#?} {:#?}", jmp_map, idx_map);
+
+    // Fix jump targets to new block indices
+    let old_jmp_map = jmp_map.clone();
+    for (idx, target) in &old_jmp_map {
+        // Unroll the chain first
+        let mut actual_target = *target;
+        while let Some(jmp) = jmp_map.get(&actual_target) {
+            actual_target = *jmp;
+        }
+        jmp_map.insert(*idx, idx_map.binary_search(&actual_target).unwrap());
+    }
 
     let map_block_idx = |idx: usize| {
         let new = jmp_map

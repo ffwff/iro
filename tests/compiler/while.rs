@@ -301,3 +301,58 @@ fn while_expr_body_return() {
     let set: &BTreeSet<Type> = &set_rc;
     assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
 }
+
+#[test]
+fn while_loop_break() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 0);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_i32\"(n: I32): Nil
+
+    mut i := 0
+    while i < 10
+        break
+    end
+    record(i)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
+
+#[test]
+fn while_loop_break_nested_if() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_i32(n: i32) {
+        assert_eq!(n, 5);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_i32\"(n: I32): Nil
+
+    mut i := 0
+    while i < 10
+        if i == 5
+            break
+        end
+        i += 1
+    end
+    record(i)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
