@@ -21,17 +21,21 @@ Comma<T>: Vec<T> = {
 };
 
 // Expressions
-NLOrEOF: () = {
+StatementEnd: () = {
     NL+ => (),
+    ";"+ => (),
+};
+StatementEndOrEOF: () = {
+    StatementEnd => (),
     EOF => (),
 };
-Expr = <StandaloneExpr> NLOrEOF;
 TopLevelExpr = {
-    <ImportStatement> NLOrEOF,
-    <DefStatement> NLOrEOF,
-    <ExternDefStatement> NLOrEOF,
+    <ImportStatement> StatementEndOrEOF,
+    <DefStatement> StatementEndOrEOF,
+    <ExternDefStatement> StatementEndOrEOF,
     <Expr>,
 };
+Expr = <StandaloneExpr> StatementEndOrEOF;
 StandaloneExpr = {
     <BreakExpr>,
     <ReturnExpr>
@@ -80,7 +84,7 @@ DefStatement: NodeBox = {
         <id:Identifier>
         <args:DefArgumentList?>
         <return_type:TypeSpecifier?>
-    NL+ <exprs:Expr*> "end" <end:@L> => {
+    StatementEnd <exprs:Expr*> "end" <end:@L> => {
         NodeBox::new(DefStatement {
             id: Rc::from(id),
             args: args.unwrap_or_else(|| vec![]),
@@ -208,7 +212,7 @@ AsExpr: NodeBox = {
 
 // While expression
 WhileExpr: NodeBox = {
-    <start:@L> "while" <cond:StandaloneExpr> NL+ <exprs:Expr*> "end" <end:@L> => {
+    <start:@L> "while" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> "end" <end:@L> => {
         NodeBox::new(WhileExpr { cond, exprs }, (start, end))
     },
     IfExpr
@@ -217,7 +221,7 @@ WhileExpr: NodeBox = {
 // If expression
 IfExpr: NodeBox = {
     <start:@L> 
-        "if" <cond:StandaloneExpr> NL+ <exprs:Expr*> <elsif:IfExprElsif*> <elses:IfExprElse?> "end"
+        "if" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> <elsif:IfExprElsif*> <elses:IfExprElse?> "end"
     <end:@L> => {
         let span = (start, end);
         if !elsif.is_empty() {
@@ -242,11 +246,11 @@ IfExpr: NodeBox = {
 };
 
 IfExprElsif: (NodeBox, Vec<NodeBox>) = {
-    "elsif" <cond:StandaloneExpr> NL+ <exprs:Expr*> => {
+    "elsif" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> => {
         (cond, exprs)
     },
 };
-IfExprElse: Vec<NodeBox> = "else" NL+ <Expr*>;
+IfExprElse: Vec<NodeBox> = "else" StatementEnd <Expr*>;
 
 // Call expression
 CallExpr: NodeBox = {
