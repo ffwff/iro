@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
-use std::ops::BitAnd;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -771,7 +770,7 @@ impl Type {
             (Type::Union(set_left), Type::Union(set_right)) => Type::Union(Rc::new({
                 let lset: &BTreeSet<Type> = set_left.borrow();
                 let rset: &BTreeSet<Type> = set_right.borrow();
-                lset.bitand(rset)
+                lset & rset
             })),
             (Type::Union(set), right) => Type::Union(Rc::new({
                 let bbset: &BTreeSet<Type> = set.borrow();

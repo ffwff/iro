@@ -13,7 +13,7 @@ fn generate_function_signature_x86_64_sysv<F>(
     sig: &mut Signature,
     mut load_function: F,
 ) where
-    F: FnMut(usize, Offset32),
+    F: FnMut(usize, Offset32, types::Type),
 {
     for (idx, arg) in arg_types.iter().enumerate() {
         if let Some(cranelift_type) = ir_to_cranelift_type(&arg) {
@@ -22,7 +22,7 @@ fn generate_function_signature_x86_64_sysv<F>(
             let aggregate_data: &dyn AggregateData = arg.as_aggregate_data(program).unwrap();
             if aggregate_data.size_of() <= 8 {
                 // For small structs, we pass the struct as a 64-bit integer parameter
-                load_function(idx, Offset32::new(0));
+                load_function(idx, Offset32::new(0), types::I64);
                 sig.params.push(AbiParam::new(types::I64));
             } else if aggregate_data.size_of() > 16 {
                 // For large structs, push a duplicate of it into the stack
@@ -74,8 +74,12 @@ fn generate_function_signature_x86_64_sysv<F>(
                 for (struct_idx, class) in eight_bytes.iter().enumerate() {
                     match class {
                         AbiClass::Integer => {
-                            load_function(idx, Offset32::new(struct_idx as i32 * 8));
+                            load_function(idx, Offset32::new(struct_idx as i32 * 8), types::I64);
                             sig.params.push(AbiParam::new(types::I64));
+                        }
+                        AbiClass::SSE => {
+                            load_function(idx, Offset32::new(struct_idx as i32 * 8), types::F64);
+                            sig.params.push(AbiParam::new(types::F64));
                         }
                         _ => unreachable!(),
                     }
@@ -101,7 +105,7 @@ pub fn generate_function_signature<F>(
     sig: &mut Signature,
     load_function: F,
 ) where
-    F: FnMut(usize, Offset32),
+    F: FnMut(usize, Offset32, types::Type),
 {
     // Cranelift currently doesn't have any abstractions for structured data,
     // So we'll have to hand roll our own D:

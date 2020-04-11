@@ -142,7 +142,7 @@ where
             &context.args,
             &context.rettype,
             &mut fctx.func.signature,
-            |idx, offset| {
+            |idx, offset, _| {
                 stack_loads_by_var[idx].push(offset);
             },
         );
@@ -359,11 +359,11 @@ where
                         &name.arg_types,
                         rettype,
                         &mut sig,
-                        |idx, offset| {
+                        |idx, offset, typed| {
                             let var = args[idx];
                             let pointer = builder.use_var(to_var(var));
                             let tmp = builder.ins().load(
-                                types::I64,
+                                typed,
                                 MemFlags::trusted(),
                                 pointer,
                                 offset,
@@ -622,7 +622,6 @@ where
                     .ins()
                     .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
                 let index_var = builder.use_var(to_var(*index));
-                dbg_println!("{:#?}", context.variables[*var]);
                 let return_instance = context.variables[*var].instance_type().unwrap();
                 let multiplicand = builder
                     .ins()
