@@ -888,6 +888,28 @@ impl Type {
             _ => None,
         }
     }
+
+    pub fn instance_bytes(&self) -> Option<usize> {
+        self.instance_type().map(|typed| typed.bytes()).flatten()
+    }
+
+    pub fn instance_type(&self) -> Option<&Type> {
+        match self {
+            Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => {
+                if let Type::Slice(slice) = &ptr_typed.typed {
+                    if slice.is_dyn() {
+                        return Some(&slice.typed)
+                    }
+                }
+                Some(&ptr_typed.typed)
+            },
+            Type::Slice(slice_rc) => {
+                let slice: &SliceType = &slice_rc.borrow();
+                Some(&slice.typed)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Type {

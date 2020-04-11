@@ -298,6 +298,7 @@ where
                     self.module
                         .define_data(data_id, &data_ctx)
                         .expect("able to define data for string");
+                    self.string_mapping.insert(x.clone(), data_id);
                     data_id
                 };
                 let value = self.module.declare_data_in_func(data_id, &mut builder.func);
@@ -616,9 +617,10 @@ where
                     .ins()
                     .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
                 let index_var = builder.use_var(to_var(*index));
+                dbg_println!("{:#?}", context.variables[*var]);
                 let multiplicand = builder
                     .ins()
-                    .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
+                    .imul_imm(index_var, context.variables[*var].instance_bytes().unwrap() as i64);
                 let indexed = builder.ins().iadd(ptr, multiplicand);
                 let tmp = builder.ins().load(
                     ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
@@ -685,7 +687,7 @@ where
                 let right_var = builder.use_var(to_var(*right));
                 let multiplicand = builder
                     .ins()
-                    .imul_imm(index_var, context.variables[*right].bytes().unwrap() as i64);
+                    .imul_imm(index_var, context.variables[*var].instance_bytes().unwrap() as i64);
                 let indexed = builder.ins().iadd(ptr, multiplicand);
                 builder.ins().store(
                     MemFlags::trusted(),

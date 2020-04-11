@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.control.iro",
-			"match": "\\b(extern|def|return|while|if|elsif|else|unsafe|end)\\b"
+			"match": "\\b(extern|def|return|while|if|elsif|else|unsafe|end|break)\\b"
 		},
 		{
 			"name": "keyword.other.iro",
@@ -16,7 +16,7 @@
 		},
 		{
 			"name": "storage.type.built-in.primitive.iro",
-			"match": "\\b(I8|I16|I32|I64|ISize|F32|F64|Nil)\\b"
+			"match": "\\b(I8|I16|I32|I64|ISize|F32|F64|Nil|Bool)\\b"
 		},
 		{
 			"name": "entity.name.type.iro",

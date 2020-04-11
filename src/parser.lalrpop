@@ -32,7 +32,17 @@ TopLevelExpr = {
     <ExternDefStatement> NLOrEOF,
     <Expr>,
 };
-StandaloneExpr = ReturnExpr;
+StandaloneExpr = {
+    <BreakExpr>,
+    <ReturnExpr>
+};
+
+// Break expression
+BreakExpr: NodeBox = {
+    <start:@L> "break" <end:@L> => {
+        NodeBox::new(BreakExpr {}, (start, end))
+    }
+};
 
 // Attributes
 AttributeList: Vec<AttributeValue> = {
@@ -351,6 +361,7 @@ extern {
         "else" => lexer::Tok::Else,
         "elsif" => lexer::Tok::Elsif,
         "end" => lexer::Tok::End,
+        "break" => lexer::Tok::Break,
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
         "as" => lexer::Tok::As,

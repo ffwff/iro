@@ -121,7 +121,13 @@ impl<'a> SSAVisitor<'a> {
         isa::Program {
             contexts: func_contexts
                 .into_iter()
-                .map(|(key, value)| (key, value.unwrap()))
+                .map(|(key, value)| {
+                    if let Some(value) = value {
+                        (key, value)
+                    } else {
+                        unreachable!("unknown function context: {:?}", key)
+                    }
+                })
                 .collect(),
             entry,
             generic_fat_pointer_struct: top_level.generic_fat_pointer_struct.unwrap(),
@@ -456,7 +462,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
             if let Some(last_retvar) = self.last_retvar.take() {
                 condvar = last_retvar;
                 if self.context.variables[last_retvar] != Type::Bool {
-                    return Err(Error::IncompatibleType.into_compiler_error(b));
+                    return Err(Error::IncompatibleType {
+                        got: self.context.variables[last_retvar].clone(),
+                        expected: Type::Bool,
+                    }.into_compiler_error(b));
                 }
             } else {
                 // condition returns
@@ -664,10 +673,13 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 }
                             }
                         }
-                        let func_insert = top_level
-                            .func_contexts
-                            .insert(func_name.clone(), None)
-                            .is_some();
+                        let func_insert =
+                            if top_level.func_contexts.contains_key(&func_name) {
+                                true
+                            } else {
+                                top_level.func_contexts.insert(func_name.clone(), None);
+                                false
+                            };
                         (usable_defstmt, func_insert)
                     };
                     if defstmt.is_none() {
@@ -747,7 +759,18 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         if let Some(type_id) = &n.typed {
                             self.visit_typeid(&type_id, b)?;
                             let typed: Type = type_id.typed.borrow().clone().unwrap();
-                            let retvar = self.context.insert_var(typed);
+                            let retvar = self.context.insert_var(typed.clone());
+                            match typed {
+                                Type::Slice(_) => {
+                                    self.with_block_mut(|block| {
+                                        block.ins.push(Ins::new(
+                                            retvar,
+                                            InsType::LoadSlice(vec![]),
+                                        ));
+                                    });
+                                }
+                                _ => unimplemented!(),
+                            }
                             let env = self.envs.last_mut().unwrap();
                             env.vars_mut().insert(
                                 id.clone(),
@@ -826,9 +849,33 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 }
                             }
 
+                            n.right.visit(self)?;
+                            let mut right_var = self.last_retvar.take().unwrap();
+                            let instance_type = self.context.variables[left_var].instance_type().cloned().unwrap();
+
+                            if self.context.variables[right_var].can_implicit_cast_to(&instance_type) {
+                                let mut typed = Some(instance_type.clone());
+                                let retvar = self
+                                    .context
+                                    .insert_var(instance_type.clone());
+                                self.with_block_mut(move |block| {
+                                    block.ins.push(Ins::new(
+                                        retvar,
+                                        InsType::Cast {
+                                            var: right_var,
+                                            typed: instance_type.clone(),
+                                        },
+                                    ));
+                                });
+                                right_var = retvar;
+                            } else if self.context.variables[right_var] != instance_type {
+                                return Err(Error::IncompatibleType {
+                                    got: self.context.variables[right_var].clone(),
+                                    expected: instance_type,
+                                }.into_compiler_error(b));
+                            }
+
                             if n.op == BinOp::Asg {
-                                n.right.visit(self)?;
-                                let right_var = self.last_retvar.take().unwrap();
                                 match &self.context.variables[left_var] {
                                     maybe_ptr if maybe_ptr.is_fat_pointer() => {
                                         self.insert_bounds_check(left_var, idx_var);
@@ -1007,7 +1054,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     });
                     right = retvar;
                 } else if self.context.variables[left] != self.context.variables[right] {
-                    return Err(Error::IncompatibleType.into_compiler_error(b));
+                    return Err(Error::IncompatibleType {
+                        got: self.context.variables[right].clone(),
+                        expected: self.context.variables[left].clone(),
+                    }.into_compiler_error(b));
                 }
                 let retvar = self.context.insert_var(match op {
                     BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte | BinOp::Equ => Type::Bool,
@@ -1052,7 +1102,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 },
             ));
         });
-        self.last_retvar = Some(retvar);
+        self.last_retvar = Some(new_retvar);
         Ok(())
     }
 
@@ -1318,5 +1368,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
         }
+    }
+
+    fn visit_break(&mut self, n: &BreakExpr, b: &NodeBox) -> VisitorResult {
+        unimplemented!()
     }
 }

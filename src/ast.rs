@@ -10,7 +10,10 @@ use std::rc::Rc;
 pub enum Error {
     InternalError,
     InvalidLHS,
-    IncompatibleType,
+    IncompatibleType {
+        got: Type,
+        expected: Type,
+    },
     CannotInfer,
     UnknownIdentifier(Rc<str>),
     UnknownType(Rc<str>),
@@ -37,7 +40,7 @@ impl fmt::Display for Error {
         match self {
             Error::InternalError => write!(f, "Internal error"),
             Error::InvalidLHS => write!(f, "Invalid left-hand-side expression"),
-            Error::IncompatibleType => write!(f, "Incompatible type"),
+            Error::IncompatibleType { got, expected } => write!(f, "Incompatible type (got {}, expected {})", got, expected),
             Error::CannotInfer => write!(f, "Cannot infer type for value"),
             Error::UnknownIdentifier(id) => write!(f, "Unknown identifier {:?}", id),
             Error::UnknownType(id) => write!(f, "Unknown type {:?}", id),
@@ -68,6 +71,7 @@ pub trait Visitor {
     fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult;
     fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult;
     fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult;
+    fn visit_break(&mut self, n: &BreakExpr, b: &NodeBox) -> VisitorResult;
 }
 
 pub trait Node: Downcast {
@@ -406,4 +410,12 @@ pub struct ImportStatement {
 impl Node for ImportStatement {
     debuggable!();
     visitable!(visit_import);
+}
+
+#[derive(Debug)]
+pub struct BreakExpr {}
+
+impl Node for BreakExpr {
+    debuggable!();
+    visitable!(visit_break);
 }
