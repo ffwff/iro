@@ -75,3 +75,19 @@ fn explicit_cast() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn return_nil() {
+    let runtime = Runtime::new();
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    def f(): Nil
+    end
+
+    f()
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+}

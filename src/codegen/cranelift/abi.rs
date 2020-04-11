@@ -111,7 +111,13 @@ pub fn generate_function_signature<F>(
             architecture: Architecture::X86_64,
             ..
         } if triple.default_calling_convention().unwrap() == CallingConvention::SystemV => {
-            generate_function_signature_x86_64_sysv(program, arg_types, return_type, sig, load_function);
+            generate_function_signature_x86_64_sysv(
+                program,
+                arg_types,
+                return_type,
+                sig,
+                load_function,
+            );
         }
         triple => unimplemented!("{:?}", triple),
     }

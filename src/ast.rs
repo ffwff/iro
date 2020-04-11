@@ -10,10 +10,7 @@ use std::rc::Rc;
 pub enum Error {
     InternalError,
     InvalidLHS,
-    IncompatibleType {
-        got: Type,
-        expected: Type,
-    },
+    IncompatibleType { got: Type, expected: Type },
     CannotInfer,
     UnknownIdentifier(Rc<str>),
     UnknownType(Rc<str>),
@@ -40,7 +37,9 @@ impl fmt::Display for Error {
         match self {
             Error::InternalError => write!(f, "Internal error"),
             Error::InvalidLHS => write!(f, "Invalid left-hand-side expression"),
-            Error::IncompatibleType { got, expected } => write!(f, "Incompatible type (got {}, expected {})", got, expected),
+            Error::IncompatibleType { got, expected } => {
+                write!(f, "Incompatible type (got {}, expected {})", got, expected)
+            }
             Error::CannotInfer => write!(f, "Cannot infer type for value"),
             Error::UnknownIdentifier(id) => write!(f, "Unknown identifier {:?}", id),
             Error::UnknownType(id) => write!(f, "Unknown type {:?}", id),

@@ -691,16 +691,14 @@ where
                 let ptr = builder.use_var(to_var(*var));
                 let index_var = builder.use_var(to_var(*index));
                 let right_var = builder.use_var(to_var(*right));
-                let multiplicand = builder
-                    .ins()
-                    .imul_imm(index_var, context.variables[*var].instance_bytes().unwrap() as i64);
-                let indexed = builder.ins().iadd(ptr, multiplicand);
-                builder.ins().store(
-                    MemFlags::trusted(),
-                    right_var,
-                    indexed,
-                    0,
+                let multiplicand = builder.ins().imul_imm(
+                    index_var,
+                    context.variables[*var].instance_bytes().unwrap() as i64,
                 );
+                let indexed = builder.ins().iadd(ptr, multiplicand);
+                builder
+                    .ins()
+                    .store(MemFlags::trusted(), right_var, indexed, 0);
             }
             x => unimplemented!("{:?}", x),
         }

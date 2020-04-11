@@ -616,8 +616,7 @@ impl InsType {
     pub fn has_retvar(&self) -> bool {
         match self {
             typed if typed.is_jmp() => false,
-            InsType::PointerStore { .. }
-            | InsType::FatStore { .. } => false,
+            InsType::PointerStore { .. } | InsType::FatStore { .. } => false,
             _ => true,
         }
     }
@@ -898,11 +897,11 @@ impl Type {
             Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => {
                 if let Type::Slice(slice) = &ptr_typed.typed {
                     if slice.is_dyn() {
-                        return Some(&slice.typed)
+                        return Some(&slice.typed);
                     }
                 }
                 Some(&ptr_typed.typed)
-            },
+            }
             Type::Slice(slice_rc) => {
                 let slice: &SliceType = &slice_rc.borrow();
                 Some(&slice.typed)
