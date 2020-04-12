@@ -23,8 +23,8 @@ fn generate_function_signature_x86_64_sysv<'a, F>(
     return_type: &'a isa::Type,
     sig: &mut Signature,
     mut load_function: F,
-)
-where F: LoadFunction<'a>
+) where
+    F: LoadFunction<'a>,
 {
     match *return_type {
         isa::Type::NoReturn => (),
@@ -32,8 +32,10 @@ where F: LoadFunction<'a>
         _ => {
             if let Some(aggregate_data) = return_type.as_aggregate_data(program) {
                 load_function(LoadFunctionArg::Return(aggregate_data));
-                sig.params.push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
-                sig.returns.push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
+                sig.params
+                    .push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
+                sig.returns
+                    .push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
             } else {
                 sig.returns
                     .push(AbiParam::new(ir_to_cranelift_type(&return_type).unwrap()));
@@ -51,7 +53,7 @@ where F: LoadFunction<'a>
                 load_function(LoadFunctionArg::StructArg {
                     idx: 0,
                     offset: Offset32::new(0),
-                    typed: types::I64
+                    typed: types::I64,
                 });
                 sig.params.push(AbiParam::new(types::I64));
             } else if aggregate_data.size_of() > 16 {
@@ -133,9 +135,9 @@ pub fn generate_function_signature<'a, F>(
     arg_types: &Vec<isa::Type>,
     return_type: &'a isa::Type,
     sig: &mut Signature,
-    mut load_function: F,
-)
-where F: LoadFunction<'a>
+    load_function: F,
+) where
+    F: LoadFunction<'a>,
 {
     // Cranelift currently doesn't have any abstractions for structured data,
     // So we'll have to hand roll our own D:

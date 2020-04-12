@@ -20,7 +20,7 @@ def print(mut n: I32): ISize
     end
     i -= 1
     while true
-        putchar(slice[i] as I8)
+        putchar(slice[i])
         if i == 0; break; end
         i -= 1
     end

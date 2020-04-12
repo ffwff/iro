@@ -11,13 +11,13 @@ use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
 use cranelift_codegen::ir::TrapCode;
-use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, InstBuilder, MemFlags};
-use cranelift_codegen::isa::{TargetIsa, TargetFrontendConfig};
+use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
+use cranelift_codegen::isa::{TargetFrontendConfig, TargetIsa};
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::{Backend, DataContext, DataId, Linkage, Module};
+use cranelift_module::{Backend, DataContext, DataId, FuncOrDataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 use std::borrow::Borrow;
@@ -155,15 +155,13 @@ where
             &context.args,
             &context.rettype,
             &mut fctx.func.signature,
-            |arg| {
-                match arg {
-                    abi::LoadFunctionArg::Return(_) => {
-                        has_struct_return = true;
-                    },
-                    abi::LoadFunctionArg::PrimitiveArg(_) => (),
-                    abi::LoadFunctionArg::StructArg { idx, offset, .. } => {
-                        stack_loads_by_var[idx].push(offset);
-                    }
+            |arg| match arg {
+                abi::LoadFunctionArg::Return(_) => {
+                    has_struct_return = true;
+                }
+                abi::LoadFunctionArg::PrimitiveArg(_) => (),
+                abi::LoadFunctionArg::StructArg { idx, offset, .. } => {
+                    stack_loads_by_var[idx].push(offset);
                 }
             },
         );
@@ -220,12 +218,7 @@ where
         for (cblock, &bblock) in context.blocks.iter().zip(blocks.iter()) {
             builder.switch_to_block(bblock);
             for ins in &cblock.ins {
-                self.visit_ins(
-                    &ins,
-                    bblock,
-                    &mut builder,
-                    &ins_context,
-                );
+                self.visit_ins(&ins, bblock, &mut builder, &ins_context);
             }
         }
         builder.seal_all_blocks();
@@ -381,48 +374,48 @@ where
                         &name.arg_types,
                         rettype,
                         &mut sig,
-                        |arg| {
-                            match arg {
-                                abi::LoadFunctionArg::Return(aggregate_data) => {
-                                    let slot = builder.create_stack_slot(StackSlotData::new(
-                                        StackSlotKind::ExplicitSlot,
-                                        aggregate_data.size_of() as u32,
-                                    ));
-                                    let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
-                                    arg_values.push(pointer);
-                                    builder.declare_var(to_var(ins.retvar().unwrap()), self.pointer_type());
-                                }
-                                abi::LoadFunctionArg::PrimitiveArg(idx) => {
-                                    arg_values.push(builder.use_var(to_var(args[idx])));
-                                }
-                                abi::LoadFunctionArg::StructArg {
-                                    idx,
-                                    offset,
-                                    typed,
-                                } => {
-                                    let pointer = builder.use_var(to_var(args[idx]));
-                                    let tmp = builder.ins().load(
-                                        typed,
-                                        MemFlags::trusted(),
-                                        pointer,
-                                        offset,
-                                    );
-                                    arg_values.push(tmp);
-                                }
+                        |arg| match arg {
+                            abi::LoadFunctionArg::Return(aggregate_data) => {
+                                let slot = builder.create_stack_slot(StackSlotData::new(
+                                    StackSlotKind::ExplicitSlot,
+                                    aggregate_data.size_of() as u32,
+                                ));
+                                let pointer =
+                                    builder.ins().stack_addr(self.pointer_type(), slot, 0);
+                                arg_values.push(pointer);
+                                builder.declare_var(
+                                    to_var(ins.retvar().unwrap()),
+                                    self.pointer_type(),
+                                );
+                            }
+                            abi::LoadFunctionArg::PrimitiveArg(idx) => {
+                                arg_values.push(builder.use_var(to_var(args[idx])));
+                            }
+                            abi::LoadFunctionArg::StructArg { idx, offset, typed } => {
+                                let pointer = builder.use_var(to_var(args[idx]));
+                                let tmp =
+                                    builder
+                                        .ins()
+                                        .load(typed, MemFlags::trusted(), pointer, offset);
+                                arg_values.push(tmp);
                             }
                         },
                     );
                 }
+                dbg_println!("{:?} => {:#?}", name, sig);
 
-                let callee = if let Some(mapping) = self.extern_mapping.get(&name.clone()) {
-                    self.module
-                        .declare_function(&mapping, Linkage::Import, &sig)
+                let callee = if let Some(mapping) = self.extern_mapping.get(name) {
+                    if let Some(FuncOrDataId::Func(func_id)) = self.module.get_name(&mapping) {
+                        Ok(func_id)
+                    } else {
+                        self.module
+                            .declare_function(&mapping, Linkage::Import, &sig)
+                    }
                 } else {
                     self.module
                         .declare_function(&name.to_string(), Linkage::Import, &sig)
                 }
                 .unwrap();
-                dbg_println!("{:#?}", callee);
                 let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
 
                 let call = builder.ins().call(local_callee, &arg_values);
@@ -437,7 +430,8 @@ where
                 let rettype = &context.variables[*x];
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
-                } else if let Some(aggregate_data) = rettype.as_aggregate_data(ins_context.program) {
+                } else if let Some(aggregate_data) = rettype.as_aggregate_data(ins_context.program)
+                {
                     let return_value = ins_context.struct_return.unwrap();
                     let arg = builder.use_var(to_var(*x));
                     builder.emit_small_memory_copy(
@@ -445,7 +439,9 @@ where
                         return_value,
                         arg,
                         aggregate_data.size_of() as u64,
-                        0, 0, true
+                        0,
+                        0,
+                        true,
                     );
                     builder.ins().return_(&[return_value]);
                 } else {
@@ -603,7 +599,9 @@ where
             isa::InsType::MemberReference { left, right } => {
                 let struct_data: &StructData = match &context.variables[*left] {
                     isa::Type::Struct(isa::StructType(data)) => data.borrow(),
-                    typed if typed.is_fat_pointer() => &ins_context.program.generic_fat_pointer_struct,
+                    typed if typed.is_fat_pointer() => {
+                        &ins_context.program.generic_fat_pointer_struct
+                    }
                     _ => unreachable!(),
                 };
                 let field_data = struct_data.values().get(right).unwrap();
