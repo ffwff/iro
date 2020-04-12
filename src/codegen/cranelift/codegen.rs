@@ -794,7 +794,6 @@ impl Settings {
 /// Simple JIT Backend
 impl Codegen<SimpleJITBackend> {
     pub fn process_jit(
-        _isa: Box<dyn TargetIsa>,
         program: &isa::Program,
         runtime: &Runtime,
     ) -> Module<SimpleJITBackend> {

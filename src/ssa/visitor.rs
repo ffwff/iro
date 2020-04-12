@@ -819,7 +819,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             self.last_retvar = Some(retvar);
                             return Ok(());
                         } else {
-                            unimplemented!()
+                            return Err(Error::CannotInfer.into_compiler_error(b));
                         }
                     }
                 }

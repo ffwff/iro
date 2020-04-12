@@ -30,9 +30,9 @@ pub fn parse_and_run(
     input: &str,
     runtime: runtime::Runtime,
 ) -> Result<(), compiler::Error> {
-    let (arch, isa) = settings.generate_arch();
+    let (arch, _) = settings.generate_arch();
     let program = parse_to_ssa(input, arch)?;
-    let mut module = Codegen::process_jit(isa, &program, &runtime);
+    let mut module = Codegen::process_jit(&program, &runtime);
     if let Some(main) = module.get_name("main()") {
         if let FuncOrDataId::Func(func_id) = main {
             let function = module.get_finalized_function(func_id);

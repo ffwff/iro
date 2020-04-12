@@ -81,7 +81,10 @@ impl From<LalrParseError> for Error {
                 error: Box::new(ParseError::UnrecognizedToken { token, expected }),
                 span: (start, end),
             },
-            LalrParseError::ExtraToken { token: _ } => unimplemented!(),
+            LalrParseError::ExtraToken { token: (start, token, end) } => Error {
+                error: Box::new(ParseError::ExtraToken(token)),
+                span: (start, end),
+            },
             LalrParseError::User { error } => error,
         }
     }
@@ -96,6 +99,7 @@ enum ParseError {
         token: lexer::Tok,
         expected: Vec<String>,
     },
+    ExtraToken(lexer::Tok),
 }
 
 impl std::fmt::Display for ParseError {
@@ -121,6 +125,7 @@ impl std::fmt::Display for ParseError {
                     expected.join(", ")
                 }
             ),
+            ParseError::ExtraToken(token) => write!(f, "Invalid token (got {})", token),
         }
     }
 }
@@ -134,8 +139,8 @@ pub fn ssa_pipeline() -> Pipeline<Context, fn(&mut Context) -> Flow> {
             opt::collect_garbage_vars,
             opt::separate_postlude,
             opt::cleanup_blocks,
-            opt::fuse_postlude,
             opt::data_flow_analysis,
+            opt::fuse_postlude,
             opt::eliminate_phi,
         ]
         .to_vec(),

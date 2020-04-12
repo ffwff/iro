@@ -487,7 +487,12 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
-        for ins in &block.ins {
+        let postlude_chain = [block.postlude.clone()];
+        let mut postlude_iter = postlude_chain.iter();
+        if block.postlude.typed == InsType::Nop {
+            postlude_iter.next();
+        }
+        for ins in block.ins.iter().chain(postlude_iter) {
             if let Some(retvar) = ins.retvar() {
                 vars_declared_in_this_block.insert(retvar);
             }
