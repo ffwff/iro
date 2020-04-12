@@ -161,3 +161,34 @@ fn substring_return() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn substring_return_with_args() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_substr(substring: FatPointer<u8>) {
+        assert_eq!(substring.len(), 3);
+        unsafe {
+            assert_eq!(std::str::from_utf8(substring.slice()).unwrap(), "ABC");
+        }
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func(
+        "record_substr",
+        record_substr as extern "C" fn(FatPointer<u8>),
+    );
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_substr\"(n: &Substring): Nil
+    
+    def f(x: I32, y: I32, z: I32): &Substring
+        \"ABC\"
+    end
+    record(f(1,2,3))
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}

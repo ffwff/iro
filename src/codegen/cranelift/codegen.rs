@@ -38,6 +38,7 @@ struct InsContext<'a> {
     pub program: &'a isa::Program,
     pub bblocks: &'a Vec<Block>,
     pub stack_loads_ins: &'a BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)>,
+    pub struct_return: Option<Value>,
 }
 
 /// Code generator
@@ -147,6 +148,7 @@ where
         dbg_println!("codegen: {:#?}", context);
 
         let mut stack_loads_by_var: Vec<Vec<Offset32>> = vec![vec![]; context.args.len()];
+        let mut has_struct_return = false;
         abi::generate_function_signature(
             self.module.isa(),
             program,
@@ -155,7 +157,9 @@ where
             &mut fctx.func.signature,
             |arg| {
                 match arg {
-                    abi::LoadFunctionArg::Return(_) => (),
+                    abi::LoadFunctionArg::Return(_) => {
+                        has_struct_return = true;
+                    },
                     abi::LoadFunctionArg::PrimitiveArg(_) => (),
                     abi::LoadFunctionArg::StructArg { idx, offset, .. } => {
                         stack_loads_by_var[idx].push(offset);
@@ -168,6 +172,12 @@ where
         let blocks: Vec<Block> = (0..context.blocks.len())
             .map(|_| builder.create_block())
             .collect();
+
+        let struct_return = if has_struct_return {
+            Some(builder.append_block_param(blocks[0], self.pointer_type()))
+        } else {
+            None
+        };
 
         for (idx, typed) in context.variables.iter().enumerate() {
             if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
@@ -205,6 +215,7 @@ where
             program,
             bblocks: &blocks,
             stack_loads_ins: &stack_loads_ins,
+            struct_return,
         };
         for (cblock, &bblock) in context.blocks.iter().zip(blocks.iter()) {
             builder.switch_to_block(bblock);
@@ -379,6 +390,7 @@ where
                                     ));
                                     let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
                                     arg_values.push(pointer);
+                                    builder.declare_var(to_var(ins.retvar().unwrap()), self.pointer_type());
                                 }
                                 abi::LoadFunctionArg::PrimitiveArg(idx) => {
                                     arg_values.push(builder.use_var(to_var(args[idx])));
@@ -410,10 +422,10 @@ where
                         .declare_function(&name.to_string(), Linkage::Import, &sig)
                 }
                 .unwrap();
+                dbg_println!("{:#?}", callee);
                 let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
 
                 let call = builder.ins().call(local_callee, &arg_values);
-                // dbg_println!("{:#?}", builder.inst_results(call).len);
                 if let Some(tmp) = builder.inst_results(call).first().cloned() {
                     builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
@@ -426,7 +438,16 @@ where
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
                 } else if let Some(aggregate_data) = rettype.as_aggregate_data(ins_context.program) {
-                    unimplemented!()
+                    let return_value = ins_context.struct_return.unwrap();
+                    let arg = builder.use_var(to_var(*x));
+                    builder.emit_small_memory_copy(
+                        self.frontend_config(),
+                        return_value,
+                        arg,
+                        aggregate_data.size_of() as u64,
+                        0, 0, true
+                    );
+                    builder.ins().return_(&[return_value]);
                 } else {
                     let arg = builder.use_var(to_var(*x));
                     builder.ins().return_(&[arg]);

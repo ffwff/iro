@@ -72,3 +72,31 @@ fn index_assign() {
     )
     .expect("able to parse_and_run");
 }
+
+#[test]
+fn slice_return() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_substr(slice: [i32; 4]) {
+        assert_eq!(slice[0], 10);
+        assert_eq!(slice[1], 20);
+        assert_eq!(slice[2], 30);
+        assert_eq!(slice[3], 40);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func("record_slice", record_substr as extern "C" fn([i32; 4]));
+    utils::parse_and_run(
+        Settings::default(),
+        "
+    extern def record=\"record_slice\"(n: [I32; 4]): Nil
+    
+    def f()
+        [10,20,30,40]
+    end
+    record(f())
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}
