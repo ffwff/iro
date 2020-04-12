@@ -11,8 +11,8 @@ use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
 use cranelift_codegen::ir::TrapCode;
-use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
-use cranelift_codegen::isa::TargetIsa;
+use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, InstBuilder, MemFlags};
+use cranelift_codegen::isa::{TargetIsa, TargetFrontendConfig};
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
 use cranelift_codegen::Context;
@@ -31,6 +31,13 @@ macro_rules! generate_arithmetic {
         let tmp = $builder.ins().$fn(left, right);
         $builder.def_var(to_var($ins.retvar().unwrap()), tmp);
     }};
+}
+
+struct InsContext<'a> {
+    pub context: &'a isa::Context,
+    pub program: &'a isa::Program,
+    pub bblocks: &'a Vec<Block>,
+    pub stack_loads_ins: &'a BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)>,
 }
 
 /// Code generator
@@ -85,6 +92,10 @@ where
 
     fn pointer_type(&self) -> types::Type {
         self.module.isa().pointer_type()
+    }
+
+    fn frontend_config(&self) -> TargetFrontendConfig {
+        self.module.isa().frontend_config()
     }
 
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
@@ -142,8 +153,14 @@ where
             &context.args,
             &context.rettype,
             &mut fctx.func.signature,
-            |idx, offset, _| {
-                stack_loads_by_var[idx].push(offset);
+            |arg| {
+                match arg {
+                    abi::LoadFunctionArg::Return(_) => (),
+                    abi::LoadFunctionArg::PrimitiveArg(_) => (),
+                    abi::LoadFunctionArg::StructArg { idx, offset, .. } => {
+                        stack_loads_by_var[idx].push(offset);
+                    }
+                }
             },
         );
 
@@ -183,17 +200,20 @@ where
             }
         }
 
+        let ins_context = InsContext {
+            context,
+            program,
+            bblocks: &blocks,
+            stack_loads_ins: &stack_loads_ins,
+        };
         for (cblock, &bblock) in context.blocks.iter().zip(blocks.iter()) {
             builder.switch_to_block(bblock);
             for ins in &cblock.ins {
                 self.visit_ins(
                     &ins,
-                    &context,
-                    &program,
                     bblock,
-                    &blocks,
-                    &stack_loads_ins,
                     &mut builder,
+                    &ins_context,
                 );
             }
         }
@@ -212,13 +232,11 @@ where
     fn visit_ins(
         &mut self,
         ins: &isa::Ins,
-        context: &isa::Context,
-        program: &isa::Program,
         bblock: Block,
-        bblocks: &Vec<Block>,
-        stack_loads_ins: &BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)>,
         builder: &mut FunctionBuilder,
+        ins_context: &InsContext,
     ) {
+        let context = ins_context.context;
         match &ins.typed {
             isa::InsType::Nop => (),
             isa::InsType::LoadVar(arg) => {
@@ -226,7 +244,7 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::LoadArg(arg) => {
-                if let Some((slot, struct_ins)) = stack_loads_ins.get(arg) {
+                if let Some((slot, struct_ins)) = ins_context.stack_loads_ins.get(arg) {
                     for (offset, value) in struct_ins {
                         builder.ins().stack_store(*value, *slot, *offset);
                     }
@@ -284,7 +302,7 @@ where
                         .module
                         .declare_data_in_data(bytes_data_id, &mut data_ctx);
                     let mut struct_builder =
-                        StructBuilder::new(&program.generic_fat_pointer_struct);
+                        StructBuilder::new(&ins_context.program.generic_fat_pointer_struct);
                     let ptr_offset = struct_builder.insert_zeroed("address").unwrap();
                     struct_builder
                         .insert("len", &x.len().to_ne_bytes())
@@ -344,31 +362,42 @@ where
                 let rettype = &context.variables[ins.retvar().unwrap()];
 
                 let mut arg_values = vec![];
-                for arg in args {
-                    if ir_to_cranelift_type(&context.variables[*arg]).is_some() {
-                        arg_values.push(vec![builder.use_var(to_var(*arg))]);
-                    } else {
-                        arg_values.push(vec![]);
-                    }
-                }
                 {
                     let name: &isa::FunctionName = name;
                     abi::generate_function_signature(
                         self.module.isa(),
-                        program,
+                        ins_context.program,
                         &name.arg_types,
                         rettype,
                         &mut sig,
-                        |idx, offset, typed| {
-                            let var = args[idx];
-                            let pointer = builder.use_var(to_var(var));
-                            let tmp = builder.ins().load(
-                                typed,
-                                MemFlags::trusted(),
-                                pointer,
-                                offset,
-                            );
-                            arg_values[idx].push(tmp);
+                        |arg| {
+                            match arg {
+                                abi::LoadFunctionArg::Return(aggregate_data) => {
+                                    let slot = builder.create_stack_slot(StackSlotData::new(
+                                        StackSlotKind::ExplicitSlot,
+                                        aggregate_data.size_of() as u32,
+                                    ));
+                                    let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
+                                    arg_values.push(pointer);
+                                }
+                                abi::LoadFunctionArg::PrimitiveArg(idx) => {
+                                    arg_values.push(builder.use_var(to_var(args[idx])));
+                                }
+                                abi::LoadFunctionArg::StructArg {
+                                    idx,
+                                    offset,
+                                    typed,
+                                } => {
+                                    let pointer = builder.use_var(to_var(args[idx]));
+                                    let tmp = builder.ins().load(
+                                        typed,
+                                        MemFlags::trusted(),
+                                        pointer,
+                                        offset,
+                                    );
+                                    arg_values.push(tmp);
+                                }
+                            }
                         },
                     );
                 }
@@ -383,8 +412,8 @@ where
                 .unwrap();
                 let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
 
-                let arg_values: Vec<Value> = arg_values.into_iter().flatten().collect();
                 let call = builder.ins().call(local_callee, &arg_values);
+                // dbg_println!("{:#?}", builder.inst_results(call).len);
                 if let Some(tmp) = builder.inst_results(call).first().cloned() {
                     builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
@@ -396,6 +425,8 @@ where
                 let rettype = &context.variables[*x];
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
+                } else if let Some(aggregate_data) = rettype.as_aggregate_data(ins_context.program) {
+                    unimplemented!()
                 } else {
                     let arg = builder.use_var(to_var(*x));
                     builder.ins().return_(&[arg]);
@@ -407,11 +438,11 @@ where
                 iffalse,
             } => {
                 let var = builder.use_var(to_var(*condvar));
-                builder.ins().brz(var, bblocks[*iffalse], &[]);
-                builder.ins().jump(bblocks[*iftrue], &[]);
+                builder.ins().brz(var, ins_context.bblocks[*iffalse], &[]);
+                builder.ins().jump(ins_context.bblocks[*iftrue], &[]);
             }
             isa::InsType::Jmp(x) => {
-                builder.ins().jump(bblocks[*x], &[]);
+                builder.ins().jump(ins_context.bblocks[*x], &[]);
             }
             isa::InsType::Lt((x, y))
             | isa::InsType::Gt((x, y))
@@ -551,7 +582,7 @@ where
             isa::InsType::MemberReference { left, right } => {
                 let struct_data: &StructData = match &context.variables[*left] {
                     isa::Type::Struct(isa::StructType(data)) => data.borrow(),
-                    typed if typed.is_fat_pointer() => &program.generic_fat_pointer_struct,
+                    typed if typed.is_fat_pointer() => &ins_context.program.generic_fat_pointer_struct,
                     _ => unreachable!(),
                 };
                 let field_data = struct_data.values().get(right).unwrap();
