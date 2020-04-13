@@ -322,13 +322,13 @@ Type: TypeId = {
 };
 
 TypePointer: TypeIdData = {
-    Amp <first:Type> => {
+    "&" <first:Type> => {
         TypeIdData::Pointer {
             typed: Box::new(first.clone()),
             pointer_tag: PointerTag::Immutable,
         }
     },
-    Amp <pointer_tag:TypePointerTag> <first:Type> => {
+    "&" <pointer_tag:TypePointerTag> <first:Type> => {
         TypeIdData::Pointer {
             typed: Box::new(first.clone()),
             pointer_tag,
@@ -407,7 +407,7 @@ extern {
         "." => lexer::Tok::Dot,
         ":" => lexer::Tok::Colon,
         ";" => lexer::Tok::Semicolon,
-        Amp => lexer::Tok::Amp,
+        "&" => lexer::Tok::Amp,
         "@" => lexer::Tok::At,
         "@[" => lexer::Tok::AtBracket,
         "[" => lexer::Tok::LeftBracket,
