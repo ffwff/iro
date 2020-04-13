@@ -21,7 +21,7 @@ def print(mut n: I32): ISize
     i -= 1
     while true
         putchar(slice[i])
-        if i == 0; break; end
+        if i == 0 then break
         i -= 1
     end
     i

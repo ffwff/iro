@@ -70,7 +70,7 @@ AttributeValue: AttributeValue = {
     },
 }
 
-// Function definitions
+// Imports
 ImportStatement: NodeBox = {
     <start:@L> "import" <path:String> <end:@L> => {
         NodeBox::new(ImportStatement {
@@ -79,6 +79,7 @@ ImportStatement: NodeBox = {
     }
 };
 
+// Function definitions
 DefStatement: NodeBox = {
     <start:@L> <attrs:AttributeList?> "def"
         <id:Identifier>
@@ -215,6 +216,9 @@ WhileExpr: NodeBox = {
     <start:@L> "while" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> "end" <end:@L> => {
         NodeBox::new(WhileExpr { cond, exprs }, (start, end))
     },
+    <start:@L> "while" <cond:StandaloneExpr> "then" <expr:Expr> <end:@L> => {
+        NodeBox::new(WhileExpr { cond, exprs: vec![expr] }, (start, end))
+    },
     IfExpr
 };
 
@@ -242,6 +246,11 @@ IfExpr: NodeBox = {
         }
         NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) }, span)
     },
+    <start:@L> 
+        "if" <cond:StandaloneExpr> "then" <expr:Expr>
+    <end:@L> => {
+        NodeBox::new(IfExpr { cond, exprs, elses: vec![expr] }, span)
+    }
     CallExpr,
 };
 
@@ -300,6 +309,7 @@ Literal: Value = {
     <Float> => Value::Float(<>),
     <String> => Value::String(Rc::from(<>)),
     <Identifier> => Value::Identifier(Rc::from(<>)),
+    <AtIdentifier> => Value::Identifier(Rc::from(<>)),
     "true" => Value::Bool(true),
     "false" => Value::Bool(false),
     "uninitialized" => Value::Uninitialized,
@@ -365,6 +375,7 @@ extern {
         "else" => lexer::Tok::Else,
         "elsif" => lexer::Tok::Elsif,
         "end" => lexer::Tok::End,
+        "then" => lexer::Tok::Then,
         "break" => lexer::Tok::Break,
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
@@ -408,6 +419,7 @@ extern {
         ISize => lexer::Tok::ISize { value : <i64> },
         Float => lexer::Tok::Float { value : <u64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
+        AtIdentifier => lexer::Tok::AtIdentifier { value : <String> },
         CapitalIdentifier => lexer::Tok::CapitalIdentifier { value : <String> },
         String => lexer::Tok::String { value : <String> },
     }

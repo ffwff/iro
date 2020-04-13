@@ -5,6 +5,9 @@ authors = ["ffwff <mogamiriver@tuta.io>"]
 edition = "2018"
 build = "build.rs"
 
+[profile.release]
+debug = true
+
 [dependencies]
 lalrpop-util = "0.18.1"
 unicode-xid = "0.1.0"

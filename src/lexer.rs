@@ -15,6 +15,7 @@ pub enum Tok {
     Else,
     Elsif,
     End,
+    Then,
     Break,
     And,
     Or,
@@ -58,6 +59,7 @@ pub enum Tok {
     ISize { value: i64 },
     Float { value: u64 },
     Identifier { value: String },
+    AtIdentifier { value: String },
     CapitalIdentifier { value: String },
     String { value: String },
 }
@@ -77,6 +79,7 @@ impl std::fmt::Display for Tok {
             Tok::Else => write!(f, "else"),
             Tok::Elsif => write!(f, "elsif"),
             Tok::End => write!(f, "end"),
+            Tok::Then => write!(f, "then"),
             Tok::Break => write!(f, "break"),
             Tok::And => write!(f, "and"),
             Tok::Or => write!(f, "or"),
@@ -120,6 +123,7 @@ impl std::fmt::Display for Tok {
             Tok::ISize { value } => write!(f, "integer value {:?}", value),
             Tok::Float { value } => write!(f, "floating point value {:?}", value),
             Tok::Identifier { value } => write!(f, "identifier {:?}", value),
+            Tok::AtIdentifier { value } => write!(f, "identifier {:?}", value),
             Tok::CapitalIdentifier { value } => write!(f, "type identifier {:?}", value),
             Tok::String { value } => write!(f, "string {:?}", value),
         }
@@ -292,7 +296,17 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, ']')) => return Some(Ok((idx0, Tok::RightBracket, idx0))),
                 Some((idx0, '&')) => return Some(Ok((idx0, Tok::Amp, idx0))),
 
-                Some((idx0, ch)) if UnicodeXID::is_xid_start(ch) => {
+                Some((mut idx0, mut ch)) if ch == '@' || UnicodeXID::is_xid_start(ch) => {
+                    if ch == '@' {
+                        if let Some((idx0_new, ch_new)) = self.chars.next() {
+                            idx0 = idx0_new;
+                            ch = ch_new;
+                        } else {
+                            return Some(Err(
+                                Error::UnexpectedEof.into_compiler_error(self.size)
+                            ));
+                        }
+                    }
                     let mut idx1 = idx0;
                     let mut string = ch.to_string();
                     loop {
