@@ -59,6 +59,7 @@ pub type VisitorResult = Result<(), compiler::Error>;
 pub trait Visitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult;
     fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult;
+    fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult;
     fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult;
     fn visit_return(&mut self, n: &ReturnExpr, b: &NodeBox) -> VisitorResult;
     fn visit_whileexpr(&mut self, n: &WhileExpr, b: &NodeBox) -> VisitorResult;
@@ -417,4 +418,19 @@ pub struct BreakExpr {}
 impl Node for BreakExpr {
     debuggable!();
     visitable!(visit_break);
+}
+
+#[derive(Debug)]
+pub struct ClassStatement {
+    pub inners: Vec<ClassInner>,
+}
+
+impl Node for ClassStatement {
+    debuggable!();
+    visitable!(visit_class);
+}
+
+#[derive(Debug)]
+pub enum ClassInner {
+    MemberDef { name: String, typed: TypeId },
 }

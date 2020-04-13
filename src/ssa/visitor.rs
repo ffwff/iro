@@ -283,6 +283,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
         unimplemented!()
     }
 
+    fn visit_class(&mut self, _n: &ClassStatement, _b: &NodeBox) -> VisitorResult {
+        unimplemented!()
+    }
+
     fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult {
         {
             let mut env = Env::new();
@@ -969,6 +973,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 if let Some(var) = var {
                     n.right.visit(self)?;
                     let right = self.last_retvar.take().unwrap();
+                    if self.context.variables[var] != self.context.variables[right] {
+                        return Err(Error::IncompatibleType {
+                            got: self.context.variables[right].clone(),
+                            expected: self.context.variables[var].clone()
+                        }.into_compiler_error(b));
+                    }
                     match &n.op {
                         BinOp::Asg => {
                             self.with_block_mut(|block| {
