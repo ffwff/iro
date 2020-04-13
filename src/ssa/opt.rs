@@ -228,18 +228,23 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
             let mut new_variable_len = context.variables.len();
             let tmp_succs = {
                 let block = &mut context.blocks[node];
+                let mut has_block_version = false;
                 for ins in &mut block.ins {
                     if !ins.typed.is_phi() {
                         ins.rename_var(var, *version_stack.last().clone().unwrap());
                     }
                     if let Some(retvar) = ins.mut_retvar() {
                         if *retvar == var {
-                            if *version > 1 {
+                            if has_block_version {
+                                *retvar = new_variable_len;
+                                *version_stack.last_mut().unwrap() = new_variable_len;
+                            } else if *version > 1 {
                                 *retvar = new_variable_len;
                                 version_stack.push(new_variable_len);
-                                dbg_println!("new: {:#?}", *retvar);
-                                new_variable_len += 1;
+                                has_block_version = true;
                             }
+                            dbg_println!("new: {:#?}", *retvar);
+                            new_variable_len += 1;
                             *version += 1;
                         }
                     }
@@ -487,11 +492,13 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
+        // Chain postlude (if it exists)
         let postlude_chain = [block.postlude.clone()];
         let mut postlude_iter = postlude_chain.iter();
         if block.postlude.typed == InsType::Nop {
             postlude_iter.next();
         }
+        // Check body + postlude
         for ins in block.ins.iter().chain(postlude_iter) {
             if let Some(retvar) = ins.retvar() {
                 vars_declared_in_this_block.insert(retvar);

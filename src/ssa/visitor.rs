@@ -99,7 +99,7 @@ impl<'a> SSAVisitor<'a> {
     pub fn new(top_level: &'a RefCell<TopLevelInfo>) -> Self {
         Self {
             context: Context::new(Rc::from("main")),
-            envs: vec![],
+            envs: Vec::with_capacity(4),
             top_level,
             has_direct_return: false,
             has_break: false,
@@ -110,7 +110,7 @@ impl<'a> SSAVisitor<'a> {
     pub fn with_context(context: Context, top_level: &'a RefCell<TopLevelInfo>) -> Self {
         Self {
             context,
-            envs: vec![],
+            envs: Vec::with_capacity(4),
             top_level,
             has_direct_return: false,
             has_break: false,
@@ -640,8 +640,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult {
         if let Some(id) = n.callee.borrow().downcast_ref::<Value>() {
             if let Value::Identifier(id) = &id {
-                let mut args = vec![];
-                let mut arg_types = vec![];
+                let mut args = Vec::with_capacity(n.args.len());
+                let mut arg_types = Vec::with_capacity(n.args.len());
                 for arg in &n.args {
                     arg.visit(self)?;
                     let retvar = self.last_retvar.take().unwrap();
