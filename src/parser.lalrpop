@@ -22,7 +22,7 @@ Comma<T>: Vec<T> = {
 
 // Expressions
 StatementEnd: () = {
-    NL+ => (),
+    NL => (),
     ";"+ => (),
 };
 StatementEndOrEOF: () = {
@@ -59,7 +59,9 @@ Block: Vec<NodeBox> = {
         items.push(last);
         items
     },
-    "=>" NL "pass" Dedent => { vec![] }
+    "=>" <StandaloneExpr> NL => { vec![<>] },
+    "=>" NL "pass" Dedent => { vec![] },
+    "=>" "pass" NL => { vec![] }
 };
 
 // While expression

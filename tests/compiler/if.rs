@@ -281,3 +281,27 @@ fn if_expr_false_branch_return() {
     let set: &BTreeSet<Type> = &set_rc;
     assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
 }
+
+#[test]
+fn if_flat() {
+    utils::parse_to_ssa(
+        "
+    if true => pass
+    else => pass
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+}
+
+#[test]
+fn if_flat_with_expr() {
+    utils::parse_to_ssa(
+        "
+    if true => 1
+    else => 2
+    ",
+        TopLevelArch::empty(),
+    )
+    .expect("able to parse_to_ssa");
+}
