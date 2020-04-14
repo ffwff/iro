@@ -17,15 +17,13 @@ macro_rules! cmp {
             let mut runtime = Runtime::new();
             runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
             let source = format!(
-                "
+                "\
             extern def record=\"record_i32\"(n: I32): Nil
 
-            def f(x, y)
-                if x {} y
+            def f(x, y) =>
+                if x {} y =>
                     record(1)
-                end
                 0
-            end
             f({}, {})
             ",
                 $op, $a, $b
@@ -67,14 +65,13 @@ macro_rules! cmp_constant {
             let mut runtime = Runtime::new();
             runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
             let source = format!(
-                "
+                "\
             extern def record=\"record_i32\"(n: I32): Nil
 
-            if {} {} {}
+            if {} {} {} =>
                 record(1)
-            else
+            else =>
                 record(0)
-            end
             ",
                 $a, $op, $b
             );
@@ -89,16 +86,16 @@ cmp_constant!(lt_than_i32_const, "<", 10, 15);
 cmp_constant!(gt_than_i32_const, ">", 15, 10);
 cmp_constant!(le_than_i32_const, "<=", 10, 15);
 cmp_constant!(ge_than_i32_const, ">=", 15, 10);
-cmp_constant!(eq_than_i32_const, "==", 15, 15);
+cmp_constant!(eq_i32_const, "==", 15, 15);
 
 cmp_constant!(lt_than_i64_const, "<", "10i64", "15i64");
 cmp_constant!(gt_than_i64_const, ">", "15i64", "10i64");
 cmp_constant!(le_than_i64_const, "<=", "10i64", "15i64");
 cmp_constant!(ge_than_i64_const, ">=", "15i64", "10i64");
-cmp_constant!(eq_than_i64_const, "==", "15i64", "15i64");
+cmp_constant!(eq_i64_const, "==", "15i64", "15i64");
 
 cmp_constant!(lt_than_f64_const, "<", 10.0, 15.0);
 cmp_constant!(gt_than_f64_const, ">", 15.0, 10.0);
 cmp_constant!(le_than_f64_const, "<=", 10.0, 15.0);
 cmp_constant!(ge_than_f64_const, ">=", 15.0, 10.0);
-cmp_constant!(eq_than_f64_const, "==", 15.0, 15.0);
+cmp_constant!(eq_f64_const, "==", 15.0, 15.0);

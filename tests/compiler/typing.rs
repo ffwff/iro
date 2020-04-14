@@ -15,12 +15,11 @@ fn cast_on_argument() {
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i64\"(n: I64): Nil
 
-    def f(n: I64)
+    def f(n: I64) =>
         record(n)
-    end
     f(10)
     ",
         runtime,
@@ -40,12 +39,11 @@ fn cast_on_binop() {
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i64\"(n: I64): Nil
 
-    def f(n: I64)
+    def f(n: I64) =>
         record(n-5)
-    end
     f(15)
     ",
         runtime,
@@ -65,7 +63,7 @@ fn explicit_cast() {
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i64\"(n: I64): Nil
 
     record(10 as I64)
@@ -81,9 +79,9 @@ fn return_nil() {
     let runtime = Runtime::new();
     utils::parse_and_run(
         Settings::default(),
-        "
-    def f(): Nil
-    end
+        "\
+    def f(): Nil =>
+        pass
 
     f()
     ",

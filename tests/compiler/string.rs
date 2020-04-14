@@ -16,7 +16,7 @@ fn len() {
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i64\"(n: I64): Nil
 
     record(\"ABC\".len)
@@ -38,7 +38,7 @@ fn ptr_access() {
     runtime.insert_func("record_i8", record_i8 as extern "C" fn(i8));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i8\"(n: I8): Nil
 
     record(\"ABC\"[0])
@@ -66,7 +66,7 @@ fn substring_ffi() {
     );
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_substr\"(n: &Substring): Nil
 
     record(\"ABC\")
@@ -94,12 +94,11 @@ fn substring_passing() {
     );
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_substr\"(n: &Substring): Nil
 
-    def f(x)
+    def f(x) =>
         record(x)
-    end
 
     f(\"ABC\")
     ",
@@ -120,7 +119,7 @@ fn string_dereference() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(n: I32): Nil
 
     record(\"A\"[0])
@@ -148,12 +147,11 @@ fn substring_return() {
     );
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_substr\"(n: &Substring): Nil
     
-    def f(): &Substring
+    def f(): &Substring =>
         \"ABC\"
-    end
     record(f())
     ",
         runtime,
@@ -179,12 +177,11 @@ fn substring_return_with_args() {
     );
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_substr\"(n: &Substring): Nil
     
-    def f(x: I32, y: I32, z: I32): &Substring
+    def f(x: I32, y: I32, z: I32): &Substring =>
         \"ABC\"
-    end
     record(f(1,2,3))
     ",
         runtime,

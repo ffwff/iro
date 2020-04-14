@@ -1,6 +1,7 @@
 use crate::compiler;
 use std::convert::TryInto;
 use std::str::CharIndices;
+use std::collections::VecDeque;
 use unicode_xid::UnicodeXID;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -14,8 +15,7 @@ pub enum Tok {
     If,
     Else,
     Elsif,
-    End,
-    Then,
+    Pass,
     Break,
     And,
     Or,
@@ -54,6 +54,8 @@ pub enum Tok {
     True,
     False,
     Uninitialized,
+    BlockBegin,
+    Dedent,
     I32 { value: i32 },
     I64 { value: i64 },
     ISize { value: i64 },
@@ -78,8 +80,7 @@ impl std::fmt::Display for Tok {
             Tok::If => write!(f, "if"),
             Tok::Else => write!(f, "else"),
             Tok::Elsif => write!(f, "elsif"),
-            Tok::End => write!(f, "end"),
-            Tok::Then => write!(f, "then"),
+            Tok::Pass => write!(f, "pass"),
             Tok::Break => write!(f, "break"),
             Tok::And => write!(f, "and"),
             Tok::Or => write!(f, "or"),
@@ -126,6 +127,7 @@ impl std::fmt::Display for Tok {
             Tok::AtIdentifier { value } => write!(f, "identifier {:?}", value),
             Tok::CapitalIdentifier { value } => write!(f, "type identifier {:?}", value),
             Tok::String { value } => write!(f, "string {:?}", value),
+            other => write!(f, "{:?}", other),
         }
     }
 }
@@ -136,6 +138,7 @@ pub type Spanned<T> = (usize, T, usize);
 pub enum Error {
     UnexpectedCharacter(char),
     UnexpectedEof,
+    InvalidIndent,
 }
 
 impl Error {
@@ -152,6 +155,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::UnexpectedCharacter(ch) => write!(f, "Unexpected character '{}'", ch),
             Error::UnexpectedEof => write!(f, "Unexpected end of file"),
+            Error::InvalidIndent => write!(f, "Invalid indentation"),
         }
     }
 }
@@ -161,6 +165,9 @@ pub struct Lexer<'input> {
     chars: CharIndices<'input>,
     last_char: Option<(usize, char)>,
     outputted_eof: bool,
+    indent_stack: Vec<usize>,
+    curr_indent: usize,
+    last_token: VecDeque<Spanned<Tok>>,
 }
 
 impl<'input> Lexer<'input> {
@@ -170,6 +177,9 @@ impl<'input> Lexer<'input> {
             chars: input.char_indices(),
             last_char: None,
             outputted_eof: false,
+            indent_stack: vec![],
+            curr_indent: 0,
+            last_token: VecDeque::new(),
         }
     }
 
@@ -196,6 +206,9 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
+            if let Some(last_token) = self.last_token.pop_front() {
+                return Some(Ok(last_token));
+            }
             let curr_char = self.bump();
             match curr_char {
                 Some((idx0, ch @ '0'..='9')) => {
@@ -276,7 +289,16 @@ impl<'input> Iterator for Lexer<'input> {
                     }
                 }
 
-                Some((idx0, '=')) => mod_op!(self, idx0, Tok::Asg, '=', Tok::Equ),
+                Some((idx0, '=')) => {
+                    match self.chars.next() {
+                        Some((idx1, '=')) => return Some(Ok((idx0, Tok::Equ, idx1))),
+                        Some((idx1, '>')) => return Some(Ok((idx0, Tok::BlockBegin, idx1))),
+                        peek => {
+                            self.last_char = peek;
+                        }
+                    }
+                    return Some(Ok((idx0, Tok::Asg, idx0)));
+                }
                 Some((idx0, '!')) => mod_op!(self, idx0, Tok::Not, '=', Tok::Neq),
                 Some((idx0, '+')) => mod_op!(self, idx0, Tok::Add, '=', Tok::Adds),
                 Some((idx0, '-')) => mod_op!(self, idx0, Tok::Sub, '=', Tok::Subs),
@@ -333,7 +355,7 @@ impl<'input> Iterator for Lexer<'input> {
                         "if" => Tok::If,
                         "else" => Tok::Else,
                         "elsif" => Tok::Elsif,
-                        "end" => Tok::End,
+                        "pass" => Tok::Pass,
                         "break" => Tok::Break,
                         "and" => Tok::And,
                         "or" => Tok::Or,
@@ -413,19 +435,52 @@ impl<'input> Iterator for Lexer<'input> {
                         return None;
                     }
                     self.outputted_eof = true;
-                    return Some(Ok((0, Tok::EOF, 0)));
+                    // println!("{:#?}", self.indent_stack);
+                    if self.indent_stack.len() < 2 {
+                        return Some(Ok((0, Tok::EOF, 0)));
+                    } else {
+                        // println!("{:#?}", self.indent_stack);
+                        for _ in self.indent_stack.iter().skip(2) {
+                            self.last_token.push_back((0, Tok::Dedent, 0));
+                        }
+                        self.last_token.push_back((0, Tok::EOF, 0));
+                        return Some(Ok((0, Tok::Dedent, 0)));
+                    }
                 }
                 Some((idx0, '\n')) => {
                     let mut idx1 = idx0;
+                    let last_indent = std::mem::replace(&mut self.curr_indent, 0);
                     loop {
                         match self.chars.next() {
-                            Some((_, '\n')) => idx1 += 1,
-                            Some((_, ch)) if ch.is_whitespace() => idx1 += 1,
+                            Some((_, '\n')) => {
+                                idx1 += 1;
+                                self.curr_indent = 0;
+                            },
+                            Some((_, ch)) if ch.is_whitespace() => {
+                                idx1 += 1;
+                                self.curr_indent += 1;
+                            },
                             ch => {
                                 self.last_char = ch;
                                 break;
                             }
                         }
+                    }
+                    if self.curr_indent < last_indent {
+                        let mut n_pops = 0;
+                        while let Some(last) = self.indent_stack.last() {
+                            if *last <= self.curr_indent {
+                                break;
+                            }
+                            self.indent_stack.pop();
+                            n_pops += 1;
+                        }
+                        for _ in 1..n_pops {
+                            self.last_token.push_back((idx0, Tok::Dedent, idx1));
+                        }
+                        return Some(Ok((idx0, Tok::Dedent, idx1)));
+                    } else if self.curr_indent > last_indent || self.indent_stack.is_empty() {
+                        self.indent_stack.push(self.curr_indent);
                     }
                     return Some(Ok((idx0, Tok::Newline, idx1)));
                 }
@@ -437,5 +492,74 @@ impl<'input> Iterator for Lexer<'input> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod lexer_test {
+    use super::*;
+
+    macro_rules! lex {
+        ($str:expr) => {
+            Lexer::new($str).filter(|x| x.is_ok()).map(|x| x.unwrap()).collect::<Vec<_>>()
+        };
+    }
+
+    #[test]
+    fn dedent_before_eof() {
+        let tokens = lex!("
+while 1 == 2 =>
+    1
+    if 1 == 2 =>
+        2");
+        let length = tokens.len();
+        assert_ne!(tokens[length - 4].1, Tok::Dedent);
+        assert_eq!(tokens[length - 3].1, Tok::Dedent);
+        assert_eq!(tokens[length - 2].1, Tok::Dedent);
+        assert_eq!(tokens[length - 1].1, Tok::EOF);
+    }
+    
+    #[test]
+    fn dedent() {
+        let tokens = lex!("
+while 1 == 2 =>
+    1
+    if 1 == 2 =>
+        2
+");
+        let length = tokens.len();
+        assert_ne!(tokens[length - 4].1, Tok::Dedent);
+        assert_eq!(tokens[length - 3].1, Tok::Dedent);
+        assert_eq!(tokens[length - 2].1, Tok::Dedent);
+        assert_eq!(tokens[length - 1].1, Tok::EOF);
+    }
+    
+    #[test]
+    fn dedent_with_start_indent() {
+        let tokens = lex!("\
+                while 1 == 2 =>
+                    1
+                    if 1 == 2 =>
+                        2
+");
+        let length = tokens.len();
+        assert_ne!(tokens[length - 4].1, Tok::Dedent);
+        assert_eq!(tokens[length - 3].1, Tok::Dedent);
+        assert_eq!(tokens[length - 2].1, Tok::Dedent);
+        assert_eq!(tokens[length - 1].1, Tok::EOF);
+    }
+
+    #[test]
+    fn dedent_after_nested_eof() {
+        let tokens = lex!("
+while 1 == 2 =>
+    if 1 == 2 =>
+        2
+    1");
+        let length = tokens.len();
+        println!("{:#?}", tokens);
+        assert_ne!(tokens[length - 3].1, Tok::Dedent);
+        assert_eq!(tokens[length - 2].1, Tok::Dedent);
+        assert_eq!(tokens[length - 1].1, Tok::EOF);
     }
 }

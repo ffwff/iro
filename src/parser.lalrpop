@@ -8,7 +8,7 @@ use crate::compiler;
 grammar;
 
 pub Top : Program = {
-    NL* <TopLevelExpr*> EOF? => Program{ exprs: <> },
+    NL* <Expr*> EOF? => Program{ exprs: <> },
 };
 
 #[inline]
@@ -29,17 +29,78 @@ StatementEndOrEOF: () = {
     StatementEnd => (),
     EOF => (),
 };
-TopLevelExpr = {
+Expr = {
     <ImportStatement> StatementEndOrEOF,
-    <DefStatement> StatementEndOrEOF,
     <ExternDefStatement> StatementEndOrEOF,
-    <Expr>,
+    <StandaloneExpr> StatementEndOrEOF,
+    <DefStatement>,
+    <WhileExpr>,
+    <IfExpr>,
 };
-Expr = <StandaloneExpr> StatementEndOrEOF;
 StandaloneExpr = {
     <BreakExpr>,
     <ReturnExpr>
 };
+StandaloneEmbeddableExpr = {
+    <StandaloneExpr>,
+    <WhileExpr>,
+    <IfExpr>,
+};
+StandaloneEmbeddableExprWithDedent = {
+    <StandaloneExpr>,
+    NL <WhileExpr> Dedent,
+    NL <IfExpr> Dedent,
+};
+
+// Block
+Block: Vec<NodeBox> = {
+    "=>" NL <items: Expr*> <last: StandaloneEmbeddableExpr> Dedent => {
+        let mut items = items;
+        items.push(last);
+        items
+    },
+    "=>" NL "pass" Dedent => { vec![] }
+};
+
+// While expression
+WhileExpr: NodeBox = {
+    <start:@L> "while" <cond:StandaloneExpr> <exprs:Block> <end:@L> => {
+        NodeBox::new(WhileExpr { cond, exprs }, (start, end))
+    }
+};
+
+// If expression
+IfExpr: NodeBox = {
+    <start:@L> 
+        "if" <cond:StandaloneExpr> <exprs:Block> <elsif:IfExprElsif*> <elses:IfExprElse?>
+    <end:@L> => {
+        let span = (start, end);
+        if !elsif.is_empty() {
+            let last_elsif = elsif.last().unwrap();
+            let mut elsif_expr = NodeBox::new(IfExpr {
+                cond: last_elsif.0.clone(),
+                exprs: last_elsif.1.clone(),
+                elses: elses.unwrap_or_else(|| vec![])
+            }, span);
+            for it_elsif in elsif.iter().rev().skip(1) {
+                elsif_expr = NodeBox::new(IfExpr {
+                    cond: it_elsif.0.clone(),
+                    exprs: it_elsif.1.clone(),
+                    elses: vec![ elsif_expr ],
+                }, span);
+            }
+            return NodeBox::new(IfExpr { cond, exprs, elses: vec![ elsif_expr ] }, span);
+        }
+        NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) }, span)
+    }
+};
+
+IfExprElsif: (NodeBox, Vec<NodeBox>) = {
+    "elsif" <cond:StandaloneExpr> <exprs:Block> => {
+        (cond, exprs)
+    },
+};
+IfExprElse: Vec<NodeBox> = "else" <exprs:Block> => <>;
 
 // Break expression
 BreakExpr: NodeBox = {
@@ -81,11 +142,13 @@ ImportStatement: NodeBox = {
 
 // Function definitions
 DefStatement: NodeBox = {
-    <start:@L> <attrs:AttributeList?> "def"
+    <start:@L>
+        <attrs:AttributeList?> "def"
         <id:Identifier>
         <args:DefArgumentList?>
         <return_type:TypeSpecifier?>
-    StatementEnd <exprs:Expr*> "end" <end:@L> => {
+        <exprs:Block>
+    <end:@L> => {
         NodeBox::new(DefStatement {
             id: Rc::from(id),
             args: args.unwrap_or_else(|| vec![]),
@@ -202,64 +265,14 @@ FacOp: BinOp = {
 
 // As cast expression
 AsExpr: NodeBox = {
-    <start:@L> <left:WhileExpr> "as" <typed:Type> <end:@L> => {
+    <start:@L> <left:CallExpr> "as" <typed:Type> <end:@L> => {
         NodeBox::new(AsExpr {
             left,
             typed
         }, (start, end))
     },
-    WhileExpr,
-};
-
-// While expression
-WhileExpr: NodeBox = {
-    <start:@L> "while" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> "end" <end:@L> => {
-        NodeBox::new(WhileExpr { cond, exprs }, (start, end))
-    },
-    <start:@L> "while" <cond:StandaloneExpr> "then" <expr:Expr> <end:@L> => {
-        NodeBox::new(WhileExpr { cond, exprs: vec![expr] }, (start, end))
-    },
-    IfExpr
-};
-
-// If expression
-IfExpr: NodeBox = {
-    <start:@L> 
-        "if" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> <elsif:IfExprElsif*> <elses:IfExprElse?> "end"
-    <end:@L> => {
-        let span = (start, end);
-        if !elsif.is_empty() {
-            let last_elsif = elsif.last().unwrap();
-            let mut elsif_expr = NodeBox::new(IfExpr {
-                cond: last_elsif.0.clone(),
-                exprs: last_elsif.1.clone(),
-                elses: elses.unwrap_or_else(|| vec![])
-            }, span);
-            for it_elsif in elsif.iter().rev().skip(1) {
-                elsif_expr = NodeBox::new(IfExpr {
-                    cond: it_elsif.0.clone(),
-                    exprs: it_elsif.1.clone(),
-                    elses: vec![ elsif_expr ],
-                }, span);
-            }
-            return NodeBox::new(IfExpr { cond, exprs, elses: vec![ elsif_expr ] }, span);
-        }
-        NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) }, span)
-    },
-    <start:@L> 
-        "if" <cond:StandaloneExpr> "then" <expr:Expr>
-    <end:@L> => {
-        NodeBox::new(IfExpr { cond, exprs, elses: vec![expr] }, span)
-    }
     CallExpr,
 };
-
-IfExprElsif: (NodeBox, Vec<NodeBox>) = {
-    "elsif" <cond:StandaloneExpr> StatementEnd <exprs:Expr*> => {
-        (cond, exprs)
-    },
-};
-IfExprElse: Vec<NodeBox> = "else" StatementEnd <Expr*>;
 
 // Call expression
 CallExpr: NodeBox = {
@@ -299,7 +312,7 @@ MemberExprArm: MemberExprArm = {
 // Literals / terms
 Term: NodeBox = {
     <start:@L> <lit:Literal> <end:@L> => NodeBox::new(lit, (start, end)),
-    "(" <StandaloneExpr> ")" => <>,
+    "(" <StandaloneEmbeddableExprWithDedent> ")" => <>,
 };
 
 Literal: Value = {
@@ -374,8 +387,7 @@ extern {
         "while" => lexer::Tok::While,
         "else" => lexer::Tok::Else,
         "elsif" => lexer::Tok::Elsif,
-        "end" => lexer::Tok::End,
-        "then" => lexer::Tok::Then,
+        "pass" => lexer::Tok::Pass,
         "break" => lexer::Tok::Break,
         "and" => lexer::Tok::And,
         "or" => lexer::Tok::Or,
@@ -412,6 +424,8 @@ extern {
         "@[" => lexer::Tok::AtBracket,
         "[" => lexer::Tok::LeftBracket,
         "]" => lexer::Tok::RightBracket,
+        "=>" => lexer::Tok::BlockBegin,
+        Dedent => lexer::Tok::Dedent,
         NL => lexer::Tok::Newline,
         EOF => lexer::Tok::EOF,
         I32 => lexer::Tok::I32 { value : <i32> },

@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.control.iro",
-			"match": "\\b(extern|def|return|while|if|elsif|else|end|break)\\b"
+			"match": "\\b(extern|def|return|while|if|elsif|else|end|pass|break)\\b"
 		},
 		{
 			"name": "keyword.other.iro",

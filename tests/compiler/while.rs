@@ -19,13 +19,12 @@ fn while_loop() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(n: I32): Nil
 
     mut i := 0
-    while i < 10
+    while i < 10 =>
         i += 1
-    end
     record(i)
     ",
         runtime,
@@ -45,14 +44,13 @@ fn while_loop_set() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(n: I32): Nil
 
     mut i := 0
-    while i < 10
+    while i < 10 =>
         record(i)
         i += 1
-    end
     ",
         runtime,
     )
@@ -74,18 +72,16 @@ fn while_loop_nested() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(i: I32, j: I32): Nil
 
     mut i := 0
-    while i < 10
+    while i < 10 =>
         mut j := 0
-        while j < 5
+        while j < 5 =>
             record(i, j)
             j += 1
-        end
         i += 1
-    end
     ",
         runtime,
     )
@@ -114,20 +110,18 @@ fn while_loop_nested_x() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32, i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(i: I32, j: I32, x: I32): Nil
 
     mut i := 0
     mut x := 0
-    while i < 10
+    while i < 10 =>
         mut j := 0
-        while j < 5
+        while j < 5 =>
             x += 1
             record(i, j, x)
             j += 1
-        end
         i += 1
-    end
     ",
         runtime,
     )
@@ -153,19 +147,17 @@ fn while_loop_nested_post_x() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(x: I32): Nil
 
     mut i := 0
     mut x := 0
-    while i < 10
+    while i < 10 =>
         mut j := 0
-        while j < 5
+        while j < 5 =>
             x += 1
             j += 1
-        end
         i += 1
-    end
     record(x)
     ",
         runtime,
@@ -177,11 +169,11 @@ fn while_loop_nested_post_x() {
 fn while_expr_type() {
     let program = utils::parse_to_ssa(
         "
-    def f(x)
-        return while x > 10
-            0
-        end
-    end
+    def f(x) =>
+        return (
+            while x > 10 =>
+                0
+        )
     f(10)
     ",
         TopLevelArch::empty(),
@@ -202,10 +194,11 @@ fn while_expr_type() {
 fn while_expr_nil() {
     let program = utils::parse_to_ssa(
         "
-    def f(x)
-        return while x > 10
-        end
-    end
+    def f(x) =>
+        return (
+            while x > 10 =>
+                pass
+        )
     f(10)
     ",
         TopLevelArch::empty(),
@@ -231,17 +224,15 @@ fn while_loop_nested_with_if() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(x: I32): Nil
 
     mut i := 0
     mut x := 0
-    while i < 10
-        if i < 5
+    while i < 10 =>
+        if i < 5 =>
             x += 1
-        end
         i += 1
-    end
     record(x)
     ",
         runtime,
@@ -253,11 +244,10 @@ fn while_loop_nested_with_if() {
 fn while_expr_cond_return() {
     let program = utils::parse_to_ssa(
         "
-    def f(x)
-        while return 10
-        end
+    def f(x) => 
+        while return 10 =>
+            pass
         return true
-    end
     f(10)
     ",
         TopLevelArch::empty(),
@@ -278,12 +268,10 @@ fn while_expr_cond_return() {
 fn while_expr_body_return() {
     let program = utils::parse_to_ssa(
         "
-    def f(x)
-        while 1
+    def f(x) =>
+        while 1 =>
             return 10
-        end
         return true
-    end
     f(10)
     ",
         TopLevelArch::empty(),
@@ -313,13 +301,12 @@ fn while_loop_break() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(n: I32): Nil
 
     mut i := 0
-    while i < 10
+    while i < 10 =>
         break
-    end
     record(i)
     ",
         runtime,
@@ -339,16 +326,14 @@ fn while_loop_break_nested_if() {
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         Settings::default(),
-        "
+        "\
     extern def record=\"record_i32\"(n: I32): Nil
 
     mut i := 0
-    while i < 10
-        if i == 5
+    while i < 10 =>
+        if i == 5 =>
             break
-        end
         i += 1
-    end
     record(i)
     ",
         runtime,

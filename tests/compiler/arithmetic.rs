@@ -17,11 +17,10 @@ macro_rules! load_const {
             let mut runtime = Runtime::new();
             runtime.insert_func("record", record as extern "C" fn($type));
             let source = format!(
-                "
+                "\
             extern def record=\"record\"(n: {}): Nil
 
-            record({})
-            ",
+            record({})",
                 $irotype, $left
             );
             utils::parse_and_run(Settings::default(), &source, runtime)
@@ -43,14 +42,12 @@ macro_rules! arithmetic {
             let mut runtime = Runtime::new();
             runtime.insert_func("record", record as extern "C" fn($type));
             let source = format!(
-                "
+                "\
             extern def record=\"record\"(n: {}): Nil
 
-            def f(x, y)
-                return x {} y
-            end
-            record(f({}, {}))
-            ",
+            def f(x, y) =>
+                x {} y
+            record(f({}, {}))",
                 $irotype, $op, $a, $b
             );
             utils::parse_and_run(Settings::default(), &source, runtime)
@@ -72,11 +69,10 @@ macro_rules! arithmetic_const {
             let mut runtime = Runtime::new();
             runtime.insert_func("record", record as extern "C" fn($type));
             let source = format!(
-                "
+                "\
             extern def record=\"record\"(n: {}): Nil
 
-            record({} {} {})
-            ",
+            record({} {} {})",
                 $irotype, $a, $op, $b
             );
             utils::parse_and_run(Settings::default(), &source, runtime)

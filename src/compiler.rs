@@ -51,7 +51,7 @@ impl Error {
         line_contents.push(&source[row_start..source.len()]);
         {
             let row = current_span.0.row;
-            println!(" {} | {}", row + 1, line_contents[row]);
+            println!(" {}:{} | {}", row + 1, col+1, line_contents[row]);
         }
     }
 }
@@ -109,21 +109,13 @@ impl std::fmt::Display for ParseError {
             ParseError::UnrecognizedEOF { expected } => write!(
                 f,
                 "Unexpected end of file, expected {}",
-                if expected.len() >= 3 {
-                    expected[0..3].join(", ") + "..."
-                } else {
-                    expected.join(", ")
-                }
+                expected.join(", ")
             ),
             ParseError::UnrecognizedToken { token, expected } => write!(
                 f,
                 "Unexpected token (got {}, expected {})",
                 token,
-                if expected.len() >= 3 {
-                    expected[0..3].join(", ") + "..."
-                } else {
-                    expected.join(", ")
-                }
+                expected.join(", ")
             ),
             ParseError::ExtraToken(token) => write!(f, "Invalid token (got {})", token),
         }
