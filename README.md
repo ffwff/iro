@@ -10,16 +10,16 @@ A *color*ful programming language (a wip)
 ## Examples
 
 ```ruby
-extern def print="print_i64"(n: I64): Nil
+extern def putchar(x: I32): I32
 
-def fib(n): I64
-    if n <= 1
-        return 1i64
-    end
-    fib(n-1) + fib(n-2)
-end
+def print(s: &Substring): ISize =>
+    mut i := 0is
+    while i < s.len =>
+        putchar(s[i])
+        i += 1
+    i
 
-print(fib(46i64))
+print("Hello World\n")
 ```
 
 ## License
