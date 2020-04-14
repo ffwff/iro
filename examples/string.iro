@@ -4,7 +4,7 @@ def print(s: &Substring): ISize =>
     mut i := 0is
     while i < s.len =>
         putchar(s[i])
-        i += 1
+        i += 1is
     i
 
 def print(mut n: I32): ISize =>
@@ -14,12 +14,12 @@ def print(mut n: I32): ISize =>
         digit := n % 10
         slice[i] = (digit + 48) as I8
         n /= 10
-        i += 1
-    i -= 1
+        i += 1is
+    i -= 1is
     while true =>
         putchar(slice[i])
         if i == 0 => break
-        i -= 1
+        i -= 1is
     i
 
 print("Hello World\n")
