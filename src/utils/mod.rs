@@ -10,12 +10,12 @@ use cranelift_module::FuncOrDataId;
 use std::cell::RefCell;
 
 pub mod pipeline;
+pub mod optcell;
 
 pub fn parse_to_ssa(input: &str, arch: TopLevelArch) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(input);
-    // panic!("{:#?}", tokenizer.collect::<Vec<_>>());
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    let top_level_info = RefCell::new(ssa::visitor::TopLevelInfo::new(arch));
+    let top_level_info = optcell::OptCell::new(ssa::visitor::TopLevelInfo::new(arch));
     let mut visitor = ssa::visitor::SSAVisitor::new(&top_level_info);
     visitor.visit_program(&ast)?;
     let mut program = visitor.into_program();

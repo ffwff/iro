@@ -34,6 +34,7 @@ Expr = {
     <ExternDefStatement> StatementEndOrEOF,
     <StandaloneExpr> StatementEndOrEOF,
     <DefStatement>,
+    <ClassStatement>,
     <WhileExpr>,
     <IfExpr>,
 };
@@ -78,16 +79,17 @@ IfExpr: NodeBox = {
     <end:@L> => {
         let span = (start, end);
         if !elsif.is_empty() {
-            let last_elsif = elsif.last().unwrap();
+            let mut elsif = elsif;
+            let last_elsif = elsif.pop().unwrap();
             let mut elsif_expr = NodeBox::new(IfExpr {
-                cond: last_elsif.0.clone(),
-                exprs: last_elsif.1.clone(),
+                cond: last_elsif.0,
+                exprs: last_elsif.1,
                 elses: elses.unwrap_or_else(|| vec![])
             }, span);
-            for it_elsif in elsif.iter().rev().skip(1) {
+            while let Some(it_elsif) = elsif.pop() {
                 elsif_expr = NodeBox::new(IfExpr {
-                    cond: it_elsif.0.clone(),
-                    exprs: it_elsif.1.clone(),
+                    cond: it_elsif.0,
+                    exprs: it_elsif.1,
                     elses: vec![ elsif_expr ],
                 }, span);
             }
@@ -140,6 +142,36 @@ ImportStatement: NodeBox = {
             path
         }, (start, end))
     }
+};
+
+// Class definitions
+ClassStatement: NodeBox = {
+    <start:@L>
+        "class"
+        <id:TypeIdentifier>
+        <inners:ClassBlock>
+    <end:@L> => {
+        NodeBox::new(ClassStatement {
+            inners
+        }, (start, end))
+    }
+};
+
+ClassBlock: Vec<ClassInner> = {
+    "=>" NL <items: (<ClassInner> StatementEnd)*> <last: ClassInner> Dedent => {
+        let mut items = items;
+        items.push(last);
+        items
+    },
+    "=>" <ClassInner> NL => { vec![<>] },
+    "=>" NL "pass" Dedent => { vec![] },
+    "=>" "pass" NL => { vec![] }
+};
+
+ClassInner: ClassInner = {
+    <name:AtIdentifier> ":" <typed:Type> => {
+        ClassInner::MemberDef { name, typed }
+    },
 };
 
 // Function definitions
@@ -398,6 +430,7 @@ extern {
         "true" => lexer::Tok::True,
         "false" => lexer::Tok::False,
         "uninitialized" => lexer::Tok::Uninitialized,
+        "class" => lexer::Tok::Class,
         "==" => lexer::Tok::Equ,
         "!=" => lexer::Tok::Neq,
         "+" => lexer::Tok::Add,

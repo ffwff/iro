@@ -5,6 +5,7 @@ use crate::ssa::env;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
+use crate::utils::optcell::OptCell;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,7 +28,7 @@ pub struct TopLevelInfo {
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
     pub pointer_type: Type,
-    pub generic_fat_pointer_struct: Option<StructData>,
+    pub generic_fat_pointer_struct: StructData,
 }
 
 impl TopLevelInfo {
@@ -49,17 +50,7 @@ impl TopLevelInfo {
                 Rc::from("F64") => Type::F64,
                 Rc::from("Substring") => Type::I8.dyn_slice(),
             ],
-            generic_fat_pointer_struct: Some(generic_fat_pointer_struct),
-        }
-    }
-
-    pub fn empty() -> Self {
-        TopLevelInfo {
-            defstmts: HashMap::new(),
-            func_contexts: HashMap::new(),
-            pointer_type: Type::Nil,
-            types: HashMap::new(),
-            generic_fat_pointer_struct: None,
+            generic_fat_pointer_struct,
         }
     }
 }
@@ -68,7 +59,7 @@ impl TopLevelInfo {
 pub struct SSAVisitor<'a> {
     context: Context,
     envs: Vec<Env>,
-    top_level: &'a RefCell<TopLevelInfo>,
+    top_level: &'a OptCell<TopLevelInfo>,
     has_direct_return: bool,
     has_break: bool,
     last_retvar: Option<Variable>,
@@ -96,7 +87,7 @@ macro_rules! propagate_cf_state {
 }
 
 impl<'a> SSAVisitor<'a> {
-    pub fn new(top_level: &'a RefCell<TopLevelInfo>) -> Self {
+    pub fn new(top_level: &'a OptCell<TopLevelInfo>) -> Self {
         Self {
             context: Context::new(Rc::from("main")),
             envs: Vec::with_capacity(4),
@@ -107,11 +98,11 @@ impl<'a> SSAVisitor<'a> {
         }
     }
 
-    pub fn with_context(context: Context, top_level: &'a RefCell<TopLevelInfo>) -> Self {
+    pub fn derive_with_context(&mut self, context: Context) -> Self {
         Self {
             context,
             envs: Vec::with_capacity(4),
-            top_level,
+            top_level: self.top_level,
             has_direct_return: false,
             has_break: false,
             last_retvar: None,
@@ -123,7 +114,7 @@ impl<'a> SSAVisitor<'a> {
     }
 
     pub fn into_program(self) -> isa::Program {
-        let top_level = self.top_level.replace(TopLevelInfo::empty());
+        let top_level = self.top_level.take().into_inner();
         let context = self.context;
         let mut func_contexts = top_level.func_contexts;
         let entry = Rc::new(FunctionName {
@@ -143,7 +134,7 @@ impl<'a> SSAVisitor<'a> {
                 })
                 .collect(),
             entry,
-            generic_fat_pointer_struct: top_level.generic_fat_pointer_struct.unwrap(),
+            generic_fat_pointer_struct: top_level.generic_fat_pointer_struct,
         }
     }
 
@@ -761,8 +752,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         } else {
                             let (func_name, context) = {
                                 let func_context = Context::with_args(id.clone(), arg_types);
-                                let mut visitor =
-                                    SSAVisitor::with_context(func_context, self.top_level);
+                                let mut visitor = self.derive_with_context(func_context);
                                 visitor.visit_defstmt(defstmt.borrow(), b)?;
                                 (func_name.clone(), visitor.into_context())
                             };
@@ -1182,7 +1172,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     }
                     typed if typed.is_fat_pointer() => {
                         let top_level = self.top_level.borrow();
-                        let struct_data = top_level.generic_fat_pointer_struct.as_ref().unwrap();
+                        let struct_data = &top_level.generic_fat_pointer_struct;
                         if let Some(var_data) = struct_data.values().get(string) {
                             var_data.typed.clone()
                         } else {

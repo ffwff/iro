@@ -54,6 +54,7 @@ pub enum Tok {
     True,
     False,
     Uninitialized,
+    Class,
     BlockBegin,
     Dedent,
     I32 { value: i32 },
