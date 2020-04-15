@@ -178,6 +178,11 @@ impl Ins {
                 left: swap(left),
                 right,
             },
+            InsType::MemberReferenceStore { left, name, right } => InsType::MemberReferenceStore {
+                left: swap(left),
+                name,
+                right: swap(right),
+            },
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
             InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
@@ -280,6 +285,10 @@ impl Ins {
             }
             InsType::MemberReference { left, .. } => {
                 callback(*left);
+            }
+            InsType::MemberReferenceStore { left, right, .. } => {
+                callback(*left);
+                callback(*right);
             }
             InsType::Add((x, y))
             | InsType::Sub((x, y))
@@ -510,9 +519,15 @@ pub enum InsType {
     LoadBool(bool),
     LoadSubstring(Rc<str>),
     LoadSlice(Vec<Variable>),
+    LoadStruct,
     MemberReference {
         left: Variable,
         right: Rc<str>,
+    },
+    MemberReferenceStore {
+        left: Variable,
+        name: Rc<str>,
+        right: Variable,
     },
     Phi {
         vars: Vec<Variable>,
@@ -615,7 +630,9 @@ impl InsType {
     pub fn has_retvar(&self) -> bool {
         match self {
             typed if typed.is_jmp() => false,
-            InsType::PointerStore { .. } | InsType::FatStore { .. } => false,
+            InsType::MemberReferenceStore { .. }
+            | InsType::PointerStore { .. }
+            | InsType::FatStore { .. } => false,
             _ => true,
         }
     }
@@ -655,6 +672,7 @@ impl InsType {
         match self {
             InsType::PointerStore { .. }
             | InsType::FatStore { .. }
+            | InsType::MemberReferenceStore { .. }
             | InsType::Call { .. }
             | InsType::Return(_)
             | InsType::Exit => true,
@@ -702,10 +720,15 @@ impl ToString for FunctionName {
 }
 
 #[derive(Debug, Clone)]
+pub struct Builtins {
+    pub generic_fat_pointer_struct: StructData,
+}
+
+#[derive(Debug, Clone)]
 pub struct Program {
     pub contexts: HashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
-    pub generic_fat_pointer_struct: StructData,
+    pub builtins: Builtins,
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -747,13 +770,13 @@ impl Type {
         Type::Slice(Rc::new(SliceType::new(self, None)))
     }
 
-    pub fn as_aggregate_data<'a>(&'a self, program: &'a Program) -> Option<&dyn AggregateData> {
+    pub fn as_aggregate_data<'a>(&'a self, builtins: &'a Builtins) -> Option<&dyn AggregateData> {
         match self {
             Type::Struct(StructType(struct_data_rc)) => {
                 let struct_data: &StructData = struct_data_rc.borrow();
                 Some(struct_data)
             }
-            maybe_ptr if maybe_ptr.is_fat_pointer() => Some(&program.generic_fat_pointer_struct),
+            maybe_ptr if maybe_ptr.is_fat_pointer() => Some(&builtins.generic_fat_pointer_struct),
             Type::Slice(slice_rc) => {
                 let slice: &SliceType = &slice_rc.borrow();
                 Some(slice.array_data().unwrap())

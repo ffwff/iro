@@ -56,22 +56,29 @@ impl fmt::Display for Error {
 
 pub type VisitorResult = Result<(), compiler::Error>;
 
+macro_rules! visit_func {
+    ($name:tt, $type:tt) => {
+        fn $name(&mut self, n: &$type, b: &NodeBox) -> VisitorResult;
+    };
+}
+
 pub trait Visitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult;
-    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult;
-    fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult;
-    fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult;
-    fn visit_return(&mut self, n: &ReturnExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_whileexpr(&mut self, n: &WhileExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_ifexpr(&mut self, n: &IfExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_letexpr(&mut self, n: &LetExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_asexpr(&mut self, n: &AsExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult;
-    fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult;
-    fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult;
-    fn visit_break(&mut self, n: &BreakExpr, b: &NodeBox) -> VisitorResult;
+    visit_func!(visit_import, ImportStatement);
+    visit_func!(visit_class, ClassStatement);
+    visit_func!(visit_class_init, ClassInitExpr);
+    visit_func!(visit_defstmt, DefStatement);
+    visit_func!(visit_return, ReturnExpr);
+    visit_func!(visit_whileexpr, WhileExpr);
+    visit_func!(visit_ifexpr, IfExpr);
+    visit_func!(visit_callexpr, CallExpr);
+    visit_func!(visit_letexpr, LetExpr);
+    visit_func!(visit_binexpr, BinExpr);
+    visit_func!(visit_asexpr, AsExpr);
+    visit_func!(visit_member_expr, MemberExpr);
+    visit_func!(visit_value, Value);
+    visit_func!(visit_typeid, TypeId);
+    visit_func!(visit_break, BreakExpr);
 }
 
 pub trait Node: Downcast {
@@ -422,6 +429,7 @@ impl Node for BreakExpr {
 
 #[derive(Debug)]
 pub struct ClassStatement {
+    pub id: Rc<str>,
     pub inners: Vec<ClassInner>,
 }
 
@@ -432,5 +440,16 @@ impl Node for ClassStatement {
 
 #[derive(Debug)]
 pub enum ClassInner {
-    MemberDef { name: String, typed: TypeId },
+    MemberDef { name: Rc<str>, typed: TypeId },
+}
+
+#[derive(Debug)]
+pub struct ClassInitExpr {
+    pub id: Rc<str>,
+    pub inits: Vec<(Rc<str>, NodeBox)>,
+}
+
+impl Node for ClassInitExpr {
+    debuggable!();
+    visitable!(visit_class_init);
 }

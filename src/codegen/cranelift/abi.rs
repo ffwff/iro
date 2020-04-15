@@ -30,7 +30,7 @@ fn generate_function_signature_x86_64_sysv<'a, F>(
         isa::Type::NoReturn => (),
         isa::Type::Nil => (),
         _ => {
-            if let Some(aggregate_data) = return_type.as_aggregate_data(program) {
+            if let Some(aggregate_data) = return_type.as_aggregate_data(&program.builtins) {
                 load_function(LoadFunctionArg::Return(aggregate_data));
                 sig.params
                     .push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
@@ -47,7 +47,7 @@ fn generate_function_signature_x86_64_sysv<'a, F>(
             load_function(LoadFunctionArg::PrimitiveArg(idx));
             sig.params.push(AbiParam::new(cranelift_type));
         } else {
-            let aggregate_data: &dyn AggregateData = arg.as_aggregate_data(program).unwrap();
+            let aggregate_data: &dyn AggregateData = arg.as_aggregate_data(&program.builtins).unwrap();
             if aggregate_data.size_of() <= 8 {
                 // For small structs, we pass the struct as a 64-bit integer parameter
                 load_function(LoadFunctionArg::StructArg {

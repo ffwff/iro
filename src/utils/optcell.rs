@@ -1,6 +1,5 @@
-use std::cell::{UnsafeCell, RefCell, Cell, Ref, RefMut, BorrowError, BorrowMutError};
+use std::cell::{BorrowError, BorrowMutError, Cell, Ref, RefCell, RefMut};
 use std::mem::ManuallyDrop;
-use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct OptCell<T> {
@@ -48,12 +47,7 @@ impl<T> OptCell<T> {
             return None;
         }
         if let Ok(mut borrowed) = self.data.try_borrow_mut() {
-            let data = unsafe {
-                std::mem::replace(
-                    &mut *borrowed,
-                    std::mem::zeroed()
-                )
-            };
+            let data = unsafe { std::mem::replace(&mut *borrowed, std::mem::zeroed()) };
             std::mem::forget(borrowed);
             Some(Self::new(data))
         } else {
@@ -65,9 +59,7 @@ impl<T> OptCell<T> {
         if self.moved.replace(true) {
             panic!("already moved");
         }
-        unsafe {
-            ManuallyDrop::take(&mut self.data)
-        }.into_inner()
+        unsafe { ManuallyDrop::take(&mut self.data) }.into_inner()
     }
 }
 
@@ -75,9 +67,7 @@ impl<T> Drop for OptCell<T> {
     fn drop(&mut self) {
         // SAFETY: We should only drop the data if we own it, when it isn't moved
         if !self.moved.get() {
-            unsafe {
-                ManuallyDrop::drop(&mut self.data)
-            }
+            unsafe { ManuallyDrop::drop(&mut self.data) }
         }
     }
 }
@@ -117,14 +107,16 @@ mod optcell_test {
     #[test]
     fn move_after_borrowed() {
         let cell = OptCell::new(5);
-        cell.borrow();
+        let borrowed = cell.borrow();
         assert!(cell.try_take().is_none());
+        assert_eq!(*borrowed, 5);
     }
 
     #[test]
     fn move_after_borrowed_mut() {
         let cell = OptCell::new(5);
-        cell.borrow_mut();
+        let borrowed = cell.borrow_mut();
         assert!(cell.try_take().is_none());
+        assert_eq!(*borrowed, 5);
     }
 }

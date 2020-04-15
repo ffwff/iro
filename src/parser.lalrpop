@@ -46,11 +46,13 @@ StandaloneEmbeddableExpr = {
     <StandaloneExpr>,
     <WhileExpr>,
     <IfExpr>,
+    <ClassInitExpr>,
 };
 StandaloneEmbeddableExprWithDedent = {
     <StandaloneExpr>,
     NL <WhileExpr> Dedent,
     NL <IfExpr> Dedent,
+    NL <ClassInitExpr> Dedent,
 };
 
 // Block
@@ -61,6 +63,18 @@ Block: Vec<NodeBox> = {
         items
     },
     "=>" <StandaloneExpr> NL => { vec![<>] },
+    "=>" NL "pass" Dedent => { vec![] },
+    "=>" "pass" NL => { vec![] }
+};
+
+#[inline]
+BlockGeneric<T>: Vec<T> = {
+    "=>" NL <items: (<T> StatementEnd)*> <last: T> Dedent => {
+        let mut items = items;
+        items.push(last);
+        items
+    },
+    "=>" <T> NL => { vec![<>] },
     "=>" NL "pass" Dedent => { vec![] },
     "=>" "pass" NL => { vec![] }
 };
@@ -106,6 +120,23 @@ IfExprElsif: (NodeBox, Vec<NodeBox>) = {
 };
 IfExprElse: Vec<NodeBox> = "else" <exprs:Block> => <>;
 
+// Class Expression
+ClassInitExpr: NodeBox = {
+    <start:@L> 
+        <id:CapitalIdentifier> <inits:ClassInitBlock>
+    <end:@L> => {
+        NodeBox::new(ClassInitExpr { id: Rc::from(id), inits, }, (start, end))
+    }
+};
+
+ClassInitBlock: Vec<(Rc<str>, NodeBox)> = BlockGeneric<ClassInitInner>;
+
+ClassInitInner: (Rc<str>, NodeBox) = {
+    <name:Identifier> ":" <value:StandaloneExpr> => {
+        (Rc::from(name), value)
+    },
+};
+
 // Break expression
 BreakExpr: NodeBox = {
     <start:@L> "break" <end:@L> => {
@@ -148,29 +179,18 @@ ImportStatement: NodeBox = {
 ClassStatement: NodeBox = {
     <start:@L>
         "class"
-        <id:TypeIdentifier>
+        <id:CapitalIdentifier>
         <inners:ClassBlock>
     <end:@L> => {
-        NodeBox::new(ClassStatement {
-            inners
-        }, (start, end))
+        NodeBox::new(ClassStatement { id: Rc::from(id), inners }, (start, end))
     }
 };
 
-ClassBlock: Vec<ClassInner> = {
-    "=>" NL <items: (<ClassInner> StatementEnd)*> <last: ClassInner> Dedent => {
-        let mut items = items;
-        items.push(last);
-        items
-    },
-    "=>" <ClassInner> NL => { vec![<>] },
-    "=>" NL "pass" Dedent => { vec![] },
-    "=>" "pass" NL => { vec![] }
-};
+ClassBlock: Vec<ClassInner> = BlockGeneric<ClassInner>;
 
 ClassInner: ClassInner = {
-    <name:AtIdentifier> ":" <typed:Type> => {
-        ClassInner::MemberDef { name, typed }
+    <name:Identifier> ":" <typed:Type> => {
+        ClassInner::MemberDef { name: Rc::from(name), typed }
     },
 };
 
@@ -356,7 +376,6 @@ Literal: Value = {
     <Float> => Value::Float(<>),
     <String> => Value::String(Rc::from(<>)),
     <Identifier> => Value::Identifier(Rc::from(<>)),
-    <AtIdentifier> => Value::Identifier(Rc::from(<>)),
     "true" => Value::Bool(true),
     "false" => Value::Bool(false),
     "uninitialized" => Value::Uninitialized,
@@ -371,13 +390,13 @@ Type: TypeId = {
 TypePointer: TypeIdData = {
     "&" <first:Type> => {
         TypeIdData::Pointer {
-            typed: Box::new(first.clone()),
+            typed: Box::new(first),
             pointer_tag: PointerTag::Immutable,
         }
     },
     "&" <pointer_tag:TypePointerTag> <first:Type> => {
         TypeIdData::Pointer {
-            typed: Box::new(first.clone()),
+            typed: Box::new(first),
             pointer_tag,
         }
     },
@@ -391,7 +410,7 @@ TypePointerTag: PointerTag = {
 TypeSlice: TypeIdData = {
     "[" <typed:Type> <length:(";" <I32>)?> "]" => {
         TypeIdData::Slice {
-            typed: Box::new(typed.clone()),
+            typed: Box::new(typed),
             length: length.map(|length| length as u32)
         }
     },
@@ -468,7 +487,6 @@ extern {
         ISize => lexer::Tok::ISize { value : <i64> },
         Float => lexer::Tok::Float { value : <u64> },
         Identifier => lexer::Tok::Identifier { value : <String> },
-        AtIdentifier => lexer::Tok::AtIdentifier { value : <String> },
         CapitalIdentifier => lexer::Tok::CapitalIdentifier { value : <String> },
         String => lexer::Tok::String { value : <String> },
     }

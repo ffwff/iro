@@ -7,10 +7,9 @@ use crate::runtime;
 use crate::ssa;
 use crate::ssa::visitor::TopLevelArch;
 use cranelift_module::FuncOrDataId;
-use std::cell::RefCell;
 
-pub mod pipeline;
 pub mod optcell;
+pub mod pipeline;
 
 pub fn parse_to_ssa(input: &str, arch: TopLevelArch) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(input);

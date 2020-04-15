@@ -51,7 +51,7 @@ impl Error {
         line_contents.push(&source[row_start..source.len()]);
         {
             let row = current_span.0.row;
-            println!(" {}:{} | {}", row + 1, col+1, line_contents[row]);
+            println!(" {}:{} | {}", row + 1, col + 1, line_contents[row]);
         }
     }
 }
@@ -81,7 +81,9 @@ impl From<LalrParseError> for Error {
                 error: Box::new(ParseError::UnrecognizedToken { token, expected }),
                 span: (start, end),
             },
-            LalrParseError::ExtraToken { token: (start, token, end) } => Error {
+            LalrParseError::ExtraToken {
+                token: (start, token, end),
+            } => Error {
                 error: Box::new(ParseError::ExtraToken(token)),
                 span: (start, end),
             },

@@ -7,7 +7,6 @@ use crate::ssa::isa;
 use crate::ssa::isa::*;
 use crate::utils::optcell::OptCell;
 use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -27,16 +26,17 @@ pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<NodeBox>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
+    pub structs: HashMap<Rc<str>, Rc<StructData>>,
     pub pointer_type: Type,
-    pub generic_fat_pointer_struct: StructData,
+    pub builtins: Builtins,
 }
 
 impl TopLevelInfo {
     pub fn new(arch: TopLevelArch) -> Self {
         let pointer_type = Type::int_from_bits(arch.pointer_bits).unwrap();
         let mut generic_fat_pointer_struct = StructData::new(Rc::from("(fat pointer)"));
-        generic_fat_pointer_struct.append_type(Rc::from("address"), pointer_type.clone());
-        generic_fat_pointer_struct.append_type(Rc::from("len"), pointer_type.clone());
+        generic_fat_pointer_struct.append_prim(Rc::from("address"), pointer_type.clone());
+        generic_fat_pointer_struct.append_prim(Rc::from("len"), pointer_type.clone());
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
@@ -50,7 +50,10 @@ impl TopLevelInfo {
                 Rc::from("F64") => Type::F64,
                 Rc::from("Substring") => Type::I8.dyn_slice(),
             ],
-            generic_fat_pointer_struct,
+            structs: hashmap![],
+            builtins: Builtins {
+                generic_fat_pointer_struct,
+            },
         }
     }
 }
@@ -134,7 +137,7 @@ impl<'a> SSAVisitor<'a> {
                 })
                 .collect(),
             entry,
-            generic_fat_pointer_struct: top_level.generic_fat_pointer_struct,
+            builtins: top_level.builtins,
         }
     }
 
@@ -274,8 +277,66 @@ impl<'a> Visitor for SSAVisitor<'a> {
         unimplemented!()
     }
 
-    fn visit_class(&mut self, _n: &ClassStatement, _b: &NodeBox) -> VisitorResult {
-        unimplemented!()
+    fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult {
+        let mut struct_data = StructData::new(n.id.clone());
+        for inner in &n.inners {
+            match inner {
+                ClassInner::MemberDef { name, typed } => {
+                    self.visit_typeid(typed, b)?;
+                    let top_level = self.top_level.borrow();
+                    let typed: Type = typed.typed.borrow().clone().unwrap();
+                    struct_data.append_type(name.clone(), &typed, &top_level.builtins);
+                }
+            }
+        }
+        {
+            let mut top_level = self.top_level.borrow_mut();
+            top_level.structs.insert(n.id.clone(), Rc::new(struct_data));
+        }
+        Ok(())
+    }
+
+    fn visit_class_init(&mut self, n: &ClassInitExpr, b: &NodeBox) -> VisitorResult {
+        let struct_data_rc = {
+            let top_level = self.top_level.borrow();
+            if let Some(struct_data_rc) = top_level.structs.get(&n.id) {
+                struct_data_rc.clone()
+            } else {
+                return Err(Error::UnknownType(n.id.clone()).into_compiler_error(b));
+            }
+        };
+        let retvar = self.context.insert_var(Type::Struct(StructType(struct_data_rc.clone())));
+        self.with_block_mut(|block| {
+            block.ins.push(Ins::new(retvar, InsType::LoadStruct));
+        });
+        let struct_data: &StructData = struct_data_rc.borrow();
+        for (name, expr) in &n.inits {
+            expr.visit(self)?;
+            let right = self.last_retvar.take().unwrap();
+            if let Some((field_name, field_type)) = struct_data.values().get_key_value(name) {
+                if self.context.variables[right] != field_type.typed {
+                    return Err(Error::IncompatibleType {
+                        got: self.context.variables[right].clone(),
+                        expected: field_type.typed.clone(),
+                    }
+                    .into_compiler_error(b));
+                }
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(
+                        0,
+                        InsType::MemberReferenceStore {
+                            left: retvar,
+                            name: field_name.clone(),
+                            right,
+                        },
+                    ));
+                });
+            } else {
+                unimplemented!()
+            }
+        }
+        self.last_retvar = Some(retvar);
+        Ok(())
     }
 
     fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult {
@@ -966,8 +1027,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     if self.context.variables[var] != self.context.variables[right] {
                         return Err(Error::IncompatibleType {
                             got: self.context.variables[right].clone(),
-                            expected: self.context.variables[var].clone()
-                        }.into_compiler_error(b));
+                            expected: self.context.variables[var].clone(),
+                        }
+                        .into_compiler_error(b));
                     }
                     match &n.op {
                         BinOp::Asg => {
@@ -1162,19 +1224,24 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let left_var = self.last_retvar.take().unwrap();
         match &n.right {
             MemberExprArm::Identifier(string) => {
-                let rettype = match &self.context.variables[left_var] {
+                let (string, rettype) = match &self.context.variables[left_var] {
                     Type::Struct(struct_data) => {
-                        if let Some(var_data) = struct_data.0.values().get(string) {
-                            var_data.typed.clone()
+                        // Reuse identifier owned by struct_data for faster lookups
+                        if let Some((named, var_data)) =
+                            struct_data.0.values().get_key_value(string)
+                        {
+                            (named.clone(), var_data.typed.clone())
                         } else {
                             unimplemented!()
                         }
                     }
                     typed if typed.is_fat_pointer() => {
                         let top_level = self.top_level.borrow();
-                        let struct_data = &top_level.generic_fat_pointer_struct;
-                        if let Some(var_data) = struct_data.values().get(string) {
-                            var_data.typed.clone()
+                        let struct_data = &top_level.builtins.generic_fat_pointer_struct;
+                        // Reuse identifier owned by struct_data for faster lookups
+                        if let Some((named, var_data)) = struct_data.values().get_key_value(string)
+                        {
+                            (named.clone(), var_data.typed.clone())
                         } else {
                             return Err(
                                 Error::UnknownMemberRef(string.clone()).into_compiler_error(b)

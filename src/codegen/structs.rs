@@ -1,11 +1,15 @@
-use crate::ssa::isa::Type;
+use crate::ssa::isa::{Type, Builtins};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::cmp::max;
+
+fn align(value: usize, to: usize) -> usize {
+    (value + to - 1) & !(to - 1)
+}
 
 #[derive(Debug, Clone)]
 pub struct StructFieldData {
     pub offset: usize,
-    pub multiplier: usize,
     pub typed: Type,
 }
 
@@ -23,8 +27,10 @@ impl PrimitiveType {
         match typed {
             Type::I8 => Some(PrimitiveType::I8),
             Type::I16 => Some(PrimitiveType::I16),
-            Type::I32 | Type::I32Ptr(_) => Some(PrimitiveType::I32),
-            Type::I64 | Type::I64Ptr(_) => Some(PrimitiveType::I64),
+            Type::I32 => Some(PrimitiveType::I32),
+            Type::I32Ptr(_) if !typed.is_fat_pointer() => Some(PrimitiveType::I32),
+            Type::I64 => Some(PrimitiveType::I64),
+            Type::I64Ptr(_) if !typed.is_fat_pointer() => Some(PrimitiveType::I64),
             Type::F64 => Some(PrimitiveType::F64),
             _ => None,
         }
@@ -44,6 +50,7 @@ impl PrimitiveType {
 pub trait AggregateData {
     fn flattened_fields(&self) -> &Vec<PrimitiveTypeField>;
     fn size_of(&self) -> usize;
+    fn align_of(&self) -> usize;
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -59,6 +66,7 @@ pub struct StructData {
     values: HashMap<Rc<str>, StructFieldData>,
     flattened_fields: Vec<PrimitiveTypeField>,
     size_of: usize,
+    align_of: usize,
     name: Rc<str>,
 }
 
@@ -68,6 +76,7 @@ impl StructData {
             values: HashMap::new(),
             flattened_fields: vec![],
             size_of: 0,
+            align_of: 0,
             name,
         }
     }
@@ -80,32 +89,62 @@ impl StructData {
         &self.values
     }
 
-    pub fn append_array(&mut self, name: Rc<str>, typed: Type, multiplier: usize) {
-        assert!(multiplier > 0);
-        fn align(value: usize, to: usize) -> usize {
-            (value + to - 1) & !(to - 1)
-        }
+    pub fn append_prim(&mut self, name: Rc<str>, typed: Type) {
         let primitive_type = PrimitiveType::from_type(&typed).unwrap();
         // TODO: flatten structs in typed
         self.size_of = align(self.size_of, primitive_type.bytes());
         self.flattened_fields.push(PrimitiveTypeField {
             offset: self.size_of,
-            multiplier,
+            multiplier: 1,
             typed: primitive_type,
         });
         self.values.insert(
             name,
             StructFieldData {
                 offset: self.size_of,
-                multiplier,
                 typed,
             },
         );
-        self.size_of += primitive_type.bytes() * multiplier;
+        self.size_of += primitive_type.bytes();
+        self.align_of = max(self.align_of, primitive_type.bytes());
     }
 
-    pub fn append_type(&mut self, name: Rc<str>, typed: Type) {
-        self.append_array(name, typed, 1)
+    pub fn append_aggregate_data(
+        &mut self,
+        name: Rc<str>,
+        typed: Type,
+        aggregate_data: &dyn AggregateData
+    ) {
+        let struct_offset = align(self.size_of, aggregate_data.align_of());
+        for field in aggregate_data.flattened_fields() {
+            self.flattened_fields.push(PrimitiveTypeField {
+                offset: struct_offset + field.offset,
+                multiplier: field.multiplier,
+                typed: field.typed,
+            });
+            self.align_of = max(self.align_of, field.typed.bytes());
+        }
+        self.values.insert(
+            name,
+            StructFieldData {
+                offset: struct_offset,
+                typed,
+            },
+        );
+        self.size_of = struct_offset + aggregate_data.size_of();
+    }
+
+    pub fn append_type(
+        &mut self,
+        name: Rc<str>,
+        typed: &Type,
+        builtins: &Builtins,
+    ) {
+        if let Some(aggregate_data) = typed.as_aggregate_data(builtins) {
+            self.append_aggregate_data(name, typed.clone(), aggregate_data)
+        } else {
+            self.append_prim(name, typed.clone())
+        }
     }
 }
 
@@ -116,6 +155,10 @@ impl AggregateData for StructData {
 
     fn size_of(&self) -> usize {
         self.size_of
+    }
+
+    fn align_of(&self) -> usize {
+        self.align_of
     }
 }
 
@@ -130,6 +173,7 @@ impl std::fmt::Display for StructData {
 pub struct ArrayData {
     flattened_fields: Vec<PrimitiveTypeField>,
     size_of: usize,
+    align_of: usize,
 }
 
 impl ArrayData {
@@ -144,6 +188,7 @@ impl ArrayData {
                 },
             ],
             size_of: typed.bytes().unwrap() * multiplier,
+            align_of: typed.bytes().unwrap(),
         }
     }
 }
@@ -155,6 +200,10 @@ impl AggregateData for ArrayData {
 
     fn size_of(&self) -> usize {
         self.size_of
+    }
+
+    fn align_of(&self) -> usize {
+        self.align_of
     }
 }
 
