@@ -340,20 +340,8 @@ CallExpr: NodeBox = {
 
 // Member expressions
 MemberExpr: NodeBox = {
-    <start:@L> <first:Term> <rest: MemberExprArm+> <end:@L> => {
-        let span = (start, end);
-        let mut memexpr = NodeBox::new(MemberExpr {
-            left: first,
-            right: rest[0].clone(),
-        }, span);
-        for right in rest.iter().skip(1) {
-            let span = memexpr.span();
-            memexpr = NodeBox::new(MemberExpr {
-                left: memexpr,
-                right: right.clone(),
-            }, span);
-        }
-        memexpr
+    <start:@L> <left:Term> <right: MemberExprArm+> <end:@L> => {
+        NodeBox::new(MemberExpr { left, right }, (start, end))
     },
     Term,
 };

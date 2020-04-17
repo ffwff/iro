@@ -178,6 +178,15 @@ pub enum Value {
     Slice(Vec<NodeBox>),
 }
 
+impl Value {
+    pub fn as_identifier(&self) -> Option<&Rc<str>> {
+        match self {
+            Value::Identifier(x) => Some(x),
+            _ => None,
+        }
+    }
+}
+
 impl Node for Value {
     debuggable!();
     visitable!(visit_value);
@@ -390,7 +399,7 @@ pub enum MemberExprArm {
 #[derive(Debug)]
 pub struct MemberExpr {
     pub left: NodeBox,
-    pub right: MemberExprArm,
+    pub right: Vec<MemberExprArm>,
 }
 
 impl Node for MemberExpr {

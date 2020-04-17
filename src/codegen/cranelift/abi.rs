@@ -1,5 +1,5 @@
 use crate::codegen::cranelift::translator::*;
-use crate::codegen::structs::*;
+// use crate::codegen::structs::*;
 use crate::ssa::isa;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, Signature};
@@ -47,7 +47,8 @@ fn generate_function_signature_x86_64_sysv<'a, F>(
             load_function(LoadFunctionArg::PrimitiveArg(idx));
             sig.params.push(AbiParam::new(cranelift_type));
         } else {
-            let aggregate_data: &dyn AggregateData = arg.as_aggregate_data(&program.builtins).unwrap();
+            let aggregate_data: &dyn AggregateData =
+                arg.as_aggregate_data(&program.builtins).unwrap();
             if aggregate_data.size_of() <= 8 {
                 // For small structs, we pass the struct as a 64-bit integer parameter
                 load_function(LoadFunctionArg::StructArg {

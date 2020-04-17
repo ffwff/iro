@@ -3,7 +3,6 @@ use crate::codegen::cranelift::translator::*;
 use crate::codegen::structs::*;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
-use crate::ssa::visitor::TopLevelArch;
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
@@ -60,7 +59,23 @@ where
         }
     }
 
+    pub fn ir_to_cranelift_type(&self, typed: &isa::Type) -> Option<types::Type> {
+        match typed {
+            isa::Type::Nil => Some(types::I32),
+            isa::Type::Bool => Some(types::B1),
+            isa::Type::I8 => Some(types::I8),
+            isa::Type::I32 => Some(types::I32),
+            isa::Type::I64 => Some(types::I64),
+            isa::Type::Pointer(_) if !typed.is_fat_pointer() => Some(self.pointer_type()),
+            isa::Type::F64 => Some(types::F64),
+            _ => None,
+        }
+    }
+
     pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
+        for (_, astruct) in &program.structs {
+            self.build_struct_data(astruct);
+        }
         let mut builder_context = FunctionBuilderContext::new();
         if build_standalone {
             for (func_name, context) in &program.contexts {
@@ -97,6 +112,13 @@ where
 
     fn frontend_config(&self) -> TargetFrontendConfig {
         self.module.isa().frontend_config()
+    }
+
+    fn build_struct_data(&self, typed: &StructType) {
+        if typed.data.borrow().is_some() {
+            break;
+        }
+        // 
     }
 
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
@@ -178,7 +200,7 @@ where
         };
 
         for (idx, typed) in context.variables.iter().enumerate() {
-            if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
+            if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
                 builder.declare_var(Variable::with_u32(idx as u32), cranelift_type);
             }
         }
@@ -191,10 +213,11 @@ where
             .zip(stack_loads_by_var.iter())
             .enumerate()
         {
-            if let Some(cranelift_type) = ir_to_cranelift_type(&typed) {
+            if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
             } else {
-                let aggregate_data: &dyn AggregateData = typed.as_aggregate_data(&program.builtins).unwrap();
+                let aggregate_data: &dyn AggregateData =
+                    typed.as_aggregate_data(&program.builtins).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     aggregate_data.size_of() as u32,
@@ -307,12 +330,10 @@ where
                         .declare_data_in_data(bytes_data_id, &mut data_ctx);
                     let mut struct_builder =
                         StructBuilder::new(&ins_context.program.builtins.generic_fat_pointer_struct);
-                    let ptr_offset = struct_builder.insert_zeroed("address").unwrap();
-                    struct_builder
-                        .insert("len", &x.len().to_ne_bytes())
-                        .unwrap();
+                    struct_builder.append_zeroed(); // address
+                    struct_builder.append(&x.len().to_ne_bytes()); // len
                     data_ctx.define(struct_builder.into_vec().into_boxed_slice());
-                    data_ctx.write_data_addr(ptr_offset as u32, bytes_value, 0);
+                    data_ctx.write_data_addr(0u32, bytes_value, 0);
                     self.module
                         .define_data(data_id, &data_ctx)
                         .expect("able to define data for string");
@@ -609,77 +630,10 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::MemberReference { left, right } => {
-                let struct_data: &StructData = match &context.variables[*left] {
-                    isa::Type::Struct(isa::StructType(data)) => data.borrow(),
-                    typed if typed.is_fat_pointer() => {
-                        &ins_context.program.builtins.generic_fat_pointer_struct
-                    }
-                    _ => unreachable!(),
-                };
-                let field_data = struct_data.values().get(right).unwrap();
-                let pointer = builder.use_var(to_var(*left));
-                let tmp;
-                if let Some(cranelift_type) = ir_to_cranelift_type(&field_data.typed) {
-                    tmp = builder.ins().load(
-                        cranelift_type,
-                        MemFlags::trusted(),
-                        pointer,
-                        field_data.offset as i32,
-                    );
-                } else if let Some(aggregate_data) = field_data.typed.as_aggregate_data(&ins_context.program.builtins) {
-                    debug_assert!(aggregate_data.size_of() <= struct_data.size_of());
-                    let slot = builder.create_stack_slot(StackSlotData::new(
-                        StackSlotKind::ExplicitSlot,
-                        aggregate_data.size_of() as u32,
-                    ));
-                    let src = builder.ins().iadd_imm(pointer, field_data.offset as i64);
-                    builder.declare_var(to_var(ins.retvar().unwrap()), self.pointer_type());
-                    tmp = builder.ins().stack_addr(self.pointer_type(), slot, 0);
-                    builder.emit_small_memory_copy(
-                        self.frontend_config(),
-                        tmp,
-                        src,
-                        aggregate_data.size_of() as u64,
-                        0,
-                        0,
-                        true,
-                    );
-                } else {
-                    unreachable!()
-                }
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                unimplemented!();
             }
             isa::InsType::MemberReferenceStore { left, name, right } => {
-                let struct_data: &StructData = match &context.variables[*left] {
-                    isa::Type::Struct(isa::StructType(data)) => data.borrow(),
-                    typed if typed.is_fat_pointer() => {
-                        &ins_context.program.builtins.generic_fat_pointer_struct
-                    }
-                    _ => unreachable!(),
-                };
-                let field_data = struct_data.values().get(name).unwrap();
-                let pointer = builder.use_var(to_var(*left));
-                if let Some(aggregate_data) = context.variables[*right].as_aggregate_data(&ins_context.program.builtins) {
-                    let pointer_offset = builder.ins().iadd_imm(pointer, field_data.offset as i64);
-                    let right = builder.use_var(to_var(*right));
-                    builder.emit_small_memory_copy(
-                        self.frontend_config(),
-                        pointer_offset,
-                        right,
-                        aggregate_data.size_of() as u64,
-                        0,
-                        0,
-                        true,
-                    );
-                } else {
-                    let right = builder.use_var(to_var(*right));
-                    builder.ins().store(
-                        MemFlags::trusted(),
-                        right,
-                        pointer,
-                        field_data.offset as i32,
-                    );
-                }
+                unimplemented!();
             }
             isa::InsType::Cast { var, typed } => {
                 let tmp = match (&context.variables[*var], typed) {
@@ -692,11 +646,11 @@ where
                         if left_size < right_size {
                             builder
                                 .ins()
-                                .sextend(ir_to_cranelift_type(&right).unwrap(), var)
+                                .sextend(self.ir_to_cranelift_type(&right).unwrap(), var)
                         } else if left_size > right_size {
                             builder
                                 .ins()
-                                .ireduce(ir_to_cranelift_type(&right).unwrap(), var)
+                                .ireduce(self.ir_to_cranelift_type(&right).unwrap(), var)
                         } else {
                             var
                         }
@@ -705,156 +659,8 @@ where
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::PointerIndex { var, index } => {
-                let retvar = ins.retvar().unwrap();
-                let ptr = builder.use_var(to_var(*var));
-                let index_var = builder.use_var(to_var(*index));
-                let multiplicand = builder
-                    .ins()
-                    .imul_imm(index_var, context.variables[retvar].bytes().unwrap() as i64);
-                let indexed = builder.ins().iadd(ptr, multiplicand);
-                let tmp = builder.ins().load(
-                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
-                    MemFlags::trusted(),
-                    indexed,
-                    0,
-                );
-                builder.def_var(to_var(retvar), tmp);
-            }
-            isa::InsType::PointerIndexC { var, offset } => {
-                let retvar = ins.retvar().unwrap();
-                let ptr = builder.use_var(to_var(*var));
-                let tmp = builder.ins().load(
-                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
-                    MemFlags::trusted(),
-                    ptr,
-                    (*offset) * context.variables[retvar].bytes().unwrap() as i32,
-                );
-                builder.def_var(to_var(retvar), tmp);
-            }
-            isa::InsType::FatIndex { var, index } => {
-                let retvar = ins.retvar().unwrap();
-                let fat_ptr = builder.use_var(to_var(*var));
-                let ptr = builder
-                    .ins()
-                    .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
-                let index_var = builder.use_var(to_var(*index));
-                let return_instance = context.variables[*var].instance_type().unwrap();
-                let multiplicand = builder
-                    .ins()
-                    .imul_imm(index_var, return_instance.bytes().unwrap() as i64);
-                let indexed = builder.ins().iadd(ptr, multiplicand);
-                let tmp = builder.ins().load(
-                    ir_to_cranelift_type(return_instance).unwrap(),
-                    MemFlags::trusted(),
-                    indexed,
-                    0,
-                );
-                builder.def_var(to_var(retvar), tmp);
-            }
-            isa::InsType::FatIndexC { var, offset } => {
-                let retvar = ins.retvar().unwrap();
-                let fat_ptr = builder.use_var(to_var(*var));
-                let ptr = builder
-                    .ins()
-                    .load(self.pointer_type(), MemFlags::trusted(), fat_ptr, 0);
-                let tmp = builder.ins().load(
-                    ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
-                    MemFlags::trusted(),
-                    ptr,
-                    (*offset) * context.variables[retvar].bytes().unwrap() as i32,
-                );
-                builder.def_var(to_var(retvar), tmp);
-            }
-            isa::InsType::BoundsCheck { var, .. } | isa::InsType::BoundsCheckC { var, .. } => {
-                let len = match &context.variables[*var] {
-                    maybe_fat if maybe_fat.is_fat_pointer() => {
-                        let fat_ptr = builder.use_var(to_var(*var));
-                        builder.ins().load(
-                            self.pointer_type(),
-                            MemFlags::trusted(),
-                            fat_ptr,
-                            self.pointer_type().bytes() as i32,
-                        )
-                    }
-                    isa::Type::Slice(slice_rc) => {
-                        let slice_type: &isa::SliceType = &slice_rc.borrow();
-                        builder
-                            .ins()
-                            .iconst(self.pointer_type(), slice_type.len.unwrap() as i64)
-                    }
-                    _ => unreachable!(),
-                };
-                let index_var = match &ins.typed {
-                    isa::InsType::BoundsCheck { index, .. } => builder.use_var(to_var(*index)),
-                    isa::InsType::BoundsCheckC { offset, .. } => {
-                        builder.ins().iconst(self.pointer_type(), *offset as i64)
-                    }
-                    _ => unreachable!(),
-                };
-                let tmp = builder.ins().icmp(IntCC::UnsignedLessThan, index_var, len);
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-            }
-            isa::InsType::Trap(cond) => {
-                match cond {
-                    isa::TrapType::BoundsCheck => {
-                        // TODO: generate function call
-                        builder.ins().trap(TrapCode::OutOfBounds);
-                    }
-                }
-            }
-            isa::InsType::PointerStore { var, index, right } => {
-                let ptr = builder.use_var(to_var(*var));
-                let index_var = builder.use_var(to_var(*index));
-                let right_var = builder.use_var(to_var(*right));
-                let multiplicand = builder.ins().imul_imm(
-                    index_var,
-                    context.variables[*var].instance_bytes().unwrap() as i64,
-                );
-                let indexed = builder.ins().iadd(ptr, multiplicand);
-                builder
-                    .ins()
-                    .store(MemFlags::trusted(), right_var, indexed, 0);
-            }
             x => unimplemented!("{:?}", x),
         }
-    }
-}
-
-#[derive(PartialEq, Clone, Copy)]
-pub enum OptLevel {
-    None,
-    Speed,
-    SpeedAndSize,
-}
-
-pub struct Settings {
-    pub opt_level: OptLevel,
-}
-
-impl Settings {
-    pub fn default() -> Self {
-        Settings {
-            opt_level: OptLevel::None,
-        }
-    }
-
-    pub fn generate_arch(&self) -> (TopLevelArch, Box<dyn TargetIsa>) {
-        let mut flag_builder = settings::builder();
-        match self.opt_level {
-            OptLevel::None => flag_builder.set("opt_level", "none"),
-            OptLevel::Speed => flag_builder.set("opt_level", "speed"),
-            OptLevel::SpeedAndSize => flag_builder.set("opt_level", "speed_and_size"),
-        }
-        .unwrap();
-        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
-            panic!("host machine is not supported: {}", msg);
-        });
-        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
-        let arch = TopLevelArch {
-            pointer_bits: isa.pointer_type().bits() as usize,
-        };
-        (arch, isa)
     }
 }
 

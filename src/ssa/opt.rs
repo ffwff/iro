@@ -20,7 +20,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     if context.blocks.is_empty() {
         return Flow::Break;
     }
-    dbg_println!("begin: {:#?}", context);
+    // dbg_println!("begin: {:#?}", context);
 
     let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
     let num_blocks = context.blocks.len();
@@ -294,7 +294,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
             let mut version_stack = vec![var];
             let mut version = 1;
             rename_variables(var, 0, &mut version, &mut version_stack, context, &dom_tree);
-            dbg_println!("rename var {} ==> {:#?}", var, context);
+            // dbg_println!("rename var {} ==> {:#?}", var, context);
         }
     } else {
         let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
@@ -361,7 +361,7 @@ macro_rules! ins_index {
 }
 
 pub fn fold_constants(context: &mut Context) -> Flow {
-    dbg_println!("before folding: {:#?}", context);
+    // dbg_println!("before folding: {:#?}", context);
     let mut var_to_const = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &mut block.ins {
@@ -412,20 +412,11 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                 InsType::Gte((left, right)) => {
                     ins_to_const_ins!(*left, *right, var_to_const, ins, GteC, gte)
                 }
-                InsType::PointerIndex { var, index } => {
-                    ins_index!(ins, index, var, var_to_const, context, PointerIndexC)
-                }
-                InsType::FatIndex { var, index } => {
-                    ins_index!(ins, index, var, var_to_const, context, FatIndexC)
-                }
-                InsType::BoundsCheck { var, index } => {
-                    ins_index!(ins, index, var, var_to_const, context, BoundsCheckC)
-                }
                 _ => (),
             }
         }
     }
-    dbg_println!("after folding: {:#?}", context);
+    // dbg_println!("after folding: {:#?}", context);
     Flow::Continue
 }
 
@@ -474,7 +465,7 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
             *var = Type::NeverUsed;
         }
     }
-    dbg_println!("after tracing: {:#?}", context);
+    // dbg_println!("after tracing: {:#?}", context);
     Flow::Continue
 }
 
@@ -493,11 +484,12 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
         // Chain postlude (if it exists)
-        let postlude_chain = [block.postlude.clone()];
-        let mut postlude_iter = postlude_chain.iter();
-        if block.postlude.typed == InsType::Nop {
-            postlude_iter.next();
-        }
+        let postlude_chain = if block.postlude.typed != InsType::Nop {
+            Some(&block.postlude)
+        } else {
+            None
+        };
+        let postlude_iter = postlude_chain.into_iter();
         // Check body + postlude
         for ins in block.ins.iter().chain(postlude_iter) {
             if let Some(retvar) = ins.retvar() {
@@ -539,7 +531,7 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         }
     }
 
-    dbg_println!("after dfa: {:#?}", context);
+    // dbg_println!("after dfa: {:#?}", context);
     Flow::Continue
 }
 
@@ -569,7 +561,7 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
     if context.blocks.len() < 2 {
         return Flow::Continue;
     }
-    dbg_println!("cleanup: {:#?}", context);
+    // dbg_println!("cleanup: {:#?}", context);
 
     // map of new block idx -> old block idx
     let mut idx_map: Vec<usize> = (0..context.blocks.len()).collect();
@@ -661,7 +653,7 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
         block.succs = succs;
     }
 
-    dbg_println!("after cleanup: {:#?}", context);
+    // dbg_println!("after cleanup: {:#?}", context);
     Flow::Continue
 }
 
@@ -670,7 +662,6 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
         return Flow::Continue;
     }
 
-    dbg_println!("before phis: {:#?}", context);
     let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for block in &context.blocks {
         for ins in &block.ins {
@@ -710,6 +701,5 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
             }
         }
     }
-    dbg_println!("after phis: {:#?}", context);
     Flow::Continue
 }

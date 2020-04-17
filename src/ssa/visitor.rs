@@ -1,64 +1,48 @@
 use crate::ast;
 use crate::ast::*;
-use crate::codegen::structs::*;
+use crate::compiler;
 use crate::ssa::env;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
 use crate::ssa::isa::*;
 use crate::utils::optcell::OptCell;
+use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone)]
-pub struct TopLevelArch {
-    pub pointer_bits: usize,
-}
-
-impl TopLevelArch {
-    pub fn empty() -> Self {
-        TopLevelArch { pointer_bits: 32 }
-    }
-}
-
-#[derive(Debug)]
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<NodeBox>>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
-    pub structs: HashMap<Rc<str>, Rc<StructData>>,
-    pub pointer_type: Type,
     pub builtins: Builtins,
 }
 
 impl TopLevelInfo {
-    pub fn new(arch: TopLevelArch) -> Self {
-        let pointer_type = Type::int_from_bits(arch.pointer_bits).unwrap();
-        let mut generic_fat_pointer_struct = StructData::new(Rc::from("(fat pointer)"));
-        generic_fat_pointer_struct.append_prim(Rc::from("address"), pointer_type.clone());
-        generic_fat_pointer_struct.append_prim(Rc::from("len"), pointer_type.clone());
+    pub fn new() -> Self {
+        let mut generic_fat_pointer_struct = StructType::new(Rc::from("(fat pointer)"));
+        generic_fat_pointer_struct.append(Rc::from("address"), Type::ISize);
+        generic_fat_pointer_struct.append(Rc::from("len"), Type::ISize);
         TopLevelInfo {
             defstmts: HashMap::new(),
             func_contexts: HashMap::new(),
-            pointer_type: pointer_type.clone(),
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
                 Rc::from("I8") => Type::I8,
                 Rc::from("I32") => Type::I32,
                 Rc::from("I64") => Type::I64,
-                Rc::from("ISize") => pointer_type,
+                Rc::from("ISize") => Type::ISize,
                 Rc::from("F64") => Type::F64,
                 Rc::from("Substring") => Type::I8.dyn_slice(),
             ],
-            structs: hashmap![],
             builtins: Builtins {
-                generic_fat_pointer_struct,
+                structs: hashmap![],
+                generic_fat_pointer_struct: Rc::new(generic_fat_pointer_struct),
             },
         }
     }
 }
 
-#[derive(Debug)]
 pub struct SSAVisitor<'a> {
     context: Context,
     envs: Vec<Env>,
@@ -132,7 +116,7 @@ impl<'a> SSAVisitor<'a> {
                     if let Some(value) = value {
                         (key, value)
                     } else {
-                        unreachable!("unknown function context: {:?}", key)
+                        unreachable!("unknown function context")
                     }
                 })
                 .collect(),
@@ -199,36 +183,77 @@ impl<'a> SSAVisitor<'a> {
         Ok(())
     }
 
-    fn insert_bounds_check(&mut self, left_var: Variable, idx_var: Variable) {
-        let trap_block = self.context.blocks.len();
-        let body_block = self.context.blocks.len() + 1;
-        let condvar = self.context.insert_var(Type::Bool);
+    fn insert_cast(&mut self, left_var: Variable, mut typed: Type) -> Variable {
+        let casted = self.context.insert_var(typed.clone());
         self.with_block_mut(|block| {
             block.ins.push(Ins::new(
-                condvar,
-                InsType::BoundsCheck {
+                casted,
+                InsType::Cast {
                     var: left_var,
-                    index: idx_var,
-                },
-            ));
-            block.ins.push(Ins::new(
-                0,
-                InsType::IfJmp {
-                    condvar: condvar,
-                    iftrue: body_block,
-                    iffalse: trap_block,
+                    typed: std::mem::replace(&mut typed, Type::NoReturn),
                 },
             ));
         });
-        // Trap block
-        self.context.new_block();
-        self.with_block_mut(|block| {
-            block
-                .ins
-                .push(Ins::new(0, InsType::Trap(TrapType::BoundsCheck)));
-        });
-        // Body continuation block
-        self.context.new_block();
+        casted
+    }
+
+    fn build_member_expr(
+        &mut self,
+        n: &MemberExpr,
+        b: &NodeBox,
+    ) -> Result<InsType, compiler::Error> {
+        n.left.visit(self)?;
+        let left_var = self.last_retvar.take().unwrap();
+        let mut indices: Vec<MemberExprIndex> = Vec::with_capacity(n.right.len());
+        for right in &n.right {
+            let last_typed = indices
+                .last()
+                .map(|index| &index.typed)
+                .unwrap_or_else(|| &self.context.variables[left_var])
+                .clone();
+            match right {
+                MemberExprArm::Identifier(string) => {
+                    if let Some(struct_type) = self.get_struct_type(&last_typed) {
+                        if let Some(field) = struct_type.vars().get(string) {
+                            indices.push(MemberExprIndex {
+                                var: MemberExprIndexVar::Index(field.idx),
+                                typed: field.typed.clone(),
+                            });
+                        }
+                    } else {
+                        return Err(Error::InvalidLHS.into_compiler_error(b));
+                    }
+                }
+                MemberExprArm::Index(idx) => {
+                    idx.visit(self)?;
+                    let mut idx_var = self.last_retvar.take().unwrap();
+                    assert!(self.context.variables[idx_var].is_int());
+                    if self.context.variables[idx_var] != Type::ISize {
+                        idx_var = self.insert_cast(idx_var, Type::ISize);
+                    }
+                    let typed = last_typed.instance_type().unwrap().clone();
+                    indices.push(MemberExprIndex {
+                        var: MemberExprIndexVar::Variable(idx_var),
+                        typed,
+                    });
+                }
+            }
+        }
+        Ok(InsType::MemberReference {
+            left: left_var,
+            indices,
+        })
+    }
+
+    fn get_struct_type(&self, typed: &Type) -> Option<Rc<StructType>> {
+        match typed {
+            maybe_ptr if maybe_ptr.is_fat_pointer() => {
+                let top_level = self.top_level.borrow();
+                Some(top_level.builtins.generic_fat_pointer_struct.clone())
+            }
+            Type::Struct(struct_type) => Some(struct_type.clone().into()),
+            _ => None,
+        }
     }
 }
 
@@ -251,7 +276,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
 
         {
-            let top_level: &TopLevelInfo = &self.top_level.borrow();
+            let top_level = self.top_level.borrow();
             for (_, defstmt_vec) in &top_level.defstmts {
                 for boxed in defstmt_vec {
                     let defstmt: &DefStatement =
@@ -278,46 +303,47 @@ impl<'a> Visitor for SSAVisitor<'a> {
     }
 
     fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult {
-        let mut struct_data = StructData::new(n.id.clone());
+        let mut struct_type = StructType::new(n.id.clone());
         for inner in &n.inners {
             match inner {
                 ClassInner::MemberDef { name, typed } => {
                     self.visit_typeid(typed, b)?;
-                    let top_level = self.top_level.borrow();
                     let typed: Type = typed.typed.borrow().clone().unwrap();
-                    struct_data.append_type(name.clone(), &typed, &top_level.builtins);
+                    struct_type.append(name.clone(), typed);
                 }
             }
         }
         {
             let mut top_level = self.top_level.borrow_mut();
-            top_level.structs.insert(n.id.clone(), Rc::new(struct_data));
+            top_level
+                .builtins
+                .structs
+                .insert(n.id.clone(), UniqueRc::new(struct_type));
         }
         Ok(())
     }
 
     fn visit_class_init(&mut self, n: &ClassInitExpr, b: &NodeBox) -> VisitorResult {
-        let struct_data_rc = {
+        let struct_data = {
             let top_level = self.top_level.borrow();
-            if let Some(struct_data_rc) = top_level.structs.get(&n.id) {
-                struct_data_rc.clone()
+            if let Some(struct_data) = top_level.builtins.structs.get(&n.id) {
+                struct_data.clone()
             } else {
                 return Err(Error::UnknownType(n.id.clone()).into_compiler_error(b));
             }
         };
-        let retvar = self.context.insert_var(Type::Struct(StructType(struct_data_rc.clone())));
+        let retvar = self.context.insert_var(Type::Struct(struct_data.clone()));
         self.with_block_mut(|block| {
             block.ins.push(Ins::new(retvar, InsType::LoadStruct));
         });
-        let struct_data: &StructData = struct_data_rc.borrow();
         for (name, expr) in &n.inits {
             expr.visit(self)?;
             let right = self.last_retvar.take().unwrap();
-            if let Some((field_name, field_type)) = struct_data.values().get_key_value(name) {
-                if self.context.variables[right] != field_type.typed {
+            if let Some(field) = struct_data.vars().get(name) {
+                if self.context.variables[right] != field.typed {
                     return Err(Error::IncompatibleType {
                         got: self.context.variables[right].clone(),
-                        expected: field_type.typed.clone(),
+                        expected: field.typed.clone(),
                     }
                     .into_compiler_error(b));
                 }
@@ -326,7 +352,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         0,
                         InsType::MemberReferenceStore {
                             left: retvar,
-                            name: field_name.clone(),
+                            indices: vec![MemberExprIndex {
+                                var: MemberExprIndexVar::Index(field.idx),
+                                typed: field.typed.clone(),
+                            }],
                             right,
                         },
                     ));
@@ -694,152 +723,146 @@ impl<'a> Visitor for SSAVisitor<'a> {
     }
 
     fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult {
-        if let Some(id) = n.callee.borrow().downcast_ref::<Value>() {
-            if let Value::Identifier(id) = &id {
-                let mut args = Vec::with_capacity(n.args.len());
-                let mut arg_types = Vec::with_capacity(n.args.len());
-                for arg in &n.args {
-                    arg.visit(self)?;
-                    let retvar = self.last_retvar.take().unwrap();
-                    args.push(retvar);
-                    arg_types.push(self.context.variables[retvar].clone());
-                }
-                let mut func_name = Rc::new(FunctionName {
-                    name: id.clone(),
-                    arg_types: arg_types.clone(),
-                });
+        if let Some(id) = n
+            .callee
+            .borrow()
+            .downcast_ref::<Value>()
+            .map(|val| val.as_identifier())
+            .flatten()
+        {
+            let mut args = Vec::with_capacity(n.args.len());
+            let mut arg_types = Vec::with_capacity(n.args.len());
+            for arg in &n.args {
+                arg.visit(self)?;
+                let retvar = self.last_retvar.take().unwrap();
+                args.push(retvar);
+                arg_types.push(self.context.variables[retvar].clone());
+            }
+            let mut func_name = Rc::new(FunctionName {
+                name: id.clone(),
+                arg_types: arg_types.clone(),
+            });
 
-                let rettype = {
-                    let top_level = self.top_level.borrow_mut();
-                    if let Some((key, maybe_context)) =
-                        top_level.func_contexts.get_key_value(&func_name)
-                    {
-                        if let Some(context) = maybe_context {
-                            func_name = key.clone();
-                            Some(context.rettype.clone())
-                        } else {
-                            None
-                        }
-                    } else if top_level.defstmts.contains_key(id) {
-                        None
+            let rettype = {
+                let top_level = self.top_level.borrow_mut();
+                if let Some((key, maybe_context)) =
+                    top_level.func_contexts.get_key_value(&func_name)
+                {
+                    if let Some(context) = maybe_context {
+                        func_name = key.clone();
+                        Some(context.rettype.clone())
                     } else {
-                        return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
+                        None
                     }
-                };
-
-                let rettype = if let Some(rettype) = rettype {
-                    rettype
+                } else if top_level.defstmts.contains_key(id) {
+                    None
                 } else {
-                    let (defstmt, func_insert) = {
-                        let mut top_level = self.top_level.borrow_mut();
-                        let mut usable_defstmt = None;
-                        if let Some(vec) = top_level.defstmts.get(id) {
-                            for boxed in vec {
-                                let defstmt = boxed.rc().downcast_rc::<DefStatement>().unwrap();
-                                match defstmt.compatibility_with_args(&arg_types) {
-                                    ArgCompatibility::None => (),
-                                    ArgCompatibility::WithCast(casts) => {
-                                        for (idx, typed) in casts {
-                                            let retvar = self.context.insert_var(typed.clone());
-                                            let var = args[idx];
+                    return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
+                }
+            };
 
-                                            args[idx] = retvar;
-                                            arg_types[idx] = typed.clone();
-                                            Rc::get_mut(&mut func_name).unwrap().arg_types[idx] =
-                                                typed.clone();
+            let rettype = if let Some(rettype) = rettype {
+                rettype
+            } else {
+                let (defstmt, func_insert) = {
+                    let mut top_level = self.top_level.borrow_mut();
+                    let mut usable_defstmt = None;
+                    if let Some(vec) = top_level.defstmts.get(id) {
+                        for boxed in vec {
+                            let defstmt = boxed.rc().downcast_rc::<DefStatement>().unwrap();
+                            match defstmt.compatibility_with_args(&arg_types) {
+                                ArgCompatibility::None => (),
+                                ArgCompatibility::WithCast(casts) => {
+                                    for (idx, typed) in casts {
+                                        let var = args[idx];
+                                        let retvar = self.insert_cast(var, typed.clone());
 
-                                            self.with_block_mut(move |block| {
-                                                block.ins.push(Ins::new(
-                                                    retvar,
-                                                    InsType::Cast {
-                                                        var,
-                                                        typed: typed.clone(),
-                                                    },
-                                                ));
-                                            });
-                                        }
-                                        usable_defstmt = Some(defstmt.clone());
-                                        break;
+                                        args[idx] = retvar;
+                                        arg_types[idx] = typed.clone();
+                                        Rc::get_mut(&mut func_name).unwrap().arg_types[idx] =
+                                            typed.clone();
                                     }
-                                    ArgCompatibility::Full => {
-                                        usable_defstmt = Some(defstmt.clone());
-                                        break;
-                                    }
+                                    usable_defstmt = Some(defstmt.clone());
+                                    break;
+                                }
+                                ArgCompatibility::Full => {
+                                    usable_defstmt = Some(defstmt.clone());
+                                    break;
                                 }
                             }
                         }
-                        let func_insert = if top_level.func_contexts.contains_key(&func_name) {
-                            true
-                        } else {
-                            top_level.func_contexts.insert(func_name.clone(), None);
-                            false
-                        };
-                        (usable_defstmt, func_insert)
-                    };
-                    if defstmt.is_none() {
-                        return Err(Error::InvalidArguments.into_compiler_error(b));
                     }
-                    let defstmt = defstmt.unwrap();
-                    if func_insert {
-                        // The function by this name has already been declared
-                        if let Some(declared_typed) = defstmt.return_type.as_ref() {
-                            declared_typed.typed.borrow().clone().unwrap()
+                    let func_insert = if top_level.func_contexts.contains_key(&func_name) {
+                        true
+                    } else {
+                        top_level.func_contexts.insert(func_name.clone(), None);
+                        false
+                    };
+                    (usable_defstmt, func_insert)
+                };
+                if defstmt.is_none() {
+                    return Err(Error::InvalidArguments.into_compiler_error(b));
+                }
+                let defstmt = defstmt.unwrap();
+                if func_insert {
+                    // The function by this name has already been declared
+                    if let Some(declared_typed) = defstmt.return_type.as_ref() {
+                        declared_typed.typed.borrow().clone().unwrap()
+                    } else {
+                        return Err(Error::CannotInfer.into_compiler_error(b));
+                    }
+                } else {
+                    // Properly compute the return type
+                    if !defstmt.intrinsic.borrow().is_none() {
+                        if let Some(rettype) = {
+                            SSAVisitor::intrinsic_return_type(
+                                &defstmt.intrinsic.borrow(),
+                                &arg_types,
+                            )
+                        } {
+                            let context = Context::with_intrinsics(
+                                id.clone(),
+                                arg_types,
+                                rettype.clone(),
+                                defstmt.intrinsic.clone().into_inner(),
+                            );
+                            let mut top_level = self.top_level.borrow_mut();
+                            top_level
+                                .func_contexts
+                                .insert(func_name.clone(), Some(context));
+                            rettype
                         } else {
-                            return Err(Error::CannotInfer.into_compiler_error(b));
+                            return Err(Error::InternalError.into_compiler_error(b));
                         }
                     } else {
-                        // Properly compute the return type
-                        if !defstmt.intrinsic.borrow().is_none() {
-                            if let Some(rettype) = {
-                                SSAVisitor::intrinsic_return_type(
-                                    &defstmt.intrinsic.borrow(),
-                                    &arg_types,
-                                )
-                            } {
-                                let context = Context::with_intrinsics(
-                                    id.clone(),
-                                    arg_types,
-                                    rettype.clone(),
-                                    defstmt.intrinsic.clone().into_inner(),
-                                );
-                                let mut top_level = self.top_level.borrow_mut();
-                                top_level
-                                    .func_contexts
-                                    .insert(func_name.clone(), Some(context));
-                                rettype
-                            } else {
-                                return Err(Error::InternalError.into_compiler_error(b));
-                            }
-                        } else {
-                            let (func_name, context) = {
-                                let func_context = Context::with_args(id.clone(), arg_types);
-                                let mut visitor = self.derive_with_context(func_context);
-                                visitor.visit_defstmt(defstmt.borrow(), b)?;
-                                (func_name.clone(), visitor.into_context())
-                            };
-                            let mut top_level = self.top_level.borrow_mut();
-                            let rettype = context.rettype.clone();
-                            top_level.func_contexts.insert(func_name, Some(context));
-                            rettype
-                        }
+                        let (func_name, context) = {
+                            let func_context = Context::with_args(id.clone(), arg_types);
+                            let mut visitor = self.derive_with_context(func_context);
+                            visitor.visit_defstmt(defstmt.borrow(), b)?;
+                            (func_name.clone(), visitor.into_context())
+                        };
+                        let mut top_level = self.top_level.borrow_mut();
+                        let rettype = context.rettype.clone();
+                        top_level.func_contexts.insert(func_name, Some(context));
+                        rettype
                     }
-                };
-                let retvar = self.context.insert_var(rettype);
-                {
-                    let mut args = Some(args);
-                    self.with_block_mut(|block| {
-                        block.ins.push(Ins::new(
-                            retvar,
-                            InsType::Call {
-                                name: func_name.clone(),
-                                args: args.take().unwrap(),
-                            },
-                        ));
-                    });
                 }
-                self.last_retvar = Some(retvar);
-                return Ok(());
+            };
+            let retvar = self.context.insert_var(rettype);
+            {
+                let mut args = Some(args);
+                self.with_block_mut(|block| {
+                    block.ins.push(Ins::new(
+                        retvar,
+                        InsType::Call {
+                            name: func_name.clone(),
+                            args: args.take().unwrap(),
+                        },
+                    ));
+                });
             }
+            self.last_retvar = Some(retvar);
+            return Ok(());
         }
         Err(Error::InvalidLHS.into_compiler_error(b))
     }
@@ -898,174 +921,92 @@ impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult {
         match &n.op {
             BinOp::Asg | BinOp::Adds | BinOp::Subs | BinOp::Muls | BinOp::Divs | BinOp::Mods => {
-                let mut var = None;
                 let n_left = n.left.borrow();
                 if let Some(id) = n_left.downcast_ref::<ast::Value>() {
                     if let Value::Identifier(id) = &id {
-                        if let Some(env_var) = self.get_var(&id) {
+                        let var = if let Some(env_var) = self.get_var(&id) {
                             if !env_var.is_mut {
                                 return Err(
                                     Error::MutatingImmutable(id.clone()).into_compiler_error(b)
                                 );
                             }
-                            var = Some(env_var.var);
+                            env_var.var
                         } else {
                             return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
+                        };
+                        n.right.visit(self)?;
+                        let right = self.last_retvar.take().unwrap();
+                        if self.context.variables[var] != self.context.variables[right] {
+                            return Err(Error::IncompatibleType {
+                                got: self.context.variables[right].clone(),
+                                expected: self.context.variables[var].clone(),
+                            }
+                            .into_compiler_error(b));
                         }
+                        match &n.op {
+                            BinOp::Asg => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(var, InsType::LoadVar(right)));
+                                });
+                            }
+                            BinOp::Adds => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(var, InsType::Add((var, right))));
+                                });
+                            }
+                            BinOp::Subs => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(var, InsType::Sub((var, right))));
+                                });
+                            }
+                            BinOp::Muls => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(var, InsType::Mul((var, right))));
+                                });
+                            }
+                            BinOp::Divs => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(var, InsType::Div((var, right))));
+                                });
+                            }
+                            BinOp::Mods => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(var, InsType::Mod((var, right))));
+                                });
+                            }
+                            _ => unreachable!(),
+                        }
+                        self.last_retvar = Some(var);
+                        Ok(())
+                    } else {
+                        Err(Error::InvalidLHS.into_compiler_error(b))
                     }
                 } else if let Some(member_expr) = n_left.downcast_ref::<ast::MemberExpr>() {
-                    match &member_expr.right {
-                        MemberExprArm::Index(idx) => {
-                            member_expr.left.visit(self)?;
-                            let left_var = self.last_retvar.take().unwrap();
-
-                            idx.visit(self)?;
-                            let mut idx_var = self.last_retvar.take().unwrap();
-                            assert!(self.context.variables[idx_var].is_int());
-
-                            {
-                                let top_level = self.top_level.borrow();
-                                if self.context.variables[idx_var] != top_level.pointer_type {
-                                    let pointer_type = top_level.pointer_type.clone();
-                                    let new_retvar = self.context.insert_var(pointer_type.clone());
-                                    self.with_block_mut(|block| {
-                                        block.ins.push(Ins::new(
-                                            new_retvar,
-                                            InsType::Cast {
-                                                var: idx_var,
-                                                typed: pointer_type.clone(),
-                                            },
-                                        ));
-                                    });
-                                    idx_var = new_retvar;
-                                }
-                            }
-
-                            n.right.visit(self)?;
-                            let mut right_var = self.last_retvar.take().unwrap();
-                            let instance_type = self.context.variables[left_var]
-                                .instance_type()
-                                .cloned()
-                                .unwrap();
-
-                            if self.context.variables[right_var]
-                                .can_implicit_cast_to(&instance_type)
-                            {
-                                let _typed = Some(instance_type.clone());
-                                let retvar = self.context.insert_var(instance_type.clone());
-                                self.with_block_mut(move |block| {
+                    if let InsType::MemberReference { left, mut indices } =
+                        self.build_member_expr(member_expr, &n.left)?
+                    {
+                        let var = self
+                            .context
+                            .insert_var(indices.last().unwrap().typed.clone());
+                        match &n.op {
+                            BinOp::Asg => {
+                                self.with_block_mut(|block| {
                                     block.ins.push(Ins::new(
-                                        retvar,
-                                        InsType::Cast {
-                                            var: right_var,
-                                            typed: instance_type.clone(),
+                                        var,
+                                        InsType::MemberReference {
+                                            left,
+                                            indices: std::mem::replace(&mut indices, vec![]),
                                         },
                                     ));
                                 });
-                                right_var = retvar;
-                            } else if self.context.variables[right_var] != instance_type {
-                                return Err(Error::IncompatibleType {
-                                    got: self.context.variables[right_var].clone(),
-                                    expected: instance_type,
-                                }
-                                .into_compiler_error(b));
                             }
-
-                            if n.op == BinOp::Asg {
-                                match &self.context.variables[left_var] {
-                                    maybe_ptr if maybe_ptr.is_fat_pointer() => {
-                                        self.insert_bounds_check(left_var, idx_var);
-                                        self.with_block_mut(|block| {
-                                            block.ins.push(Ins::new(
-                                                0,
-                                                InsType::FatStore {
-                                                    var: left_var,
-                                                    index: idx_var,
-                                                    right: right_var,
-                                                },
-                                            ));
-                                        });
-                                    }
-                                    Type::I32Ptr(_) | Type::I64Ptr(_) => {
-                                        self.with_block_mut(|block| {
-                                            block.ins.push(Ins::new(
-                                                0,
-                                                InsType::PointerStore {
-                                                    var: left_var,
-                                                    index: idx_var,
-                                                    right: right_var,
-                                                },
-                                            ));
-                                        });
-                                    }
-                                    Type::Slice(_) => {
-                                        self.insert_bounds_check(left_var, idx_var);
-                                        self.with_block_mut(|block| {
-                                            block.ins.push(Ins::new(
-                                                0,
-                                                InsType::PointerStore {
-                                                    var: left_var,
-                                                    index: idx_var,
-                                                    right: right_var,
-                                                },
-                                            ));
-                                        });
-                                    }
-                                    _ => unimplemented!(),
-                                }
-                                return Ok(());
-                            } else {
-                                unimplemented!()
-                            }
+                            _ => unimplemented!(),
                         }
-                        _ => unimplemented!(),
+                        self.last_retvar = Some(var);
+                        Ok(())
+                    } else {
+                        unreachable!()
                     }
-                }
-                if let Some(var) = var {
-                    n.right.visit(self)?;
-                    let right = self.last_retvar.take().unwrap();
-                    if self.context.variables[var] != self.context.variables[right] {
-                        return Err(Error::IncompatibleType {
-                            got: self.context.variables[right].clone(),
-                            expected: self.context.variables[var].clone(),
-                        }
-                        .into_compiler_error(b));
-                    }
-                    match &n.op {
-                        BinOp::Asg => {
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::LoadVar(right)));
-                            });
-                        }
-                        BinOp::Adds => {
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::Add((var, right))));
-                            });
-                        }
-                        BinOp::Subs => {
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::Sub((var, right))));
-                            });
-                        }
-                        BinOp::Muls => {
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::Mul((var, right))));
-                            });
-                        }
-                        BinOp::Divs => {
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::Div((var, right))));
-                            });
-                        }
-                        BinOp::Mods => {
-                            self.with_block_mut(|block| {
-                                block.ins.push(Ins::new(var, InsType::Mod((var, right))));
-                            });
-                        }
-                        _ => unreachable!(),
-                    }
-                    self.last_retvar = Some(var);
-                    Ok(())
                 } else {
                     Err(Error::InvalidLHS.into_compiler_error(b))
                 }
@@ -1149,28 +1090,17 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let left = self.last_retvar.take().unwrap();
                 n.right.visit(self)?;
                 let mut right = self.last_retvar.take().unwrap();
-                if self.context.variables[right].can_implicit_cast_to(&self.context.variables[left])
-                {
-                    let mut typed = Some(self.context.variables[left].clone());
-                    let retvar = self
-                        .context
-                        .insert_var(self.context.variables[left].clone());
-                    self.with_block_mut(move |block| {
-                        block.ins.push(Ins::new(
-                            retvar,
-                            InsType::Cast {
-                                var: right,
-                                typed: typed.take().unwrap(),
-                            },
-                        ));
-                    });
-                    right = retvar;
-                } else if self.context.variables[left] != self.context.variables[right] {
-                    return Err(Error::IncompatibleType {
-                        got: self.context.variables[right].clone(),
-                        expected: self.context.variables[left].clone(),
+                if self.context.variables[left] != self.context.variables[right] {
+                    let left_typed = self.context.variables[left].clone();
+                    if self.context.variables[right].can_implicit_cast_to(&left_typed) {
+                        right = self.insert_cast(right, left_typed);
+                    } else {
+                        return Err(Error::IncompatibleType {
+                            got: self.context.variables[right].clone(),
+                            expected: self.context.variables[left].clone(),
+                        }
+                        .into_compiler_error(b));
                     }
-                    .into_compiler_error(b));
                 }
                 let retvar = self.context.insert_var(match op {
                     BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte | BinOp::Equ => Type::Bool,
@@ -1204,137 +1134,28 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let retvar = self.last_retvar.take().unwrap();
         n.typed.visit(self, b)?;
         let rettype = n.typed.typed.borrow().clone().unwrap();
-        let new_retvar = self.context.insert_var(rettype.clone());
-        let mut rettype = Some(rettype);
-        self.with_block_mut(move |block| {
-            block.ins.push(Ins::new(
-                new_retvar,
-                InsType::Cast {
-                    var: retvar,
-                    typed: rettype.take().unwrap(),
-                },
-            ));
-        });
-        self.last_retvar = Some(new_retvar);
+        self.last_retvar = Some(self.insert_cast(retvar, rettype));
         Ok(())
     }
 
     fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult {
-        n.left.visit(self)?;
-        let left_var = self.last_retvar.take().unwrap();
-        match &n.right {
-            MemberExprArm::Identifier(string) => {
-                let (string, rettype) = match &self.context.variables[left_var] {
-                    Type::Struct(struct_data) => {
-                        // Reuse identifier owned by struct_data for faster lookups
-                        if let Some((named, var_data)) =
-                            struct_data.0.values().get_key_value(string)
-                        {
-                            (named.clone(), var_data.typed.clone())
-                        } else {
-                            unimplemented!()
-                        }
-                    }
-                    typed if typed.is_fat_pointer() => {
-                        let top_level = self.top_level.borrow();
-                        let struct_data = &top_level.builtins.generic_fat_pointer_struct;
-                        // Reuse identifier owned by struct_data for faster lookups
-                        if let Some((named, var_data)) = struct_data.values().get_key_value(string)
-                        {
-                            (named.clone(), var_data.typed.clone())
-                        } else {
-                            return Err(
-                                Error::UnknownMemberRef(string.clone()).into_compiler_error(b)
-                            );
-                        }
-                    }
-                    _ => unimplemented!(),
-                };
-                let retvar = self.context.insert_var(rettype);
-                self.last_retvar = Some(retvar);
-                self.with_block_mut(|block| {
-                    block.ins.push(Ins::new(
-                        retvar,
-                        InsType::MemberReference {
-                            left: left_var,
-                            right: string.clone(),
-                        },
-                    ));
-                });
-            }
-            MemberExprArm::Index(idx) => {
-                idx.visit(self)?;
-                let mut idx_var = self.last_retvar.take().unwrap();
-                assert!(self.context.variables[idx_var].is_int());
-                {
-                    let top_level = self.top_level.borrow();
-                    if self.context.variables[idx_var] != top_level.pointer_type {
-                        let pointer_type = top_level.pointer_type.clone();
-                        let new_retvar = self.context.insert_var(pointer_type.clone());
-                        self.with_block_mut(|block| {
-                            block.ins.push(Ins::new(
-                                new_retvar,
-                                InsType::Cast {
-                                    var: idx_var,
-                                    typed: pointer_type.clone(),
-                                },
-                            ));
-                        });
-                        idx_var = new_retvar;
-                    }
-                }
-                match self.context.variables[left_var].clone() {
-                    Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => {
-                        let typed: &Type = &ptr_typed.typed;
-                        if let Type::Slice(slice_type) = typed.borrow() {
-                            if slice_type.is_dyn() {
-                                let retvar = self.context.insert_var(slice_type.typed.clone());
-                                self.insert_bounds_check(left_var, idx_var);
-                                self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        retvar,
-                                        InsType::FatIndex {
-                                            var: left_var,
-                                            index: idx_var,
-                                        },
-                                    ));
-                                });
-                                self.last_retvar = Some(retvar);
-                                return Ok(());
-                            }
-                        }
-                        let retvar = self.context.insert_var((*typed).clone());
-                        self.with_block_mut(|block| {
-                            block.ins.push(Ins::new(
-                                retvar,
-                                InsType::PointerIndex {
-                                    var: left_var,
-                                    index: idx_var,
-                                },
-                            ));
-                        });
-                        self.last_retvar = Some(retvar);
-                    }
-                    Type::Slice(slice_rc) => {
-                        let slice_type: &SliceType = &slice_rc.borrow();
-                        let retvar = self.context.insert_var(slice_type.typed.clone());
-                        self.insert_bounds_check(left_var, idx_var);
-                        self.with_block_mut(|block| {
-                            block.ins.push(Ins::new(
-                                retvar,
-                                InsType::PointerIndex {
-                                    var: left_var,
-                                    index: idx_var,
-                                },
-                            ));
-                        });
-                        self.last_retvar = Some(retvar);
-                    }
-                    other => unimplemented!("{:#?}", other),
-                }
-            }
+        if let InsType::MemberReference { left, mut indices } = self.build_member_expr(n, b)? {
+            let typed = indices.last().unwrap().typed.clone();
+            let retvar = self.context.insert_var(typed);
+            self.with_block_mut(move |block| {
+                block.ins.push(Ins::new(
+                    retvar,
+                    InsType::MemberReference {
+                        left,
+                        indices: std::mem::replace(&mut indices, vec![]),
+                    },
+                ));
+            });
+            self.last_retvar = Some(retvar);
+            Ok(())
+        } else {
+            unreachable!()
         }
-        Ok(())
     }
 
     fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult {
@@ -1359,18 +1180,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
             Value::ISize(x) => {
-                let pointer_type = {
-                    let top_level = self.top_level.borrow();
-                    top_level.pointer_type.clone()
-                };
-                let retvar = self.context.insert_var(pointer_type.clone());
-                self.with_block_mut(|block| match pointer_type {
-                    Type::I32 => block
-                        .ins
-                        .push(Ins::new(retvar, InsType::LoadI32(*x as i32))),
-                    Type::I64 => block.ins.push(Ins::new(retvar, InsType::LoadI64(*x))),
-                    _ => unreachable!(),
-                });
+                let retvar = self.context.insert_var(Type::ISize);
+                self.with_block_mut(|block| block.ins.push(Ins::new(retvar, InsType::LoadI64(*x))));
                 self.last_retvar = Some(retvar);
                 Ok(())
             }
@@ -1391,15 +1202,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 Ok(())
             }
             Value::String(x) => {
-                let retvar = {
-                    let top_level = self.top_level.borrow();
-                    self.context.insert_var(
-                        top_level
-                            .pointer_type
-                            .ptr_for(Type::I8.dyn_slice(), PointerTag::Immutable)
-                            .unwrap(),
-                    )
-                };
+                let retvar = self
+                    .context
+                    .insert_var(Type::I8.dyn_slice().pointer(PointerTag::Immutable));
                 self.with_block_mut(|block| {
                     block
                         .ins
@@ -1464,12 +1269,14 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 pointer_tag,
             } => {
                 self.visit_typeid(&internal, b)?;
-                let top_level: &TopLevelInfo = &self.top_level.borrow();
-                n.typed.replace(
-                    top_level
-                        .pointer_type
-                        .ptr_for(internal.typed.borrow().clone().unwrap(), *pointer_tag),
-                );
+                n.typed.replace(Some(
+                    internal
+                        .typed
+                        .borrow()
+                        .clone()
+                        .unwrap()
+                        .pointer(*pointer_tag),
+                ));
                 Ok(())
             }
             TypeIdData::Slice {

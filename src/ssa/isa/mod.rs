@@ -1,11 +1,16 @@
 use crate::ast::PointerTag;
-use crate::codegen::structs::*;
+use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+mod types;
+pub use types::*;
+
+mod print;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntrinsicType {
@@ -21,7 +26,7 @@ impl IntrinsicType {
 
 pub type Variable = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Context {
     pub blocks: Vec<Block>,
     pub variables: Vec<Type>,
@@ -95,9 +100,13 @@ impl Context {
     pub fn block_mut(&mut self) -> &mut Block {
         self.blocks.last_mut().unwrap()
     }
+
+    pub fn print(&self) -> print::ContextPrinter {
+        print::ContextPrinter(None, self)
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Block {
     pub ins: Vec<Ins>,
     pub postlude: Ins,
@@ -155,6 +164,23 @@ impl Ins {
     where
         T: FnMut(Variable) -> Variable,
     {
+        fn swap_indices<T>(mut indices: Vec<MemberExprIndex>, swap: &mut T) -> Vec<MemberExprIndex>
+        where
+            T: FnMut(Variable) -> Variable,
+        {
+            for idx in indices.iter_mut() {
+                match idx {
+                    MemberExprIndex {
+                        var: MemberExprIndexVar::Variable(var),
+                        ..
+                    } => {
+                        *var = swap(*var);
+                    }
+                    _ => (),
+                }
+            }
+            indices
+        }
         let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
         let new_typed = match old_typed {
             InsType::LoadVar(x) => InsType::LoadVar(swap(x)),
@@ -174,13 +200,17 @@ impl Ins {
             }
             InsType::Return(x) => InsType::Return(swap(x)),
             InsType::Phi { .. } => unreachable!(),
-            InsType::MemberReference { left, right } => InsType::MemberReference {
+            InsType::MemberReference { left, indices } => InsType::MemberReference {
                 left: swap(left),
-                right,
+                indices: swap_indices(indices, &mut swap),
             },
-            InsType::MemberReferenceStore { left, name, right } => InsType::MemberReferenceStore {
+            InsType::MemberReferenceStore {
+                left,
+                indices,
+                right,
+            } => InsType::MemberReferenceStore {
                 left: swap(left),
-                name,
+                indices: swap_indices(indices, &mut swap),
                 right: swap(right),
             },
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
@@ -214,40 +244,6 @@ impl Ins {
                 var: swap(var),
                 typed,
             },
-            InsType::PointerIndex { var, index } => InsType::PointerIndex {
-                var: swap(var),
-                index: swap(index),
-            },
-            InsType::PointerIndexC { var, offset } => InsType::PointerIndexC {
-                var: swap(var),
-                offset,
-            },
-            InsType::FatIndex { var, index } => InsType::FatIndex {
-                var: swap(var),
-                index: swap(index),
-            },
-            InsType::FatIndexC { var, offset } => InsType::FatIndexC {
-                var: swap(var),
-                offset,
-            },
-            InsType::BoundsCheck { var, index } => InsType::BoundsCheck {
-                var: swap(var),
-                index: swap(index),
-            },
-            InsType::BoundsCheckC { var, offset } => InsType::BoundsCheckC {
-                var: swap(var),
-                offset,
-            },
-            InsType::PointerStore { var, index, right } => InsType::PointerStore {
-                var: swap(var),
-                index: swap(index),
-                right: swap(right),
-            },
-            InsType::FatStore { var, index, right } => InsType::FatStore {
-                var: swap(var),
-                index: swap(index),
-                right: swap(right),
-            },
             other => other,
         };
         std::mem::replace(&mut self.typed, new_typed);
@@ -261,6 +257,22 @@ impl Ins {
     where
         T: FnMut(Variable),
     {
+        fn each_indices<T>(indices: &Vec<MemberExprIndex>, callback: &mut T)
+        where
+            T: FnMut(Variable),
+        {
+            for idx in indices {
+                match idx {
+                    MemberExprIndex {
+                        var: MemberExprIndexVar::Variable(var),
+                        ..
+                    } => {
+                        callback(*var);
+                    }
+                    _ => (),
+                }
+            }
+        }
         match &self.typed {
             InsType::LoadVar(x) => {
                 callback(*x);
@@ -283,11 +295,17 @@ impl Ins {
                     callback(*arg);
                 }
             }
-            InsType::MemberReference { left, .. } => {
+            InsType::MemberReference { left, indices } => {
                 callback(*left);
+                each_indices(indices, &mut callback);
             }
-            InsType::MemberReferenceStore { left, right, .. } => {
+            InsType::MemberReferenceStore {
+                left,
+                indices,
+                right,
+            } => {
                 callback(*left);
+                each_indices(indices, &mut callback);
                 callback(*right);
             }
             InsType::Add((x, y))
@@ -309,37 +327,6 @@ impl Ins {
             InsType::Cast { var, .. } => {
                 callback(*var);
             }
-            InsType::PointerIndex { var, index } => {
-                callback(*var);
-                callback(*index);
-            }
-            InsType::PointerIndexC { var, .. } => {
-                callback(*var);
-            }
-            InsType::FatIndex { var, index } => {
-                callback(*var);
-                callback(*index);
-            }
-            InsType::FatIndexC { var, .. } => {
-                callback(*var);
-            }
-            InsType::BoundsCheck { var, index } => {
-                callback(*var);
-                callback(*index);
-            }
-            InsType::BoundsCheckC { var, .. } => {
-                callback(*var);
-            }
-            InsType::PointerStore { var, index, right } => {
-                callback(*var);
-                callback(*index);
-                callback(*right);
-            }
-            InsType::FatStore { var, index, right } => {
-                callback(*var);
-                callback(*index);
-                callback(*right);
-            }
             InsType::AddC(rc)
             | InsType::SubC(rc)
             | InsType::MulC(rc)
@@ -352,16 +339,6 @@ impl Ins {
                 RegConst::RegRight((_, reg)) => callback(*reg),
             },
             _ => (),
-        }
-    }
-}
-
-impl std::fmt::Debug for Ins {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.typed.has_retvar() {
-            write!(f, "v{} = {:?}", self.retvar, self.typed)
-        } else {
-            write!(f, "{:?}", self.typed)
         }
     }
 }
@@ -480,7 +457,7 @@ impl Constant {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum RegConst {
     RegLeft((Variable, Constant)),
     RegRight((Constant, Variable)),
@@ -507,7 +484,19 @@ pub enum TrapType {
     BoundsCheck,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub enum MemberExprIndexVar {
+    Index(usize),
+    Variable(usize),
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct MemberExprIndex {
+    pub var: MemberExprIndexVar,
+    pub typed: Type,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     Nop,
     LoadNil,
@@ -522,11 +511,11 @@ pub enum InsType {
     LoadStruct,
     MemberReference {
         left: Variable,
-        right: Rc<str>,
+        indices: Vec<MemberExprIndex>,
     },
     MemberReferenceStore {
         left: Variable,
-        name: Rc<str>,
+        indices: Vec<MemberExprIndex>,
         right: Variable,
     },
     Phi {
@@ -569,40 +558,6 @@ pub enum InsType {
         iftrue: usize,
         iffalse: usize,
     },
-    PointerIndex {
-        var: Variable,
-        index: Variable,
-    },
-    PointerIndexC {
-        var: Variable,
-        offset: i32,
-    },
-    FatIndex {
-        var: Variable,
-        index: Variable,
-    },
-    FatIndexC {
-        var: Variable,
-        offset: i32,
-    },
-    BoundsCheck {
-        var: Variable,
-        index: Variable,
-    },
-    BoundsCheckC {
-        var: Variable,
-        offset: i32,
-    },
-    FatStore {
-        var: Variable,
-        index: Variable,
-        right: Variable,
-    },
-    PointerStore {
-        var: Variable,
-        index: Variable,
-        right: Variable,
-    },
     Jmp(usize),
 }
 
@@ -630,9 +585,7 @@ impl InsType {
     pub fn has_retvar(&self) -> bool {
         match self {
             typed if typed.is_jmp() => false,
-            InsType::MemberReferenceStore { .. }
-            | InsType::PointerStore { .. }
-            | InsType::FatStore { .. } => false,
+            InsType::MemberReferenceStore { .. } => false,
             _ => true,
         }
     }
@@ -670,9 +623,7 @@ impl InsType {
 
     pub fn has_side_effects(&self) -> bool {
         match self {
-            InsType::PointerStore { .. }
-            | InsType::FatStore { .. }
-            | InsType::MemberReferenceStore { .. }
+            InsType::MemberReferenceStore { .. }
             | InsType::Call { .. }
             | InsType::Return(_)
             | InsType::Exit => true,
@@ -695,7 +646,7 @@ impl InsType {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct FunctionName {
     pub name: Rc<str>,
     pub arg_types: Vec<Type>,
@@ -719,317 +670,19 @@ impl ToString for FunctionName {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct Builtins {
-    pub generic_fat_pointer_struct: StructData,
+    pub structs: HashMap<Rc<str>, UniqueRc<StructType>>,
+    pub generic_fat_pointer_struct: Rc<StructType>,
 }
 
-#[derive(Debug, Clone)]
 pub struct Program {
     pub contexts: HashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
     pub builtins: Builtins,
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub enum Type {
-    NoReturn,
-    Nil,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I32Ptr(Rc<PointerType>),
-    I64Ptr(Rc<PointerType>),
-    F64,
-    Struct(StructType),
-    Slice(Rc<SliceType>),
-    Union(Rc<BTreeSet<Type>>),
-    NeverUsed,
-}
-
-impl Type {
-    pub fn new_struct(data: Rc<StructData>) -> Self {
-        Type::Struct(StructType(data))
-    }
-
-    pub fn ptr_for(&self, typed: Type, tag: PointerTag) -> Option<Self> {
-        match self {
-            Type::I32 => Some(Type::I32Ptr(Rc::new(PointerType::new(typed, tag)))),
-            Type::I64 => Some(Type::I64Ptr(Rc::new(PointerType::new(typed, tag)))),
-            _ => None,
-        }
-    }
-
-    pub fn slice(self, len: u32) -> Self {
-        Type::Slice(Rc::new(SliceType::new(self, Some(len))))
-    }
-
-    pub fn dyn_slice(self) -> Self {
-        Type::Slice(Rc::new(SliceType::new(self, None)))
-    }
-
-    pub fn as_aggregate_data<'a>(&'a self, builtins: &'a Builtins) -> Option<&dyn AggregateData> {
-        match self {
-            Type::Struct(StructType(struct_data_rc)) => {
-                let struct_data: &StructData = struct_data_rc.borrow();
-                Some(struct_data)
-            }
-            maybe_ptr if maybe_ptr.is_fat_pointer() => Some(&builtins.generic_fat_pointer_struct),
-            Type::Slice(slice_rc) => {
-                let slice: &SliceType = &slice_rc.borrow();
-                Some(slice.array_data().unwrap())
-            }
-            _ => None,
-        }
-    }
-
-    pub fn unify(&self, other: &Type) -> Self {
-        match (self, other) {
-            (left, right) if left == right => left.clone(),
-            (Type::NoReturn, right) => right.clone(),
-            (left, Type::NoReturn) => left.clone(),
-            (Type::Union(set_left), Type::Union(set_right)) => Type::Union(Rc::new({
-                let lset: &BTreeSet<Type> = set_left.borrow();
-                let rset: &BTreeSet<Type> = set_right.borrow();
-                lset & rset
-            })),
-            (Type::Union(set), right) => Type::Union(Rc::new({
-                let bbset: &BTreeSet<Type> = set.borrow();
-                let mut bset = bbset.clone();
-                bset.insert(right.clone());
-                bset
-            })),
-            (left, Type::Union(set)) => Type::Union(Rc::new({
-                let bbset: &BTreeSet<Type> = set.borrow();
-                let mut bset = bbset.clone();
-                bset.insert(left.clone());
-                bset
-            })),
-            (left, right) => Type::Union(Rc::new(btreeset! { left.clone(), right.clone() })),
-        }
-    }
-
-    pub fn can_implicit_cast_to(&self, other: &Type) -> bool {
-        match (self, other) {
-            // Integers with smaller sizes can cast into bigger sizes implicitly
-            (Type::I32, Type::I64) => true,
-            (Type::I16, Type::I64) => true,
-            (Type::I16, Type::I32) => true,
-            (Type::I8, Type::I64) => true,
-            (Type::I8, Type::I32) => true,
-            (Type::I8, Type::I16) => true,
-            _ => false,
-        }
-    }
-
-    pub fn can_explicit_cast_to(&self, other: &Type) -> bool {
-        match (self, other) {
-            (left, right) if left.is_int() && right.is_int() => true,
-            (Type::I32Ptr(_), Type::I32) => true,
-            (Type::I64Ptr(_), Type::I64) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_nil(&self) -> bool {
-        match self {
-            Type::Nil => true,
-            Type::Union(set) => {
-                let bbset: &BTreeSet<Type> = set.borrow();
-                bbset.contains(&Type::Nil)
-            }
-            _ => false,
-        }
-    }
-
-    pub fn is_int(&self) -> bool {
-        match self {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_fat_pointer(&self) -> bool {
-        match self {
-            Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => match &ptr_typed.typed {
-                Type::Slice(slice) => slice.is_dyn(),
-                _ => false,
-            },
-            _ => false,
-        }
-    }
-
-    pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
-        match self {
-            Type::Union(set) => Some(set.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_struct(&self) -> Option<StructType> {
-        match self {
-            Type::Struct(struct_data) => Some(struct_data.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn as_slice(&self) -> Option<Rc<SliceType>> {
-        match self {
-            Type::Slice(slice) => Some(slice.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn int_from_bits(bits: usize) -> Option<Self> {
-        match bits {
-            8 => Some(Type::I8),
-            32 => Some(Type::I32),
-            64 => Some(Type::I64),
-            _ => None,
-        }
-    }
-
-    pub fn bytes(&self) -> Option<usize> {
-        match self {
-            Type::I8 => Some(1),
-            Type::I32 | Type::I32Ptr(_) => Some(4),
-            Type::I64 | Type::I64Ptr(_) => Some(8),
-            Type::F64 => Some(8),
-            Type::Slice(slice_rc) => {
-                let slice: &SliceType = &slice_rc.borrow();
-                if let Some(length) = slice.len {
-                    if let Some(bytes) = slice.typed.bytes() {
-                        return Some(bytes * length as usize);
-                    }
-                }
-                None
-            }
-            _ => None,
-        }
-    }
-
-    pub fn instance_bytes(&self) -> Option<usize> {
-        self.instance_type().map(|typed| typed.bytes()).flatten()
-    }
-
-    pub fn instance_type(&self) -> Option<&Type> {
-        match self {
-            Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => {
-                if let Type::Slice(slice) = &ptr_typed.typed {
-                    if slice.is_dyn() {
-                        return Some(&slice.typed);
-                    }
-                }
-                Some(&ptr_typed.typed)
-            }
-            Type::Slice(slice_rc) => {
-                let slice: &SliceType = &slice_rc.borrow();
-                Some(&slice.typed)
-            }
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Type::NoReturn => write!(f, "(no return)"),
-            Type::Nil => write!(f, "Nil"),
-            Type::Bool => write!(f, "Bool"),
-            Type::I8 => write!(f, "I8"),
-            Type::I16 => write!(f, "I16"),
-            Type::I32 => write!(f, "I32"),
-            Type::I64 => write!(f, "I64"),
-            Type::I32Ptr(ptr_typed) | Type::I64Ptr(ptr_typed) => write!(f, "&{}", ptr_typed.typed),
-            Type::F64 => write!(f, "F64"),
-            Type::Struct(struct_typed) => write!(f, "{}", struct_typed.0),
-            Type::Slice(slice_rc) => {
-                let slice: &SliceType = slice_rc.borrow();
-                if let Some(length) = slice.len.clone() {
-                    write!(f, "[{}; {}]", slice.typed, length)
-                } else {
-                    write!(f, "[{}]", slice.typed)
-                }
-            }
-            Type::Union(_) => unimplemented!(),
-            Type::NeverUsed => write!(f, "(never used)"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct StructType(pub Rc<StructData>);
-
-impl PartialEq for StructType {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Eq for StructType {}
-
-impl PartialOrd for StructType {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for StructType {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self.0.borrow() as *const StructData).cmp(&(other.0.borrow() as *const StructData))
-    }
-}
-
-impl Hash for StructType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (self.0.borrow() as *const StructData).hash(state);
-    }
-}
-
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct SliceType {
-    pub typed: Type,
-    pub len: Option<u32>,
-    array_data: Option<ArrayData>,
-}
-
-impl SliceType {
-    pub fn new(typed: Type, len: Option<u32>) -> Self {
-        if let Some(len) = len {
-            SliceType {
-                array_data: Some(ArrayData::new(typed.clone(), len as usize)),
-                typed,
-                len: Some(len),
-            }
-        } else {
-            SliceType {
-                typed,
-                len,
-                array_data: None,
-            }
-        }
-    }
-
-    pub fn array_data(&self) -> Option<&ArrayData> {
-        self.array_data.as_ref()
-    }
-
-    pub fn is_dyn(&self) -> bool {
-        self.len.is_none()
-    }
-}
-
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct PointerType {
-    pub typed: Type,
-    pub tag: PointerTag,
-}
-
-impl PointerType {
-    pub fn new(typed: Type, tag: PointerTag) -> Self {
-        Self { typed, tag }
+impl Program {
+    pub fn print(&self) -> print::ProgramPrinter {
+        print::ProgramPrinter(self)
     }
 }

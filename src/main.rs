@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate maplit;
 extern crate tempfile;
-use iro::codegen::cranelift::{OptLevel, Settings};
+use iro::codegen::settings::*;
 use iro::compiler;
 use iro::runtime;
 use iro::utils;
