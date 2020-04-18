@@ -101,7 +101,7 @@ impl<'a> SSAVisitor<'a> {
     }
 
     pub fn into_program(self) -> isa::Program {
-        let top_level = self.top_level.take().into_inner();
+        let top_level = self.top_level.take().into_inner().unwrap();
         let context = self.context;
         let mut func_contexts = top_level.func_contexts;
         let entry = Rc::new(FunctionName {

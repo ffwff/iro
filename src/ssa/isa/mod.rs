@@ -1,10 +1,7 @@
-use crate::ast::PointerTag;
 use crate::utils::uniquerc::UniqueRc;
-use std::borrow::Borrow;
-use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::rc::Rc;
 
 mod types;
@@ -340,6 +337,10 @@ impl Ins {
             },
             _ => (),
         }
+    }
+
+    pub fn print(&self) -> print::InsPrinter {
+        print::InsPrinter(self)
     }
 }
 

@@ -24,7 +24,7 @@ impl<'a> RegConstPrinter<'a> {
     }
 }
 
-struct InsPrinter<'a>(pub &'a Ins);
+pub struct InsPrinter<'a>(pub &'a Ins);
 
 impl<'a> std::fmt::Display for InsPrinter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -78,7 +78,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     .join(", "),
                 right
             ),
-            InsType::Phi { vars, defines } => write!(
+            InsType::Phi { vars, defines: _ } => write!(
                 f,
                 "phi [{}]",
                 vars.iter()

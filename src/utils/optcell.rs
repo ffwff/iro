@@ -1,73 +1,131 @@
-use std::cell::{BorrowError, BorrowMutError, Cell, Ref, RefCell, RefMut};
-use std::mem::ManuallyDrop;
+use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 
 #[derive(Debug)]
 pub struct OptCell<T> {
-    data: ManuallyDrop<RefCell<T>>,
-    moved: Cell<bool>,
+    data: UnsafeCell<Option<RefCell<T>>>,
 }
 
-impl<T> OptCell<T> {
+impl<'a, T> OptCell<T> {
     pub const fn new(value: T) -> OptCell<T> {
         Self {
-            data: ManuallyDrop::new(RefCell::new(value)),
-            moved: Cell::new(false),
+            data: UnsafeCell::new(Some(RefCell::new(value))),
         }
+    }
+
+    pub const fn none() -> OptCell<T> {
+        Self {
+            data: UnsafeCell::new(None),
+        }
+    }
+
+    #[inline]
+    unsafe fn get_unchecked(&self) -> &Option<RefCell<T>> {
+        std::mem::transmute::<_, _>(self.data.get())
+    }
+
+    #[inline]
+    unsafe fn get_mut_unchecked(&self) -> &'a mut Option<RefCell<T>> {
+        std::mem::transmute::<_, _>(self.data.get())
     }
 
     #[inline]
     pub fn borrow(&self) -> Ref<'_, T> {
-        self.data.borrow()
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => refcell.borrow(),
+            _ => panic!("trying to borrow a None value"),
+        }
     }
 
     #[inline]
     pub fn borrow_mut(&self) -> RefMut<'_, T> {
-        self.data.borrow_mut()
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => refcell.borrow_mut(),
+            _ => panic!("trying to borrow a None value"),
+        }
     }
 
     #[inline]
-    pub fn try_borrow(&self) -> Result<Ref<'_, T>, BorrowError> {
-        self.data.try_borrow()
+    pub fn try_borrow(&self) -> Result<Ref<'_, T>, ()> {
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => refcell.try_borrow().map_err(|_| ()),
+            _ => Err(()),
+        }
     }
 
     #[inline]
-    pub fn try_borrow_mut(&self) -> Result<RefMut<'_, T>, BorrowMutError> {
-        self.data.try_borrow_mut()
+    pub fn try_borrow_mut(&self) -> Result<RefMut<'_, T>, ()> {
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => refcell.try_borrow_mut().map_err(|_| ()),
+            _ => Err(()),
+        }
     }
 
+    #[inline]
     pub fn take(&self) -> OptCell<T> {
         self.try_take().expect("already moved")
     }
 
-    pub fn try_take(&self) -> Option<OptCell<T>> {
-        // SAFETY: we borrow the RefCell mutably, and never return it back.
-        // Doing so will prevent future borrows from occuring.
-        // We also set the moved flag to prevent double frees
-        if self.moved.replace(true) {
-            return None;
-        }
-        if let Ok(mut borrowed) = self.data.try_borrow_mut() {
-            let data = unsafe { std::mem::replace(&mut *borrowed, std::mem::zeroed()) };
-            std::mem::forget(borrowed);
-            Some(Self::new(data))
-        } else {
-            None
+    pub fn replace(&self, data: T) -> Option<T> {
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => Some(refcell.replace(data)),
+            None => {
+                // SAFETY: since data is a None value, borrows are impossible
+                // during this state
+                let value = unsafe { self.get_mut_unchecked().replace(RefCell::new(data)) };
+                Some(value.unwrap().into_inner())
+            }
         }
     }
 
-    pub fn into_inner(mut self) -> T {
-        if self.moved.replace(true) {
-            panic!("already moved");
+    pub fn try_take(&self) -> Option<OptCell<T>> {
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => {
+                // SAFETY: we pretend to borrow RefCell mutably,
+                // ensuring that the data must not have any borrows
+                assert!(refcell.try_borrow_mut().is_ok(), "already borrowed");
+                // We must not use RefCell after this
+                std::mem::drop(refcell);
+                let value = unsafe { self.get_mut_unchecked().take() };
+                Some(Self {
+                    data: UnsafeCell::new(value),
+                })
+            }
+            None => None,
         }
-        unsafe { ManuallyDrop::take(&mut self.data) }.into_inner()
+    }
+
+    pub fn into_inner(self) -> Option<T> {
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => {
+                // SAFETY: we pretend to borrow RefCell mutably,
+                // ensuring that the data must not have any borrows
+                assert!(refcell.try_borrow_mut().is_ok(), "already borrowed");
+                // We must not use RefCell after this
+                std::mem::drop(refcell);
+                let value = unsafe { self.get_mut_unchecked().take() };
+                Some(value.unwrap().into_inner())
+            }
+            None => None,
+        }
+    }
+
+    #[inline]
+    pub fn is_some(&self) -> bool {
+        unsafe { self.get_unchecked() }.is_some()
+    }
+
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        unsafe { self.get_unchecked() }.is_none()
     }
 }
 
-impl<T> Drop for OptCell<T> {
-    fn drop(&mut self) {
-        // SAFETY: We should only drop the data if we own it, when it isn't moved
-        if !self.moved.get() {
-            unsafe { ManuallyDrop::drop(&mut self.data) }
+impl<T: Clone> Clone for OptCell<T> {
+    #[inline]
+    fn clone(&self) -> OptCell<T> {
+        let data = unsafe { self.get_unchecked() };
+        Self {
+            data: UnsafeCell::new(data.clone()),
         }
     }
 }
@@ -113,10 +171,32 @@ mod optcell_test {
     }
 
     #[test]
-    fn move_after_borrowed_mut() {
+    fn replace_after_borrowed_mut() {
         let cell = OptCell::new(5);
         let borrowed = cell.borrow_mut();
-        assert!(cell.try_take().is_none());
+        assert!(cell.replace(10).is_none());
         assert_eq!(*borrowed, 5);
+    }
+
+    #[test]
+    fn replace_after_moved() {
+        let cell = OptCell::new(5);
+        cell.replace(10);
+        assert!(cell.try_take().is_none());
+    }
+
+    #[test]
+    fn borrow_after_replaced() {
+        let cell = OptCell::new(5);
+        cell.replace(10);
+        assert_eq!(*cell.borrow(), 10);
+    }
+
+    #[test]
+    fn borrow_after_move_and_replaced() {
+        let cell = OptCell::new(5);
+        cell.take();
+        cell.replace(10);
+        assert_eq!(*cell.borrow(), 10);
     }
 }

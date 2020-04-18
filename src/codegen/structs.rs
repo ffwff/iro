@@ -1,4 +1,5 @@
-use crate::ssa::isa::Type;
+use crate::utils::optcell::OptCell;
+use std::cell::Ref;
 use std::rc::Rc;
 
 fn align(value: u32, to: u32) -> u32 {
@@ -26,6 +27,16 @@ impl StructFieldType {
             StructFieldType::Struct(n) => n.size_of(),
         }
     }
+
+    pub fn int_from_bits(bits: u16) -> Option<Self> {
+        match bits {
+            8 => Some(StructFieldType::I8),
+            16 => Some(StructFieldType::I16),
+            32 => Some(StructFieldType::I32),
+            64 => Some(StructFieldType::I64),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +49,7 @@ pub struct StructField {
 #[derive(Debug, Clone)]
 pub struct StructData {
     fields: Vec<StructField>,
+    flattened_fields: OptCell<Vec<StructField>>,
     size_of: u32,
     align_of: u32,
 }
@@ -46,57 +58,63 @@ impl StructData {
     pub fn new() -> Self {
         Self {
             fields: vec![],
+            flattened_fields: OptCell::none(),
             size_of: 0,
             align_of: 0,
         }
     }
 
     pub fn append_typed(&mut self, typed: StructFieldType) {
-        assert!(typed.is_primitive());
-        self.size_of = align(self.size_of, typed.size_of());
+        let size_of = typed.size_of();
+        self.size_of = align(self.size_of, size_of);
         self.fields.push(StructField {
             offset: self.size_of,
             multiplier: 1,
             typed,
         });
-        self.size_of += typed.size_of();
+        self.size_of += size_of;
     }
 
     pub fn append_struct(&mut self, data: Rc<StructData>) {
+        let size_of = data.size_of();
         self.size_of = align(self.size_of, data.align_of());
         self.fields.push(StructField {
             offset: self.size_of,
             multiplier: 1,
             typed: StructFieldType::Struct(data),
         });
-        self.size_of += data.size_of();
+        self.size_of += size_of;
     }
 
     pub fn append_array(&mut self, typed: StructFieldType, len: u32) {
-        self.size_of = align(self.size_of, typed.size_of());
+        let size_of = typed.size_of();
+        self.size_of = align(self.size_of, size_of);
         self.fields.push(StructField {
             offset: self.size_of,
             multiplier: len,
             typed,
         });
-        self.size_of += typed.size_of() * len;
+        self.size_of += size_of * len;
     }
 
     pub fn fields(&self) -> &Vec<StructField> {
         &self.fields
     }
 
-    pub fn fields_flatten(&self) -> Vec<StructFieldType> {
-        let mut vec = vec![];
-        for field in &self.fields {
-            for _ in 0..field.multiplier {
-                match field.typed {
-                    Type::Struct(x) => vec.extend_from_slice(&x.fields_flatten()),
-                    other => vec.push(other),
+    pub fn flattened_fields(&self) -> Ref<'_, Vec<StructField>> {
+        if let Ok(flattened_fields) = self.flattened_fields.try_borrow() {
+            flattened_fields
+        } else {
+            let mut vec = vec![];
+            for field in &self.fields {
+                match &field.typed {
+                    StructFieldType::Struct(x) => vec.extend_from_slice(&x.flattened_fields()),
+                    _other => vec.push(field.clone()),
                 }
             }
+            self.flattened_fields.replace(vec);
+            self.flattened_fields.borrow()
         }
-        vec
     }
 
     pub fn size_of(&self) -> u32 {
@@ -119,13 +137,13 @@ impl<'a> StructBuilder<'a> {
         Self {
             data,
             field_cursor: 0,
-            bytes: vec![0; data.size_of()],
+            bytes: vec![0; data.size_of() as usize],
         }
     }
 
     pub fn append_zeroed(&mut self) {
         let field = &self.data.fields()[self.field_cursor];
-        for i in (field.offset)..(field.offset + field.size_of) {
+        for i in (field.offset)..(field.offset + field.typed.size_of()) {
             self.bytes[i as usize] = 0;
         }
         self.field_cursor += 1;
@@ -133,9 +151,10 @@ impl<'a> StructBuilder<'a> {
 
     pub fn append(&mut self, bytes: &[u8]) {
         let field = &self.data.fields()[self.field_cursor];
-        assert!(field.size_of == bytes.len());
-        for (i, byte) in ((field.offset)..(field.offset + field.size_of)).zip(bytes.iter()) {
-            self.bytes[i as usize] = byte;
+        assert_eq!(field.typed.size_of(), bytes.len() as u32);
+        for (i, byte) in ((field.offset)..(field.offset + field.typed.size_of())).zip(bytes.iter())
+        {
+            self.bytes[i as usize] = *byte;
         }
         self.field_cursor += 1;
     }

@@ -1,12 +1,12 @@
 use crate::ast::PointerTag;
-use crate::utils::uniquerc::UniqueRc;
 use crate::codegen::structs::StructData;
+use crate::ssa::isa::Builtins;
+use crate::utils::optcell::OptCell;
+use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
-use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -139,6 +139,18 @@ impl Type {
         }
     }
 
+    pub fn as_struct_data(&self, builtins: &Builtins) -> Option<Rc<StructData>> {
+        match self {
+            Type::Struct(struct_typed) => struct_typed.data.clone().into_inner(),
+            maybe_ptr if maybe_ptr.is_fat_pointer() => builtins
+                .generic_fat_pointer_struct
+                .data
+                .clone()
+                .into_inner(),
+            _ => None,
+        }
+    }
+
     pub fn instance_type(&self) -> Option<&Type> {
         match self {
             Type::Pointer(ptr_typed) => {
@@ -197,7 +209,7 @@ pub struct StructType {
     name: Rc<str>,
     vars: HashMap<Rc<str>, StructField>,
     fields: Vec<StructField>,
-    pub data: RefCell<Option<StructData>>,
+    pub data: OptCell<Rc<StructData>>,
 }
 
 impl StructType {
@@ -206,7 +218,7 @@ impl StructType {
             name,
             vars: HashMap::new(),
             fields: vec![],
-            data: RefCell::new(None),
+            data: OptCell::none(),
         }
     }
 

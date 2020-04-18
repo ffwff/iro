@@ -1,6 +1,9 @@
+use crate::codegen::backend;
 use crate::codegen::cranelift::abi;
 use crate::codegen::cranelift::translator::*;
+use crate::codegen::settings::*;
 use crate::codegen::structs::*;
+use crate::compiler;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
 use cranelift::prelude::*;
@@ -9,7 +12,7 @@ use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
-use cranelift_codegen::ir::TrapCode;
+
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
 use cranelift_codegen::isa::{TargetFrontendConfig, TargetIsa};
 use cranelift_codegen::settings;
@@ -19,6 +22,7 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, FuncOrDataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
+
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -42,7 +46,7 @@ struct InsContext<'a> {
 
 /// Code generator
 pub struct Codegen<B: Backend> {
-    module: Module<B>,
+    pub(super) module: Module<B>,
     extern_mapping: HashMap<Rc<isa::FunctionName>, String>,
     string_mapping: HashMap<Rc<str>, DataId>,
 }
@@ -66,15 +70,18 @@ where
             isa::Type::I8 => Some(types::I8),
             isa::Type::I32 => Some(types::I32),
             isa::Type::I64 => Some(types::I64),
-            isa::Type::Pointer(_) if !typed.is_fat_pointer() => Some(self.pointer_type()),
+            isa::Type::ISize | isa::Type::Pointer(_) if !typed.is_fat_pointer() => {
+                Some(self.pointer_type())
+            }
             isa::Type::F64 => Some(types::F64),
             _ => None,
         }
     }
 
     pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
-        for (_, astruct) in &program.structs {
-            self.build_struct_data(astruct);
+        self.build_struct_data(&program, &program.builtins.generic_fat_pointer_struct);
+        for (_, astruct) in &program.builtins.structs {
+            self.build_struct_data(&program, astruct);
         }
         let mut builder_context = FunctionBuilderContext::new();
         if build_standalone {
@@ -114,11 +121,49 @@ where
         self.module.isa().frontend_config()
     }
 
-    fn build_struct_data(&self, typed: &StructType) {
-        if typed.data.borrow().is_some() {
-            break;
+    fn type_to_struct_field_type(
+        &self,
+        program: &isa::Program,
+        typed: &isa::Type,
+    ) -> Option<StructFieldType> {
+        match typed {
+            isa::Type::I8 => Some(StructFieldType::I8),
+            isa::Type::I16 => Some(StructFieldType::I16),
+            isa::Type::I32 => Some(StructFieldType::I32),
+            isa::Type::I64 => Some(StructFieldType::I64),
+            isa::Type::ISize => StructFieldType::int_from_bits(self.pointer_type().bits()),
+            isa::Type::F64 => Some(StructFieldType::F64),
+            isa::Type::Pointer(_) => {
+                if typed.is_fat_pointer() {
+                    Some(StructFieldType::Struct(
+                        program
+                            .builtins
+                            .generic_fat_pointer_struct
+                            .data
+                            .clone()
+                            .into_inner()
+                            .unwrap(),
+                    ))
+                } else {
+                    StructFieldType::int_from_bits(self.pointer_type().bits())
+                }
+            }
+            _ => None,
         }
-        // 
+    }
+
+    fn build_struct_data(&self, program: &isa::Program, typed: &isa::StructType) {
+        if typed.data.try_borrow().is_ok() {
+            return;
+        }
+        let mut data = StructData::new();
+        for field in typed.fields() {
+            if let Some(typed) = self.type_to_struct_field_type(program, &field.typed) {
+                data.append_typed(typed);
+            } else {
+                unimplemented!()
+            }
+        }
     }
 
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
@@ -167,12 +212,11 @@ where
         builder_context: &mut FunctionBuilderContext,
         fctx: &mut Context,
     ) {
-        dbg_println!("codegen: {:#?}", context);
+        dbg_println!("codegen: {}", context.print());
 
         let mut stack_loads_by_var: Vec<Vec<Offset32>> = vec![vec![]; context.args.len()];
         let mut has_struct_return = false;
-        abi::generate_function_signature(
-            self.module.isa(),
+        self.generate_function_signature(
             program,
             &context.args,
             &context.rettype,
@@ -216,11 +260,10 @@ where
             if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
             } else {
-                let aggregate_data: &dyn AggregateData =
-                    typed.as_aggregate_data(&program.builtins).unwrap();
+                let struct_data = typed.as_struct_data(&program.builtins).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
-                    aggregate_data.size_of() as u32,
+                    struct_data.size_of(),
                 ));
                 let mut loads_for_struct = vec![];
                 for offset in stack_loads {
@@ -328,8 +371,13 @@ where
                     let bytes_value = self
                         .module
                         .declare_data_in_data(bytes_data_id, &mut data_ctx);
-                    let mut struct_builder =
-                        StructBuilder::new(&ins_context.program.builtins.generic_fat_pointer_struct);
+                    let struct_data = ins_context
+                        .program
+                        .builtins
+                        .generic_fat_pointer_struct
+                        .data
+                        .borrow();
+                    let mut struct_builder = StructBuilder::new(&struct_data);
                     struct_builder.append_zeroed(); // address
                     struct_builder.append(&x.len().to_ne_bytes()); // len
                     data_ctx.define(struct_builder.into_vec().into_boxed_slice());
@@ -350,8 +398,8 @@ where
                 let tmp = builder.ins().f64const(*x);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::LoadSlice(x) => {
-                let typed = &context.variables[ins.retvar().unwrap()];
+            isa::InsType::LoadSlice(_x) => {
+                /* let typed = &context.variables[ins.retvar().unwrap()];
                 let (slice_bytes, instance_bytes) = {
                     let slice = typed.as_slice().unwrap();
                     (
@@ -372,10 +420,11 @@ where
                     builder
                         .ins()
                         .stack_store(tmp, slot, (idx * instance_bytes) as i32);
-                }
+                }*/
+                unimplemented!()
             }
             isa::InsType::LoadStruct => {
-                let typed = &context.variables[ins.retvar().unwrap()];
+                /* let typed = &context.variables[ins.retvar().unwrap()];
                 let struct_data = typed.as_struct().unwrap().0;
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
@@ -384,7 +433,8 @@ where
                 let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
                 let retvar = ins.retvar().unwrap();
                 builder.declare_var(to_var(retvar), self.pointer_type());
-                builder.def_var(to_var(retvar), pointer);
+                builder.def_var(to_var(retvar), pointer); */
+                unimplemented!()
             }
             isa::InsType::LoadNil => {
                 let rettype = &context.variables[ins.retvar().unwrap()];
@@ -401,8 +451,7 @@ where
                 let mut arg_values = vec![];
                 {
                     let name: &isa::FunctionName = name;
-                    abi::generate_function_signature(
-                        self.module.isa(),
+                    self.generate_function_signature(
                         ins_context.program,
                         &name.arg_types,
                         rettype,
@@ -435,7 +484,6 @@ where
                         },
                     );
                 }
-                dbg_println!("{:?} => {:#?}", name, sig);
 
                 let callee = if let Some(mapping) = self.extern_mapping.get(name) {
                     if let Some(FuncOrDataId::Func(func_id)) = self.module.get_name(&mapping) {
@@ -459,8 +507,8 @@ where
             isa::InsType::Exit => {
                 builder.ins().return_(&[]);
             }
-            isa::InsType::Return(x) => {
-                let rettype = &context.variables[*x];
+            isa::InsType::Return(_x) => {
+                /* let rettype = &context.variables[*x];
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
                 } else if let Some(aggregate_data) = rettype.as_aggregate_data(&ins_context.program.builtins)
@@ -480,7 +528,8 @@ where
                 } else {
                     let arg = builder.use_var(to_var(*x));
                     builder.ins().return_(&[arg]);
-                }
+                } */
+                unimplemented!()
             }
             isa::InsType::IfJmp {
                 condvar,
@@ -629,14 +678,22 @@ where
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::MemberReference { left, right } => {
+            isa::InsType::MemberReference {
+                left: _,
+                indices: _,
+            } => {
                 unimplemented!();
             }
-            isa::InsType::MemberReferenceStore { left, name, right } => {
+            isa::InsType::MemberReferenceStore {
+                left: _,
+                indices: _,
+                right: _,
+            } => {
                 unimplemented!();
             }
-            isa::InsType::Cast { var, typed } => {
-                let tmp = match (&context.variables[*var], typed) {
+            isa::InsType::Cast { var: _, typed: _ } => {
+                unimplemented!()
+                /* let tmp = match (&context.variables[*var], typed) {
                     (isa::Type::I32Ptr(_), isa::Type::I32) => builder.use_var(to_var(*var)),
                     (isa::Type::I64Ptr(_), isa::Type::I64) => builder.use_var(to_var(*var)),
                     (left, right) if left.is_int() && right.is_int() => {
@@ -657,16 +714,44 @@ where
                     }
                     _ => unreachable!(),
                 };
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp); */
             }
-            x => unimplemented!("{:?}", x),
+            _ => unimplemented!("{}", ins.print()),
         }
     }
 }
 
-/// Simple JIT Backend
-impl Codegen<SimpleJITBackend> {
-    pub fn process_jit(program: &isa::Program, runtime: &Runtime) -> Module<SimpleJITBackend> {
+#[derive(Clone)]
+pub struct CraneliftBackend {}
+
+impl CraneliftBackend {
+    fn generate_isa(settings: &Settings) -> Box<dyn TargetIsa> {
+        let mut flag_builder = settings::builder();
+        match settings.opt_level {
+            OptLevel::None => flag_builder.set("opt_level", "none"),
+            OptLevel::Speed => flag_builder.set("opt_level", "speed"),
+            OptLevel::SpeedAndSize => flag_builder.set("opt_level", "speed_and_size"),
+        }
+        .unwrap();
+        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+            panic!("host machine is not supported: {}", msg);
+        });
+        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
+        isa
+    }
+
+    pub fn backend() -> backend::Backend {
+        backend::Backend::with_jit_and_object(Self {})
+    }
+}
+
+impl backend::JitBackend for CraneliftBackend {
+    unsafe fn run(
+        &self,
+        program: &isa::Program,
+        _settings: &Settings,
+        runtime: &Runtime,
+    ) -> Result<(), compiler::Error> {
         let mut builder = SimpleJITBuilder::new(cranelift_module::default_libcall_names());
         for (name, context) in &program.contexts {
             if let isa::IntrinsicType::Extern(symbol) = &context.intrinsic {
@@ -676,19 +761,35 @@ impl Codegen<SimpleJITBackend> {
                 );
             }
         }
-        let codegen = Codegen::from_builder(builder);
-        codegen.process(program, false)
+        let mut module: Module<SimpleJITBackend> =
+            Codegen::from_builder(builder).process(program, false);
+        if let Some(main) = module.get_name("main()") {
+            if let FuncOrDataId::Func(func_id) = main {
+                let function = module.get_finalized_function(func_id);
+                let main_fn = std::mem::transmute::<_, extern "C" fn()>(function);
+                main_fn();
+            } else {
+                unreachable!()
+            }
+        } else {
+            unreachable!()
+        }
+        Ok(())
     }
 }
 
-/// Object generation backend
-impl Codegen<ObjectBackend> {
-    pub fn process_object(
-        isa: Box<dyn TargetIsa>,
+impl backend::ObjectBackend for CraneliftBackend {
+    fn generate_object(
+        &self,
         program: &isa::Program,
-    ) -> Module<ObjectBackend> {
-        let builder = ObjectBuilder::new(isa, "main.o", cranelift_module::default_libcall_names());
-        let codegen = Codegen::from_builder(builder);
-        codegen.process(program, true)
+        settings: &Settings,
+    ) -> Result<Vec<u8>, compiler::Error> {
+        let builder = ObjectBuilder::new(
+            CraneliftBackend::generate_isa(settings),
+            "main.o",
+            cranelift_module::default_libcall_names(),
+        );
+        let module: Module<ObjectBackend> = Codegen::from_builder(builder).process(program, false);
+        Ok(module.finish().emit().unwrap())
     }
 }

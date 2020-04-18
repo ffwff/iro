@@ -1,10 +1,12 @@
 #[macro_use]
 extern crate maplit;
 extern crate tempfile;
+
+use iro::codegen::cranelift::CraneliftBackend;
 use iro::codegen::settings::*;
 use iro::compiler;
 use iro::runtime;
-use iro::utils;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -43,6 +45,11 @@ impl<'a> Options<'a> {
         }
     }
 
+    pub fn to_compiler(&self) -> compiler::Compiler {
+        let settings = self.to_settings();
+        compiler::Compiler::new(CraneliftBackend::backend(), settings)
+    }
+
     pub fn arg(&self, offset: usize) -> Option<&String> {
         self.args.get(self.command_idx + offset)
     }
@@ -61,13 +68,14 @@ fn run(opts: Options) {
         .arg(1)
         .unwrap_or_else(|| fatal!(opts, "No input specified"));
     match std::fs::read_to_string(input_name) {
-        Ok(source) => {
-            if let Err(error) =
-                utils::parse_and_run(opts.to_settings(), &source, runtime::Runtime::new())
+        Ok(source) => unsafe {
+            if let Err(error) = opts
+                .to_compiler()
+                .parse_and_run(&source, &runtime::Runtime::new())
             {
                 compiler_error(opts, source, error);
             }
-        }
+        },
         Err(err) => {
             fatal!(opts, "{}", err);
         }
@@ -80,7 +88,7 @@ fn build(opts: Options) {
         .unwrap_or_else(|| fatal!(opts, "No input specified"));
     match std::fs::read_to_string(input_name) {
         Ok(source) => {
-            let bytes = match utils::parse_to_object(opts.to_settings(), &source) {
+            let bytes = match opts.to_compiler().parse_to_object(&source) {
                 Ok(x) => x,
                 Err(error) => compiler_error(opts, source, error),
             };
