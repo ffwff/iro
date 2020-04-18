@@ -51,7 +51,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     .iter()
                     .map(|index| {
                         match index.var {
-                            MemberExprIndexVar::Index(n) => format!("%{} {}", n, index.typed),
+                            MemberExprIndexVar::StructIndex(n) => format!("%{} {}", n, index.typed),
                             MemberExprIndexVar::Variable(n) => format!("v{} {}", n, index.typed),
                         }
                     })
@@ -70,7 +70,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     .iter()
                     .map(|index| {
                         match index.var {
-                            MemberExprIndexVar::Index(n) => format!("%{} {}", n, index.typed),
+                            MemberExprIndexVar::StructIndex(n) => format!("%{} {}", n, index.typed),
                             MemberExprIndexVar::Variable(n) => format!("v{} {}", n, index.typed),
                         }
                     })
@@ -138,6 +138,11 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
             )?;
         } else {
             write!(f, "-> {} =>\n", self.1.rettype)?;
+        }
+        for (idx, typed) in self.1.variables.iter().enumerate() {
+            if typed != &Type::NeverUsed {
+                write!(f, "\tv{}: {}\n", idx, typed)?;
+            }
         }
         if self.1.blocks.is_empty() {
             write!(f, "\tpass\n")?;

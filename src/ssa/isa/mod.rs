@@ -487,7 +487,7 @@ pub enum TrapType {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum MemberExprIndexVar {
-    Index(usize),
+    StructIndex(usize),
     Variable(usize),
 }
 

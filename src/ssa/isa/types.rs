@@ -108,6 +108,13 @@ impl Type {
         }
     }
 
+    pub fn is_int_repr(&self) -> bool {
+        match self {
+            Type::Pointer(_) if !self.is_fat_pointer() => true,
+            other => other.is_int(),
+        }
+    }
+
     pub fn is_fat_pointer(&self) -> bool {
         match self {
             Type::Pointer(ptr_typed) => match &ptr_typed.typed {

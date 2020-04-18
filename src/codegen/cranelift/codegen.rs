@@ -12,7 +12,6 @@ use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::entities::{Block, StackSlot, Value};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::stackslot::{StackSlotData, StackSlotKind};
-
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags};
 use cranelift_codegen::isa::{TargetFrontendConfig, TargetIsa};
 use cranelift_codegen::settings;
@@ -22,7 +21,6 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, FuncOrDataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
-
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -164,6 +162,15 @@ where
                 unimplemented!()
             }
         }
+        typed.data.replace(Rc::new(data));
+    }
+
+    fn size_of(&self, program: &isa::Program, typed: &isa::Type) -> u32 {
+        if let Some(struct_data) = typed.as_struct_data(&program.builtins) {
+            struct_data.size_of()
+        } else {
+            self.ir_to_cranelift_type(typed).unwrap().bytes()
+        }
     }
 
     fn generate_main(&mut self, builder_context: &mut FunctionBuilderContext) {
@@ -299,6 +306,105 @@ where
         }
     }
 
+    fn visit_member_ref(
+        &mut self,
+        left: isa::Variable,
+        indices: &Vec<isa::MemberExprIndex>,
+        builder: &mut FunctionBuilder,
+        ins_context: &InsContext,
+    ) -> Value {
+        let mut ptr = builder.use_var(to_var(left));
+        let mut current_offset = 0u32;
+
+        #[inline]
+        fn flush_ptr(builder: &mut FunctionBuilder, ptr: &mut Value, current_offset: &mut u32) {
+            if *current_offset != 0u32 {
+                *ptr = builder.ins().iadd_imm(*ptr, *current_offset as i64);
+            }
+            *current_offset = 0u32;
+        }
+
+        let mut last_typed = &ins_context.context.variables[left];
+        for (idx, index) in indices.iter().enumerate() {
+            let do_dereference = idx != indices.len() - 1;
+            match &index.var {
+                isa::MemberExprIndexVar::StructIndex(x) => {
+                    let struct_data = last_typed
+                        .as_struct_data(&ins_context.program.builtins)
+                        .unwrap();
+                    current_offset += struct_data.fields()[*x].offset;
+                }
+                isa::MemberExprIndexVar::Variable(x) => {
+                    // FIXME: handle fat pointers
+                    flush_ptr(builder, &mut ptr, &mut current_offset);
+                    let instance_type = last_typed.instance_type().unwrap();
+                    let instance_bytes = self.size_of(&ins_context.program, instance_type);
+                    match last_typed {
+                        maybe_ptr if maybe_ptr.is_fat_pointer() => {
+                            // NOTE: the raw pointer contained in a fat pointer
+                            // is always at offset 0
+                            let mut raw_ptr = builder.ins().load(
+                                self.pointer_type(),
+                                MemFlags::trusted(),
+                                ptr,
+                                0,
+                            );
+                            // FIXME: add bounds checking
+                            let idx = builder.use_var(to_var(*x));
+                            let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
+                            ptr = builder.ins().iadd(raw_ptr, idx_scaled);
+                            if do_dereference {
+                                ptr = builder.ins().load(
+                                    self.ir_to_cranelift_type(instance_type).unwrap(),
+                                    MemFlags::trusted(),
+                                    ptr,
+                                    0,
+                                );
+                            }
+                        }
+                        isa::Type::Slice(slice) => {
+                            // FIXME: add bounds checking
+                            let idx = builder.use_var(to_var(*x));
+                            let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
+                            ptr = builder.ins().iadd(ptr, idx_scaled);
+                            if do_dereference {
+                                ptr = builder.ins().load(
+                                    self.ir_to_cranelift_type(instance_type).unwrap(),
+                                    MemFlags::trusted(),
+                                    ptr,
+                                    0,
+                                );
+                            }
+                        }
+                        isa::Type::Pointer(_) => {
+                            let mut raw_ptr = builder.ins().load(
+                                self.pointer_type(),
+                                MemFlags::trusted(),
+                                ptr,
+                                0,
+                            );
+                            let idx = builder.use_var(to_var(*x));
+                            let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
+                            ptr = builder.ins().iadd(raw_ptr, idx_scaled);
+                            if do_dereference {
+                                ptr = builder.ins().load(
+                                    self.ir_to_cranelift_type(instance_type).unwrap(),
+                                    MemFlags::trusted(),
+                                    ptr,
+                                    0,
+                                );
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            last_typed = &index.typed;
+        }
+        flush_ptr(builder, &mut ptr, &mut current_offset);
+        ptr
+    }
+
     fn visit_ins(
         &mut self,
         ins: &isa::Ins,
@@ -398,14 +504,12 @@ where
                 let tmp = builder.ins().f64const(*x);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::LoadSlice(_x) => {
-                /* let typed = &context.variables[ins.retvar().unwrap()];
+            isa::InsType::LoadSlice(x) => {
+                let typed = &context.variables[ins.retvar().unwrap()];
                 let (slice_bytes, instance_bytes) = {
                     let slice = typed.as_slice().unwrap();
-                    (
-                        slice.typed.bytes().unwrap() * (slice.len.unwrap() as usize),
-                        slice.typed.bytes().unwrap(),
-                    )
+                    let instance_bytes = self.size_of(&ins_context.program, &slice.typed);
+                    (instance_bytes * slice.len.unwrap(), instance_bytes)
                 };
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
@@ -419,13 +523,12 @@ where
                     let tmp = builder.use_var(to_var(*var));
                     builder
                         .ins()
-                        .stack_store(tmp, slot, (idx * instance_bytes) as i32);
-                }*/
-                unimplemented!()
+                        .stack_store(tmp, slot, (idx as i32) * (instance_bytes as i32));
+                }
             }
             isa::InsType::LoadStruct => {
-                /* let typed = &context.variables[ins.retvar().unwrap()];
-                let struct_data = typed.as_struct().unwrap().0;
+                let typed = &context.variables[ins.retvar().unwrap()];
+                let struct_data = typed.as_struct_data(&ins_context.program.builtins).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     struct_data.size_of() as u32,
@@ -433,8 +536,7 @@ where
                 let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
                 let retvar = ins.retvar().unwrap();
                 builder.declare_var(to_var(retvar), self.pointer_type());
-                builder.def_var(to_var(retvar), pointer); */
-                unimplemented!()
+                builder.def_var(to_var(retvar), pointer);
             }
             isa::InsType::LoadNil => {
                 let rettype = &context.variables[ins.retvar().unwrap()];
@@ -457,10 +559,10 @@ where
                         rettype,
                         &mut sig,
                         |arg| match arg {
-                            abi::LoadFunctionArg::Return(aggregate_data) => {
+                            abi::LoadFunctionArg::Return(struct_data) => {
                                 let slot = builder.create_stack_slot(StackSlotData::new(
                                     StackSlotKind::ExplicitSlot,
-                                    aggregate_data.size_of() as u32,
+                                    struct_data.size_of() as u32,
                                 ));
                                 let pointer =
                                     builder.ins().stack_addr(self.pointer_type(), slot, 0);
@@ -484,6 +586,7 @@ where
                         },
                     );
                 }
+                dbg_println!("call {:#?}", rettype);
 
                 let callee = if let Some(mapping) = self.extern_mapping.get(name) {
                     if let Some(FuncOrDataId::Func(func_id)) = self.module.get_name(&mapping) {
@@ -507,11 +610,12 @@ where
             isa::InsType::Exit => {
                 builder.ins().return_(&[]);
             }
-            isa::InsType::Return(_x) => {
-                /* let rettype = &context.variables[*x];
+            isa::InsType::Return(x) => {
+                let rettype = &context.variables[*x];
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
-                } else if let Some(aggregate_data) = rettype.as_aggregate_data(&ins_context.program.builtins)
+                } else if let Some(struct_data) =
+                    rettype.as_struct_data(&ins_context.program.builtins)
                 {
                     let return_value = ins_context.struct_return.unwrap();
                     let arg = builder.use_var(to_var(*x));
@@ -519,7 +623,7 @@ where
                         self.frontend_config(),
                         return_value,
                         arg,
-                        aggregate_data.size_of() as u64,
+                        struct_data.size_of() as u64,
                         0,
                         0,
                         true,
@@ -528,8 +632,7 @@ where
                 } else {
                     let arg = builder.use_var(to_var(*x));
                     builder.ins().return_(&[arg]);
-                } */
-                unimplemented!()
+                }
             }
             isa::InsType::IfJmp {
                 condvar,
@@ -678,27 +781,33 @@ where
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::MemberReference {
-                left: _,
-                indices: _,
-            } => {
-                unimplemented!();
+            isa::InsType::MemberReference { left, indices } => {
+                let retvar = ins.retvar().unwrap();
+                let ptr = self.visit_member_ref(*left, indices, builder, ins_context);
+                let tmp = builder.ins().load(
+                    self.ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    MemFlags::trusted(),
+                    ptr,
+                    0,
+                );
+                builder.def_var(to_var(retvar), tmp);
             }
-            isa::InsType::MemberReferenceStore {
-                left: _,
-                indices: _,
-                right: _,
-            } => {
-                unimplemented!();
+            isa::InsType::MemberReferenceStore { left, indices, right } => {
+                let right_var = builder.use_var(to_var(*right));
+                let ptr = self.visit_member_ref(*left, indices, builder, ins_context);
+                builder.ins().store(
+                    MemFlags::trusted(),
+                    right_var,
+                    ptr,
+                    0,
+                );
             }
-            isa::InsType::Cast { var: _, typed: _ } => {
-                unimplemented!()
-                /* let tmp = match (&context.variables[*var], typed) {
-                    (isa::Type::I32Ptr(_), isa::Type::I32) => builder.use_var(to_var(*var)),
-                    (isa::Type::I64Ptr(_), isa::Type::I64) => builder.use_var(to_var(*var)),
-                    (left, right) if left.is_int() && right.is_int() => {
-                        let (left_size, right_size) =
-                            (left.bytes().unwrap(), right.bytes().unwrap());
+            isa::InsType::Cast { var, typed } => {
+                let tmp = match (&context.variables[*var], typed) {
+                    (left, right) if left.is_int_repr() && right.is_int_repr() => {
+                        let left_typed = self.ir_to_cranelift_type(left).unwrap();
+                        let right_typed = self.ir_to_cranelift_type(right).unwrap();
+                        let (left_size, right_size) = (left_typed.bits(), right_typed.bits());
                         let var = builder.use_var(to_var(*var));
                         if left_size < right_size {
                             builder
@@ -714,7 +823,7 @@ where
                     }
                     _ => unreachable!(),
                 };
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp); */
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             _ => unimplemented!("{}", ins.print()),
         }
@@ -789,7 +898,7 @@ impl backend::ObjectBackend for CraneliftBackend {
             "main.o",
             cranelift_module::default_libcall_names(),
         );
-        let module: Module<ObjectBackend> = Codegen::from_builder(builder).process(program, false);
+        let module: Module<ObjectBackend> = Codegen::from_builder(builder).process(program, true);
         Ok(module.finish().emit().unwrap())
     }
 }

@@ -20,7 +20,7 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
     if context.blocks.is_empty() {
         return Flow::Break;
     }
-    // dbg_println!("begin: {:#?}", context);
+    // dbg_println!("begin: {}", context.print());
 
     let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
     let num_blocks = context.blocks.len();
@@ -361,7 +361,7 @@ macro_rules! ins_index {
 }
 
 pub fn fold_constants(context: &mut Context) -> Flow {
-    // dbg_println!("before folding: {:#?}", context);
+    // dbg_println!("before folding: {}", context.print());
     let mut var_to_const = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &mut block.ins {
@@ -421,6 +421,7 @@ pub fn fold_constants(context: &mut Context) -> Flow {
 }
 
 pub fn collect_garbage_vars(context: &mut Context) -> Flow {
+    dbg_println!("before tracing: {}", context.print());
     let mut var_to_ins: BTreeMap<usize, Ins> = BTreeMap::new();
     let mut roots = vec![];
     for block in &mut context.blocks {
@@ -465,7 +466,7 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
             *var = Type::NeverUsed;
         }
     }
-    // dbg_println!("after tracing: {:#?}", context);
+    // dbg_println!("after tracing: {}", context.print());
     Flow::Continue
 }
 
@@ -653,7 +654,7 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
         block.succs = succs;
     }
 
-    // dbg_println!("after cleanup: {:#?}", context);
+    // dbg_println!("after cleanup: {}", context.print());
     Flow::Continue
 }
 

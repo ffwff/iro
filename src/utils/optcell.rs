@@ -71,8 +71,8 @@ impl<'a, T> OptCell<T> {
             None => {
                 // SAFETY: since data is a None value, borrows are impossible
                 // during this state
-                let value = unsafe { self.get_mut_unchecked().replace(RefCell::new(data)) };
-                Some(value.unwrap().into_inner())
+                unsafe { self.get_mut_unchecked().replace(RefCell::new(data)) };
+                None
             }
         }
     }

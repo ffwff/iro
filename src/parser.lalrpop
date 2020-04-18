@@ -233,13 +233,13 @@ ExternDefStatement: NodeBox = {
         <id:Identifier>
         <symbol:ExternSymbol?>
         <args:DefArgumentList?>
-        <return_type:TypeSpecifier?>
+        <return_type:TypeSpecifier>
     <end:@L>  => {
         NodeBox::new(DefStatement {
             id: Rc::from(id.clone()),
             args: args.unwrap(),
             exprs: vec![],
-            return_type: Some(return_type.unwrap()),
+            return_type: Some(return_type),
             attrs: None,
             intrinsic: RefCell::new(IntrinsicType::Extern(symbol.unwrap_or(id)))
         }, (start, end))

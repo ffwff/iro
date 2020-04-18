@@ -151,8 +151,18 @@ impl<'a> SSAVisitor<'a> {
         None
     }
 
-    fn intrinsic_return_type(_intrinsic: &IntrinsicType, _arg_types: &Vec<Type>) -> Option<Type> {
-        Some(Type::Nil)
+    fn intrinsic_return_type(defstmt: &DefStatement) -> Option<Type> {
+        let intrinsic: &IntrinsicType = &defstmt.intrinsic.borrow();
+        match intrinsic {
+            IntrinsicType::None => None,
+            IntrinsicType::Extern(_) => defstmt
+                .return_type
+                .as_ref()
+                .unwrap()
+                .typed
+                .clone()
+                .into_inner(),
+        }
     }
 
     fn top_level_visit_defstmt(&mut self, defstmt: &DefStatement, b: &NodeBox) -> VisitorResult {
@@ -216,7 +226,7 @@ impl<'a> SSAVisitor<'a> {
                     if let Some(struct_type) = self.get_struct_type(&last_typed) {
                         if let Some(field) = struct_type.vars().get(string) {
                             indices.push(MemberExprIndex {
-                                var: MemberExprIndexVar::Index(field.idx),
+                                var: MemberExprIndexVar::StructIndex(field.idx),
                                 typed: field.typed.clone(),
                             });
                         }
@@ -353,7 +363,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         InsType::MemberReferenceStore {
                             left: retvar,
                             indices: vec![MemberExprIndex {
-                                var: MemberExprIndexVar::Index(field.idx),
+                                var: MemberExprIndexVar::StructIndex(field.idx),
                                 typed: field.typed.clone(),
                             }],
                             right,
@@ -814,12 +824,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 } else {
                     // Properly compute the return type
                     if !defstmt.intrinsic.borrow().is_none() {
-                        if let Some(rettype) = {
-                            SSAVisitor::intrinsic_return_type(
-                                &defstmt.intrinsic.borrow(),
-                                &arg_types,
-                            )
-                        } {
+                        if let Some(rettype) = SSAVisitor::intrinsic_return_type(&defstmt) {
                             let context = Context::with_intrinsics(
                                 id.clone(),
                                 arg_types,
@@ -985,24 +990,24 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     if let InsType::MemberReference { left, mut indices } =
                         self.build_member_expr(member_expr, &n.left)?
                     {
-                        let var = self
-                            .context
-                            .insert_var(indices.last().unwrap().typed.clone());
+                        n.right.visit(self)?;
+                        let right = self.last_retvar.take().unwrap();
                         match &n.op {
                             BinOp::Asg => {
                                 self.with_block_mut(|block| {
                                     block.ins.push(Ins::new(
-                                        var,
-                                        InsType::MemberReference {
+                                        0,
+                                        InsType::MemberReferenceStore {
                                             left,
                                             indices: std::mem::replace(&mut indices, vec![]),
+                                            right,
                                         },
                                     ));
                                 });
                             }
                             _ => unimplemented!(),
                         }
-                        self.last_retvar = Some(var);
+                        self.last_retvar = Some(right);
                         Ok(())
                     } else {
                         unreachable!()
