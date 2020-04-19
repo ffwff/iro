@@ -1,6 +1,5 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
-use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
@@ -14,7 +13,6 @@ fn fib() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 

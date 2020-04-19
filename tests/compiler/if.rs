@@ -1,8 +1,6 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
-use iro::ssa::visitor::TopLevelArch;
-use iro::utils;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +16,6 @@ fn if_expr() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 
@@ -46,7 +43,6 @@ fn if_expr_elsif() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32, n: I32): Nil
 
@@ -78,11 +74,8 @@ fn if_expr_nil() {
                 pass
         )
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -105,11 +98,8 @@ fn if_expr_unify() {
                 0i64
         )
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -132,11 +122,8 @@ fn if_expr_unify_true_branch() {
                 0
         )
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -161,11 +148,8 @@ fn if_expr_unify_false_branch() {
                 0
         )
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -187,11 +171,8 @@ fn if_expr_cond_return() {
             pass
         return true
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -213,11 +194,8 @@ fn if_expr_both_branch_return() {
             return 5
         return true
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -237,11 +215,8 @@ fn if_expr_true_branch_return() {
             return 1
         return true
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -265,11 +240,8 @@ fn if_expr_false_branch_return() {
             return 1
         return true
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -288,9 +260,7 @@ fn if_flat() {
         "
     if true => pass
     else => pass
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
 }
 
@@ -300,8 +270,6 @@ fn if_flat_with_expr() {
         "
     if true => 1
     else => 2
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
 }

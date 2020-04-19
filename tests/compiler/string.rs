@@ -1,7 +1,6 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::pointer::FatPointer;
 use iro::runtime::Runtime;
-use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
@@ -15,7 +14,6 @@ fn len() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i64\"(n: I64): Nil
 
@@ -37,7 +35,6 @@ fn ptr_access() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i8", record_i8 as extern "C" fn(i8));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i8\"(n: I8): Nil
 
@@ -65,7 +62,6 @@ fn substring_ffi() {
         record_substr as extern "C" fn(FatPointer<u8>),
     );
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_substr\"(n: &Substring): Nil
 
@@ -93,7 +89,6 @@ fn substring_passing() {
         record_substr as extern "C" fn(FatPointer<u8>),
     );
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_substr\"(n: &Substring): Nil
 
@@ -118,7 +113,6 @@ fn string_dereference() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 
@@ -146,7 +140,6 @@ fn substring_return() {
         record_substr as extern "C" fn(FatPointer<u8>),
     );
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_substr\"(n: &Substring): Nil
     
@@ -176,7 +169,6 @@ fn substring_return_with_args() {
         record_substr as extern "C" fn(FatPointer<u8>),
     );
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_substr\"(n: &Substring): Nil
     

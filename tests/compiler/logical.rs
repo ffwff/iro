@@ -1,6 +1,5 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
-use iro::utils;
 
 #[cfg(test)]
 #[test]
@@ -11,7 +10,6 @@ fn and_expr() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32, n: I32): Nil
 
@@ -38,7 +36,6 @@ fn or_expr() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32, n: I32): Nil
 

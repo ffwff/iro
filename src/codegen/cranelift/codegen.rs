@@ -785,22 +785,22 @@ where
                 let retvar = ins.retvar().unwrap();
                 let ptr = self.visit_member_ref(*left, indices, builder, ins_context);
                 let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&context.variables[retvar]).unwrap(),
+                    self.ir_to_cranelift_type(&context.variables[retvar])
+                        .unwrap(),
                     MemFlags::trusted(),
                     ptr,
                     0,
                 );
                 builder.def_var(to_var(retvar), tmp);
             }
-            isa::InsType::MemberReferenceStore { left, indices, right } => {
+            isa::InsType::MemberReferenceStore {
+                left,
+                indices,
+                right,
+            } => {
                 let right_var = builder.use_var(to_var(*right));
                 let ptr = self.visit_member_ref(*left, indices, builder, ins_context);
-                builder.ins().store(
-                    MemFlags::trusted(),
-                    right_var,
-                    ptr,
-                    0,
-                );
+                builder.ins().store(MemFlags::trusted(), right_var, ptr, 0);
             }
             isa::InsType::Cast { var, typed } => {
                 let tmp = match (&context.variables[*var], typed) {

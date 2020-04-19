@@ -1,6 +1,5 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
-use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
@@ -12,7 +11,6 @@ fn index() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32, n: I32): Nil
 
@@ -39,7 +37,6 @@ fn ffi() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_slice", record_substr as extern "C" fn([i32; 4]));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_slice\"(n: [I32; 4]): Nil
 
@@ -60,7 +57,6 @@ fn index_assign() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32): Nil
 
@@ -86,7 +82,6 @@ fn slice_return() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_slice", record_substr as extern "C" fn([i32; 4]));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_slice\"(n: [I32; 4]): Nil
     

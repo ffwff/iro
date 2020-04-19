@@ -1,8 +1,6 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
-use iro::ssa::visitor::TopLevelArch;
-use iro::utils;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -18,7 +16,6 @@ fn while_loop() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 
@@ -43,7 +40,6 @@ fn while_loop_set() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 
@@ -71,7 +67,6 @@ fn while_loop_nested() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32, j: I32): Nil
 
@@ -109,7 +104,6 @@ fn while_loop_nested_x() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32, i32, i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(i: I32, j: I32, x: I32): Nil
 
@@ -146,7 +140,6 @@ fn while_loop_nested_post_x() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(x: I32): Nil
 
@@ -175,11 +168,8 @@ fn while_expr_type() {
                 0
         )
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -200,11 +190,8 @@ fn while_expr_nil() {
                 pass
         )
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -223,7 +210,6 @@ fn while_loop_nested_with_if() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(x: I32): Nil
 
@@ -249,11 +235,8 @@ fn while_expr_cond_return() {
             pass
         return true
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -273,11 +256,8 @@ fn while_expr_body_return() {
             return 10
         return true
     f(10)
-    ",
-        TopLevelArch::empty(),
-    )
+    ")
     .expect("able to parse_to_ssa");
-    println!("{:#?}", program.contexts);
     let function = program
         .contexts
         .get(&FunctionName {
@@ -300,7 +280,6 @@ fn while_loop_break() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 
@@ -325,7 +304,6 @@ fn while_loop_break_nested_if() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i32\"(n: I32): Nil
 

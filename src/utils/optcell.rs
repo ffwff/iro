@@ -62,12 +62,18 @@ impl<'a, T> OptCell<T> {
 
     #[inline]
     pub fn take(&self) -> OptCell<T> {
-        self.try_take().expect("already moved")
+        self.try_take().expect("already borrowed or moved")
     }
 
     pub fn replace(&self, data: T) -> Option<T> {
         match unsafe { self.get_unchecked() } {
-            Some(refcell) => Some(refcell.replace(data)),
+            Some(refcell) => {
+                if let Ok(mut borrowed) = refcell.try_borrow_mut() {
+                    Some(std::mem::replace(&mut *borrowed, data))
+                } else {
+                    None
+                }
+            },
             None => {
                 // SAFETY: since data is a None value, borrows are impossible
                 // during this state
@@ -82,7 +88,9 @@ impl<'a, T> OptCell<T> {
             Some(refcell) => {
                 // SAFETY: we pretend to borrow RefCell mutably,
                 // ensuring that the data must not have any borrows
-                assert!(refcell.try_borrow_mut().is_ok(), "already borrowed");
+                if refcell.try_borrow_mut().is_err() {
+                    return None;
+                }
                 // We must not use RefCell after this
                 std::mem::drop(refcell);
                 let value = unsafe { self.get_mut_unchecked().take() };
@@ -99,7 +107,9 @@ impl<'a, T> OptCell<T> {
             Some(refcell) => {
                 // SAFETY: we pretend to borrow RefCell mutably,
                 // ensuring that the data must not have any borrows
-                assert!(refcell.try_borrow_mut().is_ok(), "already borrowed");
+                if refcell.try_borrow_mut().is_err() {
+                    return None;
+                }
                 // We must not use RefCell after this
                 std::mem::drop(refcell);
                 let value = unsafe { self.get_mut_unchecked().take() };
@@ -182,7 +192,7 @@ mod optcell_test {
     fn replace_after_moved() {
         let cell = OptCell::new(5);
         cell.replace(10);
-        assert!(cell.try_take().is_none());
+        assert_eq!(cell.try_take().unwrap().into_inner().unwrap(), 10);
     }
 
     #[test]

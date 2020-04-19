@@ -1,6 +1,5 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
-use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
@@ -23,8 +22,7 @@ macro_rules! load_const {
             record({})",
                 $irotype, $left
             );
-            utils::parse_and_run(Settings::default(), &source, runtime)
-                .expect("able to parse_and_run");
+            utils::parse_and_run(&source, runtime).expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };
@@ -50,8 +48,7 @@ macro_rules! arithmetic {
             record(f({}, {}))",
                 $irotype, $op, $a, $b
             );
-            utils::parse_and_run(Settings::default(), &source, runtime)
-                .expect("able to parse_and_run");
+            utils::parse_and_run(&source, runtime).expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };
@@ -75,8 +72,7 @@ macro_rules! arithmetic_const {
             record({} {} {})",
                 $irotype, $a, $op, $b
             );
-            utils::parse_and_run(Settings::default(), &source, runtime)
-                .expect("able to parse_and_run");
+            utils::parse_and_run(&source, runtime).expect("able to parse_and_run");
             assert!(RUN_FLAG.load(Ordering::Relaxed));
         }
     };

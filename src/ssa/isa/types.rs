@@ -199,7 +199,7 @@ impl std::fmt::Display for Type {
                     write!(f, "[{}]", slice.typed)
                 }
             }
-            Type::Union(_) => unimplemented!(),
+            Type::Union(_) => write!(f, "(union)"),
             Type::NeverUsed => write!(f, "(never used)"),
         }
     }

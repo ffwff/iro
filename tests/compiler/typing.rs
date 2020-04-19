@@ -1,6 +1,5 @@
-use iro::codegen::cranelift::Settings;
+use crate::utils;
 use iro::runtime::Runtime;
-use iro::utils;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
@@ -14,7 +13,6 @@ fn cast_on_argument() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i64\"(n: I64): Nil
 
@@ -38,7 +36,6 @@ fn cast_on_binop() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i64\"(n: I64): Nil
 
@@ -62,7 +59,6 @@ fn explicit_cast() {
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
-        Settings::default(),
         "\
     extern def record=\"record_i64\"(n: I64): Nil
 
@@ -78,7 +74,6 @@ fn explicit_cast() {
 fn return_nil() {
     let runtime = Runtime::new();
     utils::parse_and_run(
-        Settings::default(),
         "\
     def f(): Nil =>
         pass
