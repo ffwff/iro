@@ -1,6 +1,6 @@
 use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
+use std::fmt;
 
-#[derive(Debug)]
 pub struct OptCell<T> {
     data: UnsafeCell<Option<RefCell<T>>>,
 }
@@ -73,7 +73,7 @@ impl<'a, T> OptCell<T> {
                 } else {
                     None
                 }
-            },
+            }
             None => {
                 // SAFETY: since data is a None value, borrows are impossible
                 // during this state
@@ -136,6 +136,15 @@ impl<T: Clone> Clone for OptCell<T> {
         let data = unsafe { self.get_unchecked() };
         Self {
             data: UnsafeCell::new(data.clone()),
+        }
+    }
+}
+
+impl<T: Sized + fmt::Debug> fmt::Debug for OptCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match unsafe { self.get_unchecked() } {
+            Some(refcell) => write!(f, "Some({:?})", refcell),
+            None => write!(f, "None"),
         }
     }
 }

@@ -74,7 +74,8 @@ fn if_expr_nil() {
                 pass
         )
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -98,7 +99,8 @@ fn if_expr_unify() {
                 0i64
         )
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -122,7 +124,8 @@ fn if_expr_unify_true_branch() {
                 0
         )
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -148,7 +151,8 @@ fn if_expr_unify_false_branch() {
                 0
         )
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -171,7 +175,8 @@ fn if_expr_cond_return() {
             pass
         return true
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -194,7 +199,8 @@ fn if_expr_both_branch_return() {
             return 5
         return true
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -215,7 +221,8 @@ fn if_expr_true_branch_return() {
             return 1
         return true
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -240,7 +247,8 @@ fn if_expr_false_branch_return() {
             return 1
         return true
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -260,7 +268,8 @@ fn if_flat() {
         "
     if true => pass
     else => pass
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
 }
 
@@ -270,6 +279,7 @@ fn if_flat_with_expr() {
         "
     if true => 1
     else => 2
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
 }

@@ -168,7 +168,8 @@ fn while_expr_type() {
                 0
         )
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -190,7 +191,8 @@ fn while_expr_nil() {
                 pass
         )
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -235,7 +237,8 @@ fn while_expr_cond_return() {
             pass
         return true
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
@@ -256,7 +259,8 @@ fn while_expr_body_return() {
             return 10
         return true
     f(10)
-    ")
+    ",
+    )
     .expect("able to parse_to_ssa");
     let function = program
         .contexts
