@@ -107,6 +107,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
             }
         }
     }
-    panic!("{}", context.print());
+    dbg_println!("{}", context.print());
     Flow::Continue
 }
