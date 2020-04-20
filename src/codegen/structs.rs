@@ -97,6 +97,17 @@ impl StructData {
         self.size_of += size_of * len;
     }
 
+    pub fn append_struct_array(&mut self, data: Rc<StructData>, len: u32) {
+        let size_of = data.size_of();
+        self.size_of = align(self.size_of, data.align_of());
+        self.fields.push(StructField {
+            offset: self.size_of,
+            multiplier: len,
+            typed: StructFieldType::Struct(data),
+        });
+        self.size_of += size_of * len;
+    }
+
     pub fn fields(&self) -> &Vec<StructField> {
         &self.fields
     }

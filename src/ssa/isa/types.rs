@@ -4,10 +4,12 @@ use crate::ssa::isa::Builtins;
 use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
+extern crate derivative;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -146,18 +148,6 @@ impl Type {
         }
     }
 
-    pub fn as_struct_data(&self, builtins: &Builtins) -> Option<Rc<StructData>> {
-        match self {
-            Type::Struct(struct_typed) => struct_typed.data.clone().into_inner(),
-            maybe_ptr if maybe_ptr.is_fat_pointer() => builtins
-                .generic_fat_pointer_struct
-                .data
-                .clone()
-                .into_inner(),
-            _ => None,
-        }
-    }
-
     pub fn instance_type(&self) -> Option<&Type> {
         match self {
             Type::Pointer(ptr_typed) => {
@@ -255,10 +245,15 @@ impl std::fmt::Display for StructType {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(Derivative, Debug, Clone)]
+#[derivative(PartialOrd, PartialEq, Eq, Hash)]
 pub struct SliceType {
     pub typed: Type,
     pub len: Option<u32>,
+    #[derivative(PartialOrd = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
+    pub data: OptCell<Rc<StructData>>,
 }
 
 impl SliceType {
@@ -267,14 +262,25 @@ impl SliceType {
             SliceType {
                 typed,
                 len: Some(len),
+                data: OptCell::none(),
             }
         } else {
-            SliceType { typed, len }
+            SliceType {
+                typed,
+                len,
+                data: OptCell::none(),
+            }
         }
     }
 
     pub fn is_dyn(&self) -> bool {
         self.len.is_none()
+    }
+}
+
+impl Ord for SliceType {
+    fn cmp(&self, other: &SliceType) -> Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 

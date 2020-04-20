@@ -15,7 +15,7 @@ fn len() {
     runtime.insert_func("record_i64", record_i64 as extern "C" fn(i64));
     utils::parse_and_run(
         "\
-    extern def record=\"record_i64\"(n: I64): Nil
+    extern def record=\"record_i64\"(n: ISize): Nil
 
     record(\"ABC\".len)
     ",

@@ -77,9 +77,9 @@ where
     }
 
     pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
-        self.build_struct_data(&program, &program.builtins.generic_fat_pointer_struct);
+        self.build_struct_data_for_struct(&program, &program.builtins.generic_fat_pointer_struct);
         for (_, astruct) in &program.builtins.structs {
-            self.build_struct_data(&program, astruct);
+            self.build_struct_data_for_struct(&program, astruct);
         }
         let mut builder_context = FunctionBuilderContext::new();
         if build_standalone {
@@ -150,23 +150,70 @@ where
         }
     }
 
-    fn build_struct_data(&self, program: &isa::Program, typed: &isa::StructType) {
-        if typed.data.try_borrow().is_ok() {
-            return;
+    pub(super) fn get_struct_data(
+        &self,
+        program: &isa::Program,
+        typed: &isa::Type,
+    ) -> Option<Rc<StructData>> {
+        match typed {
+            isa::Type::Struct(struct_data) => {
+                Some(self.build_struct_data_for_struct(program, &struct_data))
+            }
+            isa::Type::Slice(slice_data) => {
+                Some(self.build_struct_data_for_slice(program, &slice_data))
+            }
+            maybe_ptr if maybe_ptr.is_fat_pointer() => program.builtins
+                .generic_fat_pointer_struct
+                .data
+                .clone()
+                .into_inner(),
+            _ => None,
+        }
+    }
+
+    fn build_struct_data_for_struct(
+        &self,
+        program: &isa::Program,
+        typed: &isa::StructType,
+    ) -> Rc<StructData> {
+        if let Ok(data) = typed.data.try_borrow() {
+            return data.clone();
         }
         let mut data = StructData::new();
         for field in typed.fields() {
             if let Some(typed) = self.type_to_struct_field_type(program, &field.typed) {
                 data.append_typed(typed);
+            } else if let Some(substruct) = self.get_struct_data(program, &field.typed) {
+                data.append_struct(substruct);
             } else {
                 unimplemented!()
             }
         }
-        typed.data.replace(Rc::new(data));
+        let rc = Rc::new(data);
+        typed.data.replace(rc.clone());
+        rc
+    }
+
+    fn build_struct_data_for_slice(
+        &self,
+        program: &isa::Program,
+        typed: &isa::SliceType,
+    ) -> Rc<StructData> {
+        let mut data = StructData::new();
+        if let Some(field) = self.type_to_struct_field_type(program, &typed.typed) {
+            data.append_array(field, typed.len.unwrap());
+        } else if let Some(substruct) = self.get_struct_data(program, &typed.typed) {
+            data.append_struct_array(substruct, typed.len.unwrap());
+        } else {
+            unimplemented!()
+        }
+        let rc = Rc::new(data);
+        typed.data.replace(rc.clone());
+        rc
     }
 
     fn size_of(&self, program: &isa::Program, typed: &isa::Type) -> u32 {
-        if let Some(struct_data) = typed.as_struct_data(&program.builtins) {
+        if let Some(struct_data) = self.get_struct_data(&program, typed) {
             struct_data.size_of()
         } else {
             self.ir_to_cranelift_type(typed).unwrap().bytes()
@@ -267,7 +314,7 @@ where
             if let Some(cranelift_type) = self.ir_to_cranelift_type(&typed) {
                 builder.append_block_param(blocks[0], cranelift_type);
             } else {
-                let struct_data = typed.as_struct_data(&program.builtins).unwrap();
+                let struct_data = self.get_struct_data(&program, typed).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     struct_data.size_of(),
@@ -329,8 +376,8 @@ where
             let do_dereference = idx != indices.len() - 1;
             match &index.var {
                 isa::MemberExprIndexVar::StructIndex(x) => {
-                    let struct_data = last_typed
-                        .as_struct_data(&ins_context.program.builtins)
+                    let struct_data = self
+                        .get_struct_data(&ins_context.program, last_typed)
                         .unwrap();
                     current_offset += struct_data.fields()[*x].offset;
                 }
@@ -343,7 +390,7 @@ where
                         maybe_ptr if maybe_ptr.is_fat_pointer() => {
                             // NOTE: the raw pointer contained in a fat pointer
                             // is always at offset 0
-                            let mut raw_ptr = builder.ins().load(
+                            let raw_ptr = builder.ins().load(
                                 self.pointer_type(),
                                 MemFlags::trusted(),
                                 ptr,
@@ -377,7 +424,7 @@ where
                             }
                         }
                         isa::Type::Pointer(_) => {
-                            let mut raw_ptr = builder.ins().load(
+                            let raw_ptr = builder.ins().load(
                                 self.pointer_type(),
                                 MemFlags::trusted(),
                                 ptr,
@@ -528,7 +575,7 @@ where
             }
             isa::InsType::LoadStruct => {
                 let typed = &context.variables[ins.retvar().unwrap()];
-                let struct_data = typed.as_struct_data(&ins_context.program.builtins).unwrap();
+                let struct_data = self.get_struct_data(&ins_context.program, typed).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     struct_data.size_of() as u32,
@@ -615,7 +662,7 @@ where
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
                 } else if let Some(struct_data) =
-                    rettype.as_struct_data(&ins_context.program.builtins)
+                    self.get_struct_data(&ins_context.program, rettype)
                 {
                     let return_value = ins_context.struct_return.unwrap();
                     let arg = builder.use_var(to_var(*x));

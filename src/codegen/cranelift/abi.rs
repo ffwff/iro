@@ -38,7 +38,7 @@ where
             isa::Type::NoReturn => (),
             isa::Type::Nil => (),
             _ => {
-                if let Some(struct_data) = return_type.as_struct_data(&program.builtins) {
+                if let Some(struct_data) = self.get_struct_data(&program, return_type) {
                     load_function(LoadFunctionArg::Return(struct_data));
                     sig.params
                         .push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
@@ -56,7 +56,7 @@ where
                 load_function(LoadFunctionArg::PrimitiveArg(idx));
                 sig.params.push(AbiParam::new(cranelift_type));
             } else {
-                let struct_data = arg.as_struct_data(&program.builtins).unwrap();
+                let struct_data = self.get_struct_data(&program, arg).unwrap();
                 if struct_data.size_of() <= 8 {
                     // FIXME: support SSE vars
                     // For small structs, we pass the struct as a 64-bit integer parameter

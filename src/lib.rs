@@ -16,6 +16,8 @@ extern crate cranelift_module;
 extern crate cranelift_native;
 extern crate cranelift_simplejit;
 extern crate target_lexicon;
+#[macro_use]
+extern crate derivative;
 
 #[macro_use]
 pub mod utils;
