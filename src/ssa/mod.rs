@@ -1,4 +1,4 @@
 pub mod env;
 pub mod isa;
-pub mod opt;
+pub mod passes;
 pub mod visitor;

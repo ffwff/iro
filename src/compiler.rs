@@ -7,7 +7,7 @@ use crate::parser;
 use crate::runtime;
 use crate::ssa;
 use crate::ssa::isa::Context;
-use crate::ssa::opt;
+use crate::ssa::passes;
 use crate::utils::optcell::OptCell;
 use crate::utils::pipeline::*;
 use lalrpop_util;
@@ -135,15 +135,16 @@ impl std::fmt::Display for ParseError {
 pub fn ssa_pipeline() -> Pipeline<Context, fn(&mut Context) -> Flow> {
     Pipeline::new(
         [
-            opt::insert_jmps,
-            opt::build_graph_and_rename_vars,
-            opt::fold_constants,
-            opt::collect_garbage_vars,
-            opt::separate_postlude,
-            opt::cleanup_blocks,
-            opt::data_flow_analysis,
-            opt::fuse_postlude,
-            opt::eliminate_phi,
+            passes::graph::insert_jmps,
+            passes::ssa::build_graph_and_rename_vars,
+            passes::gc::collect_garbage_vars_with_multiple_assigns,
+            passes::fold::fold_constants,
+            passes::gc::collect_garbage_vars,
+            passes::postlude::separate_postlude_after_cleanup,
+            passes::graph::cleanup_blocks,
+            passes::dfa::data_flow_analysis,
+            passes::postlude::fuse_postlude,
+            passes::ssa::eliminate_phi,
         ]
         .to_vec(),
     )
