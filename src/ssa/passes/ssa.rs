@@ -2,67 +2,25 @@ use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
+pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
     let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
     let num_blocks = context.blocks.len();
 
-    // Build the successor/predecessor set corresponding to each block
-    let mut predecessors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
-    let mut successors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
-    let mut insert_node = |succ: usize, pred: usize| {
-        predecessors_map[succ].push(pred);
-        successors_map[pred].push(succ);
-    };
-
-    // Filter out nops and build the graph maps
-    for (idx, block) in context.blocks.iter_mut().enumerate() {
-        let mut jumped = false;
-        block.ins.retain(|ins| {
-            if jumped {
-                return false;
-            }
-            match &ins.typed {
-                InsType::Nop => false,
-                InsType::Return(_) | InsType::Trap(_) | InsType::Exit => {
-                    jumped = true;
-                    true
-                }
-                InsType::IfJmp {
-                    iftrue, iffalse, ..
-                } => {
-                    insert_node(*iftrue, idx);
-                    insert_node(*iffalse, idx);
-                    jumped = true;
-                    true
-                }
-                InsType::Jmp(target) => {
-                    insert_node(*target, idx);
-                    jumped = true;
-                    true
-                }
-                _ => {
-                    if let Some(retvar) = ins.retvar() {
-                        let set = &mut defsites[retvar];
-                        set.insert(idx);
-                    }
-                    true
-                }
-            }
-        });
-        debug_assert!(jumped);
-    }
-
-    // Store predecessors and successors in blocks
-    for ((preds, succs), block) in predecessors_map
-        .into_iter()
-        .zip(successors_map)
-        .zip(context.blocks.iter_mut())
-    {
-        block.preds = preds;
-        block.succs = succs;
-    }
-
     if num_blocks > 1 {
+        for (idx, block) in context.blocks.iter_mut().enumerate() {
+            for ins in &block.ins {
+                if let Some(retvar) = ins.retvar() {
+                    let set = &mut defsites[retvar];
+                    set.insert(idx);
+                }
+            }
+            block.vars_block_local = block
+                .vars_declared_in_this_block
+                .difference(&block.vars_out)
+                .cloned()
+                .collect();
+        }
+
         // Build the post-order traversal array
         let mut rpo = Vec::with_capacity(context.blocks.len());
         {
@@ -175,16 +133,20 @@ pub fn build_graph_and_rename_vars(context: &mut Context) -> Flow {
                 for &y in &dom_frontier[n] {
                     if !phi_inserted.contains(&y) {
                         let block = &mut context.blocks[y];
-                        block.ins.insert(
-                            0,
-                            Ins::new(
-                                var,
-                                InsType::Phi {
-                                    vars: std::iter::repeat(var).take(block.preds.len()).collect(),
-                                    defines: var,
-                                },
-                            ),
-                        );
+                        if !block.vars_block_local.contains(&var) {
+                            block.ins.insert(
+                                0,
+                                Ins::new(
+                                    var,
+                                    InsType::Phi {
+                                        vars: std::iter::repeat(var)
+                                            .take(block.preds.len())
+                                            .collect(),
+                                        defines: var,
+                                    },
+                                ),
+                            );
+                        }
                         phi_inserted.insert(y);
                         if !origin[y].contains(&var) {
                             worklist.push(y);
@@ -326,7 +288,6 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
             }
         }
     }
-    dbg_println!("phis: {:?}", replacements);
     while !replacements.is_empty() {
         for block in &mut context.blocks {
             let oldins = std::mem::replace(&mut block.ins, Vec::new());

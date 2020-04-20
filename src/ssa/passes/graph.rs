@@ -2,8 +2,11 @@ use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub fn insert_jmps(context: &mut Context) -> Flow {
+pub fn preprocess(context: &mut Context) -> Flow {
     let len = context.blocks.len();
+    if len == 0 {
+        return Flow::Break;
+    }
     for (idx, block) in context.blocks.iter_mut().enumerate() {
         if let Some(ins) = block.ins.last() {
             if !ins.typed.is_jmp() {
@@ -16,7 +19,7 @@ pub fn insert_jmps(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn cleanup_blocks(context: &mut Context) -> Flow {
+pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     if context.blocks.len() < 2 {
         return Flow::Continue;
     }
@@ -77,8 +80,17 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
         }
     }
 
-    // Rebuild the successor/predecessor set corresponding to each block
+    Flow::Continue
+}
+
+pub fn build_graph(context: &mut Context) -> Flow {
     let num_blocks = context.blocks.len();
+
+    if context.blocks.len() < 2 {
+        return Flow::Continue;
+    }
+
+    // Build the successor/predecessor set corresponding to each block
     let mut predecessors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
     let mut successors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
     let mut insert_node = |succ: usize, pred: usize| {
@@ -88,18 +100,34 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
 
     // Filter out nops and build the graph maps
     for (idx, block) in context.blocks.iter_mut().enumerate() {
-        match &mut block.postlude.typed {
-            InsType::IfJmp {
-                iftrue, iffalse, ..
-            } => {
-                insert_node(*iftrue, idx);
-                insert_node(*iffalse, idx);
+        let mut jumped = false;
+        block.ins.retain(|ins| {
+            if jumped {
+                return false;
             }
-            InsType::Jmp(target) => {
-                insert_node(*target, idx);
+            match &ins.typed {
+                InsType::Nop => false,
+                InsType::Return(_) | InsType::Trap(_) | InsType::Exit => {
+                    jumped = true;
+                    true
+                }
+                InsType::IfJmp {
+                    iftrue, iffalse, ..
+                } => {
+                    insert_node(*iftrue, idx);
+                    insert_node(*iffalse, idx);
+                    jumped = true;
+                    true
+                }
+                InsType::Jmp(target) => {
+                    insert_node(*target, idx);
+                    jumped = true;
+                    true
+                }
+                _ => true,
             }
-            _ => (),
-        }
+        });
+        debug_assert!(jumped);
     }
 
     // Store predecessors and successors in blocks
@@ -112,6 +140,5 @@ pub fn cleanup_blocks(context: &mut Context) -> Flow {
         block.succs = succs;
     }
 
-    // dbg_println!("after cleanup: {}", context.print());
     Flow::Continue
 }

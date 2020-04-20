@@ -404,7 +404,11 @@ where
                                 self.pointer_type().bytes() as i32,
                             );
                             let cmp = builder.ins().ifcmp(idx, len);
-                            builder.ins().trapif(IntCC::UnsignedGreaterThanOrEqual, cmp, TrapCode::OutOfBounds);
+                            builder.ins().trapif(
+                                IntCC::UnsignedGreaterThanOrEqual,
+                                cmp,
+                                TrapCode::OutOfBounds,
+                            );
                             // Dereference
                             let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
                             ptr = builder.ins().iadd(raw_ptr, idx_scaled);
@@ -421,7 +425,11 @@ where
                             let idx = builder.use_var(to_var(*x));
                             // Bounds check
                             let cmp = builder.ins().ifcmp_imm(idx, slice.len.unwrap() as i64);
-                            builder.ins().trapif(IntCC::UnsignedGreaterThanOrEqual, cmp, TrapCode::OutOfBounds);
+                            builder.ins().trapif(
+                                IntCC::UnsignedGreaterThanOrEqual,
+                                cmp,
+                                TrapCode::OutOfBounds,
+                            );
                             // Dereference
                             let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
                             ptr = builder.ins().iadd(ptr, idx_scaled);

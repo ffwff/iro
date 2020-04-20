@@ -230,7 +230,9 @@ impl<'a> SSAVisitor<'a> {
                                 typed: field.typed.clone(),
                             });
                         } else {
-                            return Err(Error::UnknownStructField(string.clone()).into_compiler_error(b));
+                            return Err(
+                                Error::UnknownStructField(string.clone()).into_compiler_error(b)
+                            );
                         }
                     } else {
                         return Err(Error::InvalidLHS.into_compiler_error(b));
@@ -338,7 +340,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 .builtins
                 .structs
                 .insert(n.id.clone(), struct_rc.clone());
-            top_level.types.insert(n.id.clone(), Type::Struct(struct_rc));
+            top_level
+                .types
+                .insert(n.id.clone(), Type::Struct(struct_rc));
         }
         Ok(())
     }

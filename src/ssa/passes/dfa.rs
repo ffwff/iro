@@ -34,6 +34,7 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
         }
         block.vars_declared_in_this_block = vars_declared_in_this_block;
         block.vars_used = vars_used;
+        block.vars_block_local = btreeset![];
     }
 
     while let Some(node) = worklist.pop() {

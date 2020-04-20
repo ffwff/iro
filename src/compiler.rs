@@ -135,15 +135,26 @@ impl std::fmt::Display for ParseError {
 pub fn ssa_pipeline() -> Pipeline<Context, fn(&mut Context) -> Flow> {
     Pipeline::new(
         [
-            passes::graph::insert_jmps,
-            passes::ssa::build_graph_and_rename_vars,
+            // Stage 0:
+            passes::graph::preprocess,
+            passes::graph::build_graph,
             passes::gc::collect_garbage_vars_with_multiple_assigns,
+            // Stage 1:
+            passes::dfa::data_flow_analysis,
+            passes::ssa::rename_vars_and_insert_phis,
             passes::fold::fold_constants,
             passes::gc::collect_garbage_vars,
-            passes::postlude::separate_postlude_after_cleanup,
-            passes::graph::cleanup_blocks,
+            // Stage 2:
+            passes::postlude::separate_postlude,
+            passes::graph::cleanup_jump_blocks,
+            passes::postlude::fuse_postlude,
+            passes::graph::build_graph,
+            // Stage 3:
+            passes::postlude::separate_postlude,
             passes::dfa::data_flow_analysis,
             passes::postlude::fuse_postlude,
+            // TODO: drop insertion pass
+            // Stage 4:
             passes::ssa::eliminate_phi,
         ]
         .to_vec(),
