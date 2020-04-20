@@ -1,4 +1,5 @@
 pub mod arithmetic;
+pub mod class;
 pub mod cmp;
 pub mod r#if;
 pub mod integration;

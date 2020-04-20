@@ -43,9 +43,18 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             InsType::LoadSubstring(n) => write!(f, "load.Substring {:?}", n),
             InsType::LoadSlice(n) => write!(f, "load.slice {:?}", n),
             InsType::LoadStruct => write!(f, "load.struct"),
-            InsType::MemberReference { left, indices } => write!(
+            InsType::MemberReference {
+                left,
+                indices,
+                modifier,
+            } => write!(
                 f,
-                "member v{} [{}]",
+                "member{} v{} [{}]",
+                match modifier {
+                    MemberReferenceModifier::None => "",
+                    MemberReferenceModifier::Copy => ".copy",
+                    MemberReferenceModifier::Move => ".move",
+                },
                 left,
                 indices
                     .iter()

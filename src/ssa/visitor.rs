@@ -249,9 +249,15 @@ impl<'a> SSAVisitor<'a> {
                 }
             }
         }
+        let last_typed = &indices.last().unwrap().typed;
+        let modifier = match last_typed {
+            _ if last_typed.is_fat_pointer() => MemberReferenceModifier::Copy,
+            _ => MemberReferenceModifier::None,
+        };
         Ok(InsType::MemberReference {
             left: left_var,
             indices,
+            modifier,
         })
     }
 
@@ -987,8 +993,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         Err(Error::InvalidLHS.into_compiler_error(b))
                     }
                 } else if let Some(member_expr) = n_left.downcast_ref::<ast::MemberExpr>() {
-                    if let InsType::MemberReference { left, mut indices } =
-                        self.build_member_expr(member_expr, &n.left)?
+                    if let InsType::MemberReference {
+                        left, mut indices, ..
+                    } = self.build_member_expr(member_expr, &n.left)?
                     {
                         n.right.visit(self)?;
                         let right = self.last_retvar.take().unwrap();
@@ -1144,7 +1151,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
     }
 
     fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult {
-        if let InsType::MemberReference { left, mut indices } = self.build_member_expr(n, b)? {
+        if let InsType::MemberReference {
+            left,
+            mut indices,
+            modifier,
+        } = self.build_member_expr(n, b)?
+        {
             let typed = indices.last().unwrap().typed.clone();
             let retvar = self.context.insert_var(typed);
             self.with_block_mut(move |block| {
@@ -1153,6 +1165,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     InsType::MemberReference {
                         left,
                         indices: std::mem::replace(&mut indices, vec![]),
+                        modifier,
                     },
                 ));
             });

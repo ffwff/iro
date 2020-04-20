@@ -197,9 +197,14 @@ impl Ins {
             }
             InsType::Return(x) => InsType::Return(swap(x)),
             InsType::Phi { .. } => unreachable!(),
-            InsType::MemberReference { left, indices } => InsType::MemberReference {
+            InsType::MemberReference {
+                left,
+                indices,
+                modifier,
+            } => InsType::MemberReference {
                 left: swap(left),
                 indices: swap_indices(indices, &mut swap),
+                modifier,
             },
             InsType::MemberReferenceStore {
                 left,
@@ -292,7 +297,7 @@ impl Ins {
                     callback(*arg);
                 }
             }
-            InsType::MemberReference { left, indices } => {
+            InsType::MemberReference { left, indices, .. } => {
                 callback(*left);
                 each_indices(indices, &mut callback);
             }
@@ -497,6 +502,13 @@ pub struct MemberExprIndex {
     pub typed: Type,
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub enum MemberReferenceModifier {
+    None,
+    Copy,
+    Move,
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     Nop,
@@ -513,6 +525,7 @@ pub enum InsType {
     MemberReference {
         left: Variable,
         indices: Vec<MemberExprIndex>,
+        modifier: MemberReferenceModifier,
     },
     MemberReferenceStore {
         left: Variable,

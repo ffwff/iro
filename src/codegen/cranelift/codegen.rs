@@ -162,7 +162,8 @@ where
             isa::Type::Slice(slice_data) => {
                 Some(self.build_struct_data_for_slice(program, &slice_data))
             }
-            maybe_ptr if maybe_ptr.is_fat_pointer() => program.builtins
+            maybe_ptr if maybe_ptr.is_fat_pointer() => program
+                .builtins
                 .generic_fat_pointer_struct
                 .data
                 .clone()
@@ -359,7 +360,7 @@ where
         indices: &Vec<isa::MemberExprIndex>,
         builder: &mut FunctionBuilder,
         ins_context: &InsContext,
-    ) -> Value {
+    ) -> (Value, isa::Type) {
         let mut ptr = builder.use_var(to_var(left));
         let mut current_offset = 0u32;
 
@@ -449,7 +450,7 @@ where
             last_typed = &index.typed;
         }
         flush_ptr(builder, &mut ptr, &mut current_offset);
-        ptr
+        (ptr, last_typed.clone())
     }
 
     fn visit_ins(
@@ -828,17 +829,42 @@ where
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::MemberReference { left, indices } => {
+            isa::InsType::MemberReference {
+                left,
+                indices,
+                modifier,
+            } => {
                 let retvar = ins.retvar().unwrap();
-                let ptr = self.visit_member_ref(*left, indices, builder, ins_context);
-                let tmp = builder.ins().load(
-                    self.ir_to_cranelift_type(&context.variables[retvar])
-                        .unwrap(),
-                    MemFlags::trusted(),
-                    ptr,
-                    0,
-                );
-                builder.def_var(to_var(retvar), tmp);
+                let (member_ptr, typed) =
+                    self.visit_member_ref(*left, indices, builder, ins_context);
+                if let Some(prim) = self.ir_to_cranelift_type(&typed) {
+                    let tmp = builder.ins().load(prim, MemFlags::trusted(), member_ptr, 0);
+                    builder.def_var(to_var(retvar), tmp);
+                } else {
+                    let struct_data = self.get_struct_data(&ins_context.program, &typed).unwrap();
+                    let slot = builder.create_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        struct_data.size_of(),
+                    ));
+                    let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
+                    match modifier {
+                        isa::MemberReferenceModifier::None => unreachable!(),
+                        isa::MemberReferenceModifier::Copy => {
+                            builder.emit_small_memory_copy(
+                                self.frontend_config(),
+                                pointer,
+                                member_ptr,
+                                struct_data.size_of() as u64,
+                                0,
+                                0,
+                                true,
+                            );
+                        }
+                        isa::MemberReferenceModifier::Move => unimplemented!(),
+                    }
+                    builder.declare_var(to_var(retvar), self.pointer_type());
+                    builder.def_var(to_var(retvar), pointer);
+                }
             }
             isa::InsType::MemberReferenceStore {
                 left,
@@ -846,8 +872,23 @@ where
                 right,
             } => {
                 let right_var = builder.use_var(to_var(*right));
-                let ptr = self.visit_member_ref(*left, indices, builder, ins_context);
-                builder.ins().store(MemFlags::trusted(), right_var, ptr, 0);
+                let (member_ptr, typed) =
+                    self.visit_member_ref(*left, indices, builder, ins_context);
+                if let Some(struct_data) = self.get_struct_data(&ins_context.program, &typed) {
+                    builder.emit_small_memory_copy(
+                        self.frontend_config(),
+                        member_ptr,
+                        right_var,
+                        struct_data.size_of() as u64,
+                        0,
+                        0,
+                        true,
+                    );
+                } else {
+                    builder
+                        .ins()
+                        .store(MemFlags::trusted(), right_var, member_ptr, 0);
+                }
             }
             isa::InsType::Cast { var, typed } => {
                 let tmp = match (&context.variables[*var], typed) {
