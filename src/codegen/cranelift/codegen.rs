@@ -21,7 +21,6 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, FuncOrDataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
-use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
@@ -383,7 +382,6 @@ where
                     current_offset += struct_data.fields()[*x].offset;
                 }
                 isa::MemberExprIndexVar::Variable(x) => {
-                    // FIXME: handle fat pointers
                     flush_ptr(builder, &mut ptr, &mut current_offset);
                     let instance_type = last_typed.instance_type().unwrap();
                     let instance_bytes = self.size_of(&ins_context.program, instance_type);
@@ -397,8 +395,17 @@ where
                                 ptr,
                                 0,
                             );
-                            // FIXME: add bounds checking
                             let idx = builder.use_var(to_var(*x));
+                            // Bounds check
+                            let len = builder.ins().load(
+                                self.pointer_type(),
+                                MemFlags::trusted(),
+                                ptr,
+                                self.pointer_type().bytes() as i32,
+                            );
+                            let cmp = builder.ins().ifcmp(idx, len);
+                            builder.ins().trapif(IntCC::UnsignedGreaterThanOrEqual, cmp, TrapCode::OutOfBounds);
+                            // Dereference
                             let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
                             ptr = builder.ins().iadd(raw_ptr, idx_scaled);
                             if do_dereference {
@@ -411,8 +418,11 @@ where
                             }
                         }
                         isa::Type::Slice(slice) => {
-                            // FIXME: add bounds checking
                             let idx = builder.use_var(to_var(*x));
+                            // Bounds check
+                            let cmp = builder.ins().ifcmp_imm(idx, slice.len.unwrap() as i64);
+                            builder.ins().trapif(IntCC::UnsignedGreaterThanOrEqual, cmp, TrapCode::OutOfBounds);
+                            // Dereference
                             let idx_scaled = builder.ins().imul_imm(idx, instance_bytes as i64);
                             ptr = builder.ins().iadd(ptr, idx_scaled);
                             if do_dereference {

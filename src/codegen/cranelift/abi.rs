@@ -1,10 +1,8 @@
 use crate::codegen::cranelift::codegen::Codegen;
-
 use crate::codegen::structs::*;
 use crate::ssa::isa;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{types, AbiParam, ArgumentPurpose, Signature};
-use cranelift_codegen::isa::TargetIsa;
 use cranelift_module::Backend;
 use std::rc::Rc;
 use target_lexicon::{Architecture, CallingConvention, Triple};

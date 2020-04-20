@@ -6,7 +6,6 @@ use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
-use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
 extern crate derivative;
