@@ -75,6 +75,11 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 dead_var_usage.insert(var, 0);
             }
             for ins in &old_ins {
+                if let Some(var) = ins.retvar() {
+                    if let Some(usage) = dead_var_usage.get_mut(&var) {
+                        *usage += 1;
+                    }
+                }
                 if let InsType::Phi { vars, .. } = &ins.typed {
                     // Phi nodes "consume" their branch vars
                     for var in vars {
@@ -88,6 +93,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                     });
                 }
             }
+            // Postlude instruction does not count towards usage
             block.postlude.each_used_var(|var| {
                 dead_var_usage.remove(&var);
             });
@@ -100,10 +106,20 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                     if let Some(usage) = dead_var_usage.get_mut(&var) {
                         *usage -= 1;
                         if *usage == 0 {
+                            dead_var_usage.remove(&var);
                             block.ins.push(Ins::new(0, InsType::Drop(var)));
                         }
                     }
-                })
+                });
+                if let Some(var) = ins.retvar() {
+                    if let Some(usage) = dead_var_usage.get_mut(&var) {
+                        *usage -= 1;
+                        if *usage == 0 {
+                            dead_var_usage.remove(&var);
+                            block.ins.push(Ins::new(0, InsType::Drop(var)));
+                        }
+                    }
+                }
             }
         }
     }
