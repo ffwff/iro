@@ -16,15 +16,7 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
-        // Chain postlude (if it exists)
-        let postlude_chain = if block.postlude.typed != InsType::Nop {
-            Some(&block.postlude)
-        } else {
-            None
-        };
-        let postlude_iter = postlude_chain.into_iter();
-        // Check body + postlude
-        for ins in block.ins.iter().chain(postlude_iter) {
+        for ins in block.ins.iter() {
             if let Some(retvar) = ins.retvar() {
                 vars_declared_in_this_block.insert(retvar);
             }
