@@ -60,7 +60,7 @@ impl StructData {
             fields: vec![],
             flattened_fields: OptCell::none(),
             size_of: 0,
-            align_of: 0,
+            align_of: 1,
         }
     }
 

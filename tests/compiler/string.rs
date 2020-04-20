@@ -181,3 +181,30 @@ fn substring_return_with_args() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn substring_escape_seq() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_substr(substring: FatPointer<u8>) {
+        assert_eq!(substring.len(), 5);
+        unsafe {
+            assert_eq!(std::str::from_utf8(substring.slice()).unwrap(), "\n\r\ta\\");
+        }
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func(
+        "record_substr",
+        record_substr as extern "C" fn(FatPointer<u8>),
+    );
+    utils::parse_and_run(
+        "\
+    extern def record=\"record_substr\"(n: &Substring): Nil
+
+    record(\"\\n\\r\\t\\a\\\\\")
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}

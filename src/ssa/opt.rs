@@ -466,7 +466,7 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
             *var = Type::NeverUsed;
         }
     }
-    // dbg_println!("after tracing: {}", context.print());
+    dbg_println!("after tracing: {}", context.print());
     Flow::Continue
 }
 

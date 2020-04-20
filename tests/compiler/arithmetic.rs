@@ -78,6 +78,32 @@ macro_rules! arithmetic_const {
     };
 }
 
+macro_rules! arithmetic_const_imm {
+    ($name:tt, $op:expr, $type:tt, $irotype:expr, $a:expr, $b:expr, $c:expr) => {
+        #[test]
+        fn $name() {
+            static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+            extern "C" fn record(n: $type) {
+                assert_eq!(n, $c);
+                RUN_FLAG.store(true, Ordering::Relaxed);
+            }
+            let mut runtime = Runtime::new();
+            runtime.insert_func("record", record as extern "C" fn($type));
+            let source = format!(
+                "\
+            extern def record=\"record\"(n: {}): Nil
+
+            def f(x) =>
+                x {} {}
+            record(f({}))",
+                $irotype, $op, $b, $a,
+            );
+            utils::parse_and_run(&source, runtime).expect("able to parse_and_run");
+            assert!(RUN_FLAG.load(Ordering::Relaxed));
+        }
+    };
+}
+
 load_const!(const_i32, i32, "I32", 10, 10);
 load_const!(const_i64, i64, "I64", "10i64", 10);
 load_const!(const_f64, f64, "F64", "10.0", 10.0);
@@ -115,3 +141,9 @@ arithmetic_const!(add_f64_const, "+", f64, "F64", "0.5", "0.5", 1.0);
 arithmetic_const!(sub_f64_const, "-", f64, "F64", "0.5", "0.5", 0.0);
 arithmetic_const!(mul_f64_const, "*", f64, "F64", "0.5", "0.5", 0.25);
 arithmetic_const!(div_f64_const, "/", f64, "F64", "0.5", "0.5", 1.0);
+
+arithmetic_const_imm!(add_i32_const_imm, "+", i32, "I32", 10, 15, 25);
+arithmetic_const_imm!(sub_i32_const_imm, "-", i32, "I32", 10, 15, -5);
+arithmetic_const_imm!(mul_i32_const_imm, "*", i32, "I32", 10, 15, 150);
+arithmetic_const_imm!(div_i32_const_imm, "/", i32, "I32", 40, 2, 20);
+arithmetic_const_imm!(mod_i32_const_imm, "%", i32, "I32", 30, 7, 2);

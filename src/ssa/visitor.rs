@@ -229,6 +229,8 @@ impl<'a> SSAVisitor<'a> {
                                 var: MemberExprIndexVar::StructIndex(field.idx),
                                 typed: field.typed.clone(),
                             });
+                        } else {
+                            return Err(Error::UnknownStructField(string.clone()).into_compiler_error(b));
                         }
                     } else {
                         return Err(Error::InvalidLHS.into_compiler_error(b));
@@ -331,10 +333,12 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
         {
             let mut top_level = self.top_level.borrow_mut();
+            let struct_rc = UniqueRc::new(struct_type);
             top_level
                 .builtins
                 .structs
-                .insert(n.id.clone(), UniqueRc::new(struct_type));
+                .insert(n.id.clone(), struct_rc.clone());
+            top_level.types.insert(n.id.clone(), Type::Struct(struct_rc));
         }
         Ok(())
     }

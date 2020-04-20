@@ -96,7 +96,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     .join(", ")
             ),
             InsType::Call { name, args } => write!(f, "call {}({:?})", name.name, args),
-            InsType::Return(var) => write!(f, "return {}", var),
+            InsType::Return(var) => write!(f, "return v{}", var),
             InsType::Trap(trap) => write!(f, "trap {:?}", trap),
             InsType::Exit => write!(f, "exit"),
             InsType::Add((x, y)) => write!(f, "v{} + v{}", x, y),
