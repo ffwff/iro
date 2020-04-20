@@ -33,6 +33,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
         }
         match &self.0.typed {
             InsType::Nop => write!(f, "nop"),
+            InsType::Drop(arg) => write!(f, "drop v{}", arg),
             InsType::LoadNil => write!(f, "nil"),
             InsType::LoadVar(var) => write!(f, "load v{}", var),
             InsType::LoadArg(arg) => write!(f, "load_arg {}", arg),
@@ -95,7 +96,15 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            InsType::Call { name, args } => write!(f, "call {}({:?})", name.name, args),
+            InsType::Call { name, args } => write!(
+                f,
+                "call {}({})",
+                name.name,
+                args.iter()
+                    .map(|var| "v".to_string() + &var.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             InsType::Return(var) => write!(f, "return v{}", var),
             InsType::Trap(trap) => write!(f, "trap {:?}", trap),
             InsType::Exit => write!(f, "exit"),
@@ -160,6 +169,9 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
                 write!(f, "b{}:\n", idx)?;
                 for ins in &block.ins {
                     write!(f, "\t{}\n", InsPrinter(ins))?;
+                }
+                if block.postlude.typed != InsType::Nop {
+                    write!(f, "\t{}\n", InsPrinter(&block.postlude))?;
                 }
             }
         }

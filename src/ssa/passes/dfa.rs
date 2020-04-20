@@ -60,3 +60,53 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
     // dbg_println!("after dfa: {:#?}", context);
     Flow::Continue
 }
+
+pub fn drop_insertion(context: &mut Context) -> Flow {
+    for block in &mut context.blocks {
+        let dead_vars_in_this_block = (&block.vars_in | &block.vars_declared_in_this_block)
+            .difference(&block.vars_out)
+            .cloned()
+            .collect::<BTreeSet<Variable>>();
+        if !dead_vars_in_this_block.is_empty() {
+            let old_ins = std::mem::replace(&mut block.ins, vec![]);
+            // Calculate the usage for each dead var
+            let mut dead_var_usage = btreemap![];
+            for &var in &dead_vars_in_this_block {
+                dead_var_usage.insert(var, 0);
+            }
+            for ins in &old_ins {
+                if let InsType::Phi { vars, .. } = &ins.typed {
+                    // Phi nodes "consume" their branch vars
+                    for var in vars {
+                        dead_var_usage.remove(&var);
+                    }
+                } else {
+                    ins.each_used_var(|var| {
+                        if let Some(usage) = dead_var_usage.get_mut(&var) {
+                            *usage += 1;
+                        }
+                    });
+                }
+            }
+            block.postlude.each_used_var(|var| {
+                dead_var_usage.remove(&var);
+            });
+            // Loop through each instruction, check the variables used in it,
+            // once the usage for a dead var reaches zero,
+            // insert a drop instruction immediately after
+            for ins in &old_ins {
+                block.ins.push(ins.clone());
+                ins.each_used_var(|var| {
+                    if let Some(usage) = dead_var_usage.get_mut(&var) {
+                        *usage -= 1;
+                        if *usage == 0 {
+                            block.ins.push(Ins::new(0, InsType::Drop(var)));
+                        }
+                    }
+                })
+            }
+        }
+    }
+    panic!("{}", context.print());
+    Flow::Continue
+}

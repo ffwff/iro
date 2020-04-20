@@ -235,7 +235,8 @@ impl Ins {
             | InsType::LtC(_)
             | InsType::GtC(_)
             | InsType::LteC(_)
-            | InsType::GteC(_) => unimplemented!(),
+            | InsType::GteC(_)
+            | InsType::Drop(_) => unimplemented!(),
             InsType::IfJmp {
                 condvar,
                 iftrue,
@@ -516,6 +517,7 @@ pub enum MemberReferenceModifier {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     Nop,
+    Drop(Variable),
     LoadNil,
     LoadVar(Variable),
     LoadArg(usize),
@@ -603,6 +605,7 @@ impl InsType {
     pub fn has_retvar(&self) -> bool {
         match self {
             typed if typed.is_jmp() => false,
+            InsType::Drop(_) => false,
             InsType::MemberReferenceStore { .. } => false,
             _ => true,
         }

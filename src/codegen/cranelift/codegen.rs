@@ -481,6 +481,9 @@ where
         let context = ins_context.context;
         match &ins.typed {
             isa::InsType::Nop => (),
+            isa::InsType::Drop(arg) => {
+                // TODO: implement me
+            }
             isa::InsType::LoadVar(arg) => {
                 let tmp = builder.use_var(to_var(*arg));
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);

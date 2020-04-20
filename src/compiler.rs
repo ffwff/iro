@@ -151,7 +151,9 @@ pub fn ssa_pipeline() -> Pipeline<Context, fn(&mut Context) -> Flow> {
             passes::graph::build_graph,
             // Stage 3:
             passes::dfa::data_flow_analysis,
-            // TODO: drop insertion pass
+            passes::postlude::separate_postlude,
+            passes::dfa::drop_insertion,
+            passes::postlude::fuse_postlude,
             // Stage 4:
             passes::ssa::eliminate_phi,
         ]

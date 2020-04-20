@@ -194,6 +194,9 @@ impl<'a> SSAVisitor<'a> {
     }
 
     fn insert_cast(&mut self, left_var: Variable, mut typed: Type) -> Variable {
+        if self.context.variables[left_var] == typed {
+            return left_var;
+        }
         let casted = self.context.insert_var(typed.clone());
         self.with_block_mut(|block| {
             block.ins.push(Ins::new(
@@ -242,9 +245,7 @@ impl<'a> SSAVisitor<'a> {
                     idx.visit(self)?;
                     let mut idx_var = self.last_retvar.take().unwrap();
                     assert!(self.context.variables[idx_var].is_int());
-                    if self.context.variables[idx_var] != Type::ISize {
-                        idx_var = self.insert_cast(idx_var, Type::ISize);
-                    }
+                    idx_var = self.insert_cast(idx_var, Type::ISize);
                     let typed = last_typed.instance_type().unwrap().clone();
                     indices.push(MemberExprIndex {
                         var: MemberExprIndexVar::Variable(idx_var),
