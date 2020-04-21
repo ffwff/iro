@@ -59,7 +59,7 @@ where
                     // FIXME: support SSE vars
                     // For small structs, we pass the struct as a 64-bit integer parameter
                     load_function(LoadFunctionArg::StructArg {
-                        idx: 0,
+                        idx,
                         offset: Offset32::new(0),
                         typed: types::I64,
                     });

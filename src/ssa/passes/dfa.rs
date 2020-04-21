@@ -80,17 +80,25 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                         *usage += 1;
                     }
                 }
-                if let InsType::Phi { vars, .. } = &ins.typed {
-                    // Phi nodes "consume" their branch vars
-                    for var in vars {
+                match &ins.typed {
+                    InsType::Drop(var)
+                    | InsType::Move(var) 
+                    | InsType::MarkMoved(var) => {
                         dead_var_usage.remove(&var);
                     }
-                } else {
-                    ins.each_used_var(|var| {
-                        if let Some(usage) = dead_var_usage.get_mut(&var) {
-                            *usage += 1;
+                    InsType::Phi { vars, .. } => {
+                        // Phi nodes "consume" their branch vars
+                        for var in vars {
+                            dead_var_usage.remove(&var);
                         }
-                    });
+                    }
+                    _ => {
+                        ins.each_used_var(|var| {
+                            if let Some(usage) = dead_var_usage.get_mut(&var) {
+                                *usage += 1;
+                            }
+                        });
+                    }
                 }
             }
             // Postlude instruction does not count towards usage

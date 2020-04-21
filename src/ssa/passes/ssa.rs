@@ -300,7 +300,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                 if let Some(retvar) = ins.retvar() {
                     if let Some(newvars) = replacements.remove(&retvar) {
                         for newvar in newvars {
-                            block.ins.push(Ins::new(newvar, InsType::LoadVar(retvar)));
+                            block.ins.push(Ins::new(newvar, InsType::Move(retvar)));
                         }
                     }
                 }

@@ -484,7 +484,8 @@ where
             isa::InsType::Drop(arg) => {
                 // TODO: implement me
             }
-            isa::InsType::LoadVar(arg) => {
+            isa::InsType::Move(arg)
+            | isa::InsType::Copy(arg) => {
                 let tmp = builder.use_var(to_var(*arg));
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
@@ -869,8 +870,7 @@ where
                     ));
                     let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
                     match modifier {
-                        isa::MemberReferenceModifier::None => unreachable!(),
-                        isa::MemberReferenceModifier::Copy => {
+                        isa::ReferenceModifier::Copy => {
                             builder.emit_small_memory_copy(
                                 self.frontend_config(),
                                 pointer,
@@ -881,7 +881,7 @@ where
                                 true,
                             );
                         }
-                        isa::MemberReferenceModifier::Move => unimplemented!(),
+                        isa::ReferenceModifier::Move => unimplemented!(),
                     }
                     builder.declare_var(to_var(retvar), self.pointer_type());
                     builder.def_var(to_var(retvar), pointer);
@@ -891,6 +891,7 @@ where
                 left,
                 indices,
                 right,
+                ..
             } => {
                 let right_var = builder.use_var(to_var(*right));
                 let (member_ptr, typed) =

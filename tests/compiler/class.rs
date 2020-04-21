@@ -85,3 +85,35 @@ fn nested_class_init() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn nested_slice_class_init() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record(n: i32, slice: [i32; 2]) {
+        assert_eq!(n, 1337);
+        assert_eq!(slice[0], 100);
+        assert_eq!(slice[1], 200);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func("record", record as extern "C" fn(i32, [i32; 2]));
+    utils::parse_and_run(
+        "\
+    extern def record(n: I32, slice: [I32; 2]): Nil
+
+    class Thing =>
+        a_int: I32
+        a_slice: [I32; 2]
+    
+    thing := (
+        Thing =>
+            a_int: 1337
+            a_slice: [100, 200]
+    )
+    record(thing.a_int, thing.a_slice)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}

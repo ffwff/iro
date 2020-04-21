@@ -182,7 +182,10 @@ impl Ins {
         }
         let old_typed = std::mem::replace(&mut self.typed, InsType::Nop);
         let new_typed = match old_typed {
-            InsType::LoadVar(x) => InsType::LoadVar(swap(x)),
+            InsType::Move(x) => InsType::Move(swap(x)),
+            InsType::MarkMoved(x) => InsType::MarkMoved(swap(x)),
+            InsType::Drop(x) => InsType::Drop(swap(x)),
+            InsType::Copy(x) => InsType::Copy(swap(x)),
             InsType::LoadSlice(mut args) => {
                 for arg in &mut args {
                     let oldvar = *arg;
@@ -211,10 +214,12 @@ impl Ins {
             InsType::MemberReferenceStore {
                 left,
                 indices,
+                modifier,
                 right,
             } => InsType::MemberReferenceStore {
                 left: swap(left),
                 indices: swap_indices(indices, &mut swap),
+                modifier,
                 right: swap(right),
             },
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
@@ -235,8 +240,7 @@ impl Ins {
             | InsType::LtC(_)
             | InsType::GtC(_)
             | InsType::LteC(_)
-            | InsType::GteC(_)
-            | InsType::Drop(_) => unimplemented!(),
+            | InsType::GteC(_) => unimplemented!(),
             InsType::IfJmp {
                 condvar,
                 iftrue,
@@ -280,7 +284,10 @@ impl Ins {
             }
         }
         match &self.typed {
-            InsType::LoadVar(x) => {
+            InsType::Move(x)
+            | InsType::MarkMoved(x)
+            | InsType::Drop(x)
+            | InsType::Copy(x) => {
                 callback(*x);
             }
             InsType::LoadSlice(args) => {
@@ -309,6 +316,7 @@ impl Ins {
                 left,
                 indices,
                 right,
+                ..
             } => {
                 callback(*left);
                 each_indices(indices, &mut callback);
@@ -508,8 +516,7 @@ pub struct MemberExprIndex {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub enum MemberReferenceModifier {
-    None,
+pub enum ReferenceModifier {
     Copy,
     Move,
 }
@@ -517,9 +524,11 @@ pub enum MemberReferenceModifier {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     Nop,
-    Drop(Variable),
     LoadNil,
-    LoadVar(Variable),
+    Drop(Variable),
+    MarkMoved(Variable),
+    Move(Variable),
+    Copy(Variable),
     LoadArg(usize),
     LoadI32(i32),
     LoadI64(i64),
@@ -531,11 +540,12 @@ pub enum InsType {
     MemberReference {
         left: Variable,
         indices: Vec<MemberExprIndex>,
-        modifier: MemberReferenceModifier,
+        modifier: ReferenceModifier,
     },
     MemberReferenceStore {
         left: Variable,
         indices: Vec<MemberExprIndex>,
+        modifier: ReferenceModifier,
         right: Variable,
     },
     Phi {
@@ -605,6 +615,7 @@ impl InsType {
     pub fn has_retvar(&self) -> bool {
         match self {
             typed if typed.is_jmp() => false,
+            InsType::MarkMoved(_) => false,
             InsType::Drop(_) => false,
             InsType::MemberReferenceStore { .. } => false,
             _ => true,

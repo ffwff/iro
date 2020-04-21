@@ -33,9 +33,11 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
         }
         match &self.0.typed {
             InsType::Nop => write!(f, "nop"),
-            InsType::Drop(arg) => write!(f, "drop v{}", arg),
             InsType::LoadNil => write!(f, "nil"),
-            InsType::LoadVar(var) => write!(f, "load v{}", var),
+            InsType::Drop(arg) => write!(f, "drop v{}", arg),
+            InsType::Move(var) => write!(f, "move v{}", var),
+            InsType::MarkMoved(var) => write!(f, "mark_moved v{}", var),
+            InsType::Copy(var) => write!(f, "copy v{}", var),
             InsType::LoadArg(arg) => write!(f, "load_arg {}", arg),
             InsType::LoadI32(n) => write!(f, "load.I32 {}", n),
             InsType::LoadI64(n) => write!(f, "load.I64 {}", n),
@@ -50,11 +52,10 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                 modifier,
             } => write!(
                 f,
-                "member{} v{} [{}]",
+                "{} member v{} [{}]",
                 match modifier {
-                    MemberReferenceModifier::None => "",
-                    MemberReferenceModifier::Copy => ".copy",
-                    MemberReferenceModifier::Move => ".move",
+                    ReferenceModifier::Copy => "copy",
+                    ReferenceModifier::Move => "move",
                 },
                 left,
                 indices
@@ -71,10 +72,11 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             InsType::MemberReferenceStore {
                 left,
                 indices,
+                modifier,
                 right,
             } => write!(
                 f,
-                "member v{} [{}] = v{}",
+                "member v{} [{}] = {} v{}",
                 left,
                 indices
                     .iter()
@@ -86,6 +88,10 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     })
                     .collect::<Vec<String>>()
                     .join(", "),
+                match modifier {
+                    ReferenceModifier::Copy => "copy",
+                    ReferenceModifier::Move => "move",
+                },
                 right
             ),
             InsType::Phi { vars, defines: _ } => write!(
