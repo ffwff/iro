@@ -283,9 +283,7 @@ impl<'a> SSAVisitor<'a> {
             _ if typed.is_fat_pointer() => true,
             Type::Struct(x) => false,
             Type::Union(x) => false,
-            Type::Slice(x) => {
-                self.is_copyable(&x.typed)
-            }
+            Type::Slice(x) => self.is_copyable(&x.typed),
             _ => true,
         }
     }
@@ -293,6 +291,7 @@ impl<'a> SSAVisitor<'a> {
 
 impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_program(&mut self, n: &ast::Program) -> VisitorResult {
+        let mut top_level_stmts = vec![];
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
@@ -304,9 +303,17 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .defstmts
                         .insert(defstmt.id.clone(), vec![expr.clone()]);
                 }
+            } else if let Some(_) = expr.borrow().downcast_ref::<ClassStatement>() {
+                top_level_stmts.push(expr);
+            } else if let Some(_) = expr.borrow().downcast_ref::<ImportStatement>() {
+                top_level_stmts.push(expr);
             } else {
                 outerstmts.push(expr);
             }
+        }
+
+        for node in &top_level_stmts {
+            node.visit(self)?;
         }
 
         {
@@ -644,9 +651,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .context
                         .insert_var(self.context.variables[last_retvar].clone());
                     self.with_block_mut(|block| {
-                        block
-                            .ins
-                            .push(Ins::new(retvar, InsType::Move(last_retvar)));
+                        block.ins.push(Ins::new(retvar, InsType::Move(last_retvar)));
                     });
                     iftrue_retvar = Some(retvar);
                 }
@@ -679,9 +684,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .context
                         .insert_var(self.context.variables[last_retvar].clone());
                     self.with_block_mut(|block| {
-                        block
-                            .ins
-                            .push(Ins::new(retvar, InsType::Move(last_retvar)));
+                        block.ins.push(Ins::new(retvar, InsType::Move(last_retvar)));
                     });
                     iffalse_retvar = Some(retvar);
                 }
@@ -740,9 +743,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             let block = &mut self.context.blocks[iftrue_end];
             if let Some(retvar) = retvar {
                 let last_retvar = block.ins.last().unwrap().retvar().unwrap();
-                block
-                    .ins
-                    .push(Ins::new(retvar, InsType::Move(last_retvar)));
+                block.ins.push(Ins::new(retvar, InsType::Move(last_retvar)));
             }
             if let Some(outer_block) = outer_block {
                 block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
@@ -752,9 +753,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             let block = &mut self.context.blocks[iffalse_end];
             if let Some(retvar) = retvar {
                 let last_retvar = block.ins.last().unwrap().retvar().unwrap();
-                block
-                    .ins
-                    .push(Ins::new(retvar, InsType::Move(last_retvar)));
+                block.ins.push(Ins::new(retvar, InsType::Move(last_retvar)));
             }
             if let Some(outer_block) = outer_block {
                 block.ins.push(Ins::new(0, InsType::Jmp(outer_block)));
@@ -946,11 +945,21 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 }
                 n.right.visit(self)?;
                 let right = self.last_retvar.take().unwrap();
+                let var = self.context.insert_var(self.context.variables[right].clone());
+                if self.is_copyable(&self.context.variables[right]) {
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins::new(var, InsType::Copy(right)));
+                    });
+                } else {
+                    self.with_block_mut(|block| {
+                        block.ins.push(Ins::new(var, InsType::Move(right)));
+                    });
+                }
                 let env = self.envs.last_mut().unwrap();
                 env.vars.insert(
                     id.clone(),
                     env::Variable {
-                        var: right,
+                        var,
                         is_mut: n.is_mut,
                     },
                 );
@@ -1031,7 +1040,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     }
                 } else if let Some(member_expr) = n_left.downcast_ref::<ast::MemberExpr>() {
                     if let InsType::MemberReference {
-                        left, mut indices, modifier,
+                        left,
+                        mut indices,
+                        modifier,
                     } = self.build_member_expr(member_expr, &n.left)?
                     {
                         n.right.visit(self)?;
@@ -1295,10 +1306,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     let retvar = self.context.insert_var(typed.slice(slice.len() as u32));
                     self.with_block_mut(|block| {
                         let retvars = std::mem::replace(&mut retvars, vec![]);
-                        block.ins.push(Ins::new(
-                            retvar,
-                            InsType::LoadSlice(retvars.clone()),
-                        ));
+                        block
+                            .ins
+                            .push(Ins::new(retvar, InsType::LoadSlice(retvars.clone())));
                         if !copyable {
                             for retvar in &retvars {
                                 block.ins.push(Ins::new(0, InsType::MarkMoved(*retvar)));

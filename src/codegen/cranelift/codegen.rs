@@ -484,9 +484,11 @@ where
             isa::InsType::Drop(arg) => {
                 // TODO: implement me
             }
-            isa::InsType::Move(arg)
-            | isa::InsType::Copy(arg) => {
+            isa::InsType::Copy(arg)
+            | isa::InsType::Move(arg) => {
                 let tmp = builder.use_var(to_var(*arg));
+                let typed = builder.func.dfg.value_type(tmp);
+                builder.declare_var(to_var(ins.retvar().unwrap()), typed);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::LoadArg(arg) => {
@@ -869,20 +871,15 @@ where
                         struct_data.size_of(),
                     ));
                     let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
-                    match modifier {
-                        isa::ReferenceModifier::Copy => {
-                            builder.emit_small_memory_copy(
-                                self.frontend_config(),
-                                pointer,
-                                member_ptr,
-                                struct_data.size_of() as u64,
-                                0,
-                                0,
-                                true,
-                            );
-                        }
-                        isa::ReferenceModifier::Move => unimplemented!(),
-                    }
+                    builder.emit_small_memory_copy(
+                        self.frontend_config(),
+                        pointer,
+                        member_ptr,
+                        struct_data.size_of() as u64,
+                        0,
+                        0,
+                        true,
+                    );
                     builder.declare_var(to_var(retvar), self.pointer_type());
                     builder.def_var(to_var(retvar), pointer);
                 }

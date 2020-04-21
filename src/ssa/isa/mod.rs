@@ -284,10 +284,7 @@ impl Ins {
             }
         }
         match &self.typed {
-            InsType::Move(x)
-            | InsType::MarkMoved(x)
-            | InsType::Drop(x)
-            | InsType::Copy(x) => {
+            InsType::Move(x) | InsType::MarkMoved(x) | InsType::Drop(x) | InsType::Copy(x) => {
                 callback(*x);
             }
             InsType::LoadSlice(args) => {
@@ -354,6 +351,25 @@ impl Ins {
                 RegConst::RegRight((_, reg)) => callback(*reg),
             },
             _ => (),
+        }
+    }
+
+    pub fn each_moved_var<T>(&self, mut callback: T) -> bool
+    where
+        T: FnMut(Variable),
+    {
+        match &self.typed {
+            InsType::Drop(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
+                callback(*var);
+                true
+            }
+            InsType::Phi { vars, .. } => {
+                for var in vars {
+                    callback(*var);
+                }
+                true
+            }
+            _ => false,
         }
     }
 

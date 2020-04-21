@@ -8,3 +8,4 @@ pub mod slice;
 pub mod string;
 pub mod typing;
 pub mod r#while;
+pub mod r#move;
