@@ -1,6 +1,6 @@
 use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 macro_rules! ins_to_const_ins {
     ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt, $method:tt) => {{

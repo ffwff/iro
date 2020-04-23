@@ -281,8 +281,8 @@ impl<'a> SSAVisitor<'a> {
     fn is_copyable(&self, typed: &Type) -> bool {
         match typed {
             _ if typed.is_fat_pointer() => true,
-            Type::Struct(x) => false,
-            Type::Union(x) => false,
+            Type::Struct(_x) => false,
+            Type::Union(_x) => false,
             Type::Slice(x) => self.is_copyable(&x.typed),
             _ => true,
         }
@@ -945,7 +945,9 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 }
                 n.right.visit(self)?;
                 let right = self.last_retvar.take().unwrap();
-                let var = self.context.insert_var(self.context.variables[right].clone());
+                let var = self
+                    .context
+                    .insert_var(self.context.variables[right].clone());
                 if self.is_copyable(&self.context.variables[right]) {
                     self.with_block_mut(|block| {
                         block.ins.push(Ins::new(var, InsType::Copy(right)));

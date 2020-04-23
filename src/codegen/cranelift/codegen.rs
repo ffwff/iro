@@ -481,11 +481,11 @@ where
         let context = ins_context.context;
         match &ins.typed {
             isa::InsType::Nop => (),
-            isa::InsType::Drop(arg) => {
+            isa::InsType::MarkMoved(_) => (),
+            isa::InsType::Drop(_arg) => {
                 // TODO: implement me
             }
-            isa::InsType::Copy(arg)
-            | isa::InsType::Move(arg) => {
+            isa::InsType::Copy(arg) | isa::InsType::Move(arg) => {
                 let tmp = builder.use_var(to_var(*arg));
                 let typed = builder.func.dfg.value_type(tmp);
                 builder.declare_var(to_var(ins.retvar().unwrap()), typed);
@@ -853,11 +853,7 @@ where
                 };
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
-            isa::InsType::MemberReference {
-                left,
-                indices,
-                modifier,
-            } => {
+            isa::InsType::MemberReference { left, indices, .. } => {
                 let retvar = ins.retvar().unwrap();
                 let (member_ptr, typed) =
                     self.visit_member_ref(*left, indices, builder, ins_context);

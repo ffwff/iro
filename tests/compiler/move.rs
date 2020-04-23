@@ -4,8 +4,7 @@ use iro::runtime::Runtime;
 #[cfg(test)]
 #[test]
 fn nested_class() {
-    extern "C" fn noop(_: i32) {
-    }
+    extern "C" fn noop(_: i32) {}
     let mut runtime = Runtime::new();
     runtime.insert_func("noop", noop as extern "C" fn(i32));
     utils::parse_and_run(
@@ -33,14 +32,13 @@ fn nested_class() {
     );
 }
 
-// #[test]
+#[test]
 fn class() {
-    extern "C" fn noop(_: i32) {
-    }
+    extern "C" fn noop(_: i32) {}
     let mut runtime = Runtime::new();
     runtime.insert_func("noop", noop as extern "C" fn(i32));
     runtime.insert_func("noop_i32", noop as extern "C" fn(i32));
-    println!("{:#?}", utils::parse_and_run(
+    utils::parse_and_run(
         "\
     class Other =>
         a_int: I32
@@ -55,7 +53,7 @@ fn class() {
     noop(x)
     noop_i32(x.a_int)
     ",
-        Runtime::new(),
-    ));
+        runtime,
+    );
     panic!();
 }

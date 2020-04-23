@@ -1,6 +1,6 @@
 use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 pub fn preprocess(context: &mut Context) -> Flow {
     let len = context.blocks.len();

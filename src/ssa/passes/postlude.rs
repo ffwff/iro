@@ -1,6 +1,5 @@
 use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
-use std::collections::{BTreeMap, BTreeSet};
 
 pub fn separate_postlude(context: &mut Context) -> Flow {
     for block in &mut context.blocks {

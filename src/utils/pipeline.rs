@@ -5,8 +5,8 @@ pub enum Flow {
 }
 
 #[derive(Debug, Clone)]
-pub struct Pipeline<T: 'static, F> {
-    funcs: Vec<F>,
+pub struct Pipeline<T: 'static, F: 'static> {
+    funcs: &'static [F],
     phantom: std::marker::PhantomData<&'static T>,
 }
 
@@ -15,7 +15,7 @@ where
     T: Sized,
     F: Fn(&mut T) -> Flow,
 {
-    pub fn new(funcs: Vec<F>) -> Self {
+    pub fn new(funcs: &'static [F]) -> Self {
         Self {
             funcs,
             phantom: std::marker::PhantomData,
@@ -23,7 +23,7 @@ where
     }
 
     pub fn apply(&self, data: &mut T) {
-        for func in &self.funcs {
+        for func in self.funcs {
             match func(data) {
                 Flow::Continue => (),
                 Flow::Break => return,

@@ -1,6 +1,6 @@
 use crate::ssa::isa::*;
 use crate::utils::pipeline::Flow;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub fn data_flow_analysis(context: &mut Context) -> Flow {
     // Generate the initial worklist by putting returning blocks
@@ -80,7 +80,9 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                         *usage += 1;
                     }
                 }
-                if !ins.each_moved_var(|var| { dead_var_usage.remove(&var); }) {
+                if !ins.each_moved_var(|var| {
+                    dead_var_usage.remove(&var);
+                }) {
                     ins.each_used_var(|var| {
                         if let Some(usage) = dead_var_usage.get_mut(&var) {
                             *usage += 1;
