@@ -176,7 +176,7 @@ where
         program: &isa::Program,
         typed: &isa::StructType,
     ) -> Rc<StructData> {
-        if let Ok(data) = typed.data.try_borrow() {
+        if let Some(data) = typed.data.borrow() {
             return data.clone();
         }
         let mut data = StructData::new();
@@ -554,7 +554,8 @@ where
                         .builtins
                         .generic_fat_pointer_struct
                         .data
-                        .borrow();
+                        .borrow()
+                        .unwrap();
                     let mut struct_builder = StructBuilder::new(&struct_data);
                     struct_builder.append_zeroed(); // address
                     struct_builder.append(&x.len().to_ne_bytes()); // len

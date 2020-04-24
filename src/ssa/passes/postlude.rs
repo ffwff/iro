@@ -1,5 +1,5 @@
-use crate::ssa::isa::*;
 use crate::compiler::Flow;
+use crate::ssa::isa::*;
 
 pub fn separate_postlude(context: &mut Context) -> Flow {
     for block in &mut context.blocks {

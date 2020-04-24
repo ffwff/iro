@@ -270,7 +270,7 @@ impl<'a> SSAVisitor<'a> {
     fn get_struct_type(&self, typed: &Type) -> Option<Rc<StructType>> {
         match typed {
             maybe_ptr if maybe_ptr.is_fat_pointer() => {
-                let top_level = self.top_level.borrow();
+                let top_level = self.top_level.borrow().unwrap();
                 Some(top_level.builtins.generic_fat_pointer_struct.clone())
             }
             Type::Struct(struct_type) => Some(struct_type.clone().into()),
@@ -295,7 +295,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
-                let mut top_level = self.top_level.borrow_mut();
+                let mut top_level = self.top_level.borrow_mut().unwrap();
                 if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
                     vec.push(expr.clone());
                 } else {
@@ -317,7 +317,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
 
         {
-            let top_level = self.top_level.borrow();
+            let top_level = self.top_level.borrow().unwrap();
             for (_, defstmt_vec) in &top_level.defstmts {
                 for boxed in defstmt_vec {
                     let defstmt: &DefStatement =
@@ -355,7 +355,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             }
         }
         {
-            let mut top_level = self.top_level.borrow_mut();
+            let mut top_level = self.top_level.borrow_mut().unwrap();
             let struct_rc = UniqueRc::new(struct_type);
             top_level
                 .builtins
@@ -370,7 +370,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_class_init(&mut self, n: &ClassInitExpr, b: &NodeBox) -> VisitorResult {
         let struct_data = {
-            let top_level = self.top_level.borrow();
+            let top_level = self.top_level.borrow().unwrap();
             if let Some(struct_data) = top_level.builtins.structs.get(&n.id) {
                 struct_data.clone()
             } else {
@@ -597,7 +597,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 unreachable!()
             }
         }
-        for InsPosition { block_idx, ins_idx, } in env.break_idx.unwrap() {
+        for InsPosition { block_idx, ins_idx } in env.break_idx.unwrap() {
             if let InsType::Jmp(x) = &mut self.context.blocks[block_idx].ins[ins_idx].typed {
                 *x = new_block;
             } else {
@@ -787,7 +787,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
             });
 
             let rettype = {
-                let top_level = self.top_level.borrow_mut();
+                let top_level = self.top_level.borrow_mut().unwrap();
                 if let Some((key, maybe_context)) =
                     top_level.func_contexts.get_key_value(&func_name)
                 {
@@ -808,7 +808,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 rettype
             } else {
                 let (defstmt, func_insert) = {
-                    let mut top_level = self.top_level.borrow_mut();
+                    let mut top_level = self.top_level.borrow_mut().unwrap();
                     let mut usable_defstmt = None;
                     if let Some(vec) = top_level.defstmts.get(id) {
                         for boxed in vec {
@@ -864,7 +864,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 rettype.clone(),
                                 defstmt.intrinsic.clone().into_inner(),
                             );
-                            let mut top_level = self.top_level.borrow_mut();
+                            let mut top_level = self.top_level.borrow_mut().unwrap();
                             top_level
                                 .func_contexts
                                 .insert(func_name.clone(), Some(context));
@@ -879,7 +879,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                             visitor.visit_defstmt(defstmt.borrow(), b)?;
                             (func_name.clone(), visitor.into_context())
                         };
-                        let mut top_level = self.top_level.borrow_mut();
+                        let mut top_level = self.top_level.borrow_mut().unwrap();
                         let rettype = context.rettype.clone();
                         top_level.func_contexts.insert(func_name, Some(context));
                         rettype
@@ -1329,7 +1329,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult {
         match &n.data {
             TypeIdData::Identifier(id) => {
-                let top_level = self.top_level.borrow();
+                let top_level = self.top_level.borrow().unwrap();
                 if n.typed.borrow().is_some() {
                     Ok(())
                 } else if let Some(typed) = top_level.types.get(id) {
@@ -1379,10 +1379,10 @@ impl<'a> Visitor for SSAVisitor<'a> {
             idx
         });
         let env = self.get_breakable().unwrap();
-        env.break_idx.as_mut().unwrap().push(InsPosition {
-            block_idx,
-            ins_idx,
-        });
+        env.break_idx
+            .as_mut()
+            .unwrap()
+            .push(InsPosition { block_idx, ins_idx });
         Ok(())
     }
 }

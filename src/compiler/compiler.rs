@@ -42,7 +42,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
 pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    let top_level_info = OptCell::new(ssa::visitor::TopLevelInfo::new());
+    let top_level_info = OptCell::some(ssa::visitor::TopLevelInfo::new());
     let mut visitor = ssa::visitor::SSAVisitor::new(&top_level_info);
     visitor.visit_program(&ast)?;
     let mut program = visitor.into_program();

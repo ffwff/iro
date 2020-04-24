@@ -113,7 +113,7 @@ impl StructData {
     }
 
     pub fn flattened_fields(&self) -> Ref<'_, Vec<StructField>> {
-        if let Ok(flattened_fields) = self.flattened_fields.try_borrow() {
+        if let Ok(Some(flattened_fields)) = self.flattened_fields.try_borrow() {
             flattened_fields
         } else {
             let mut vec = vec![];
@@ -124,7 +124,7 @@ impl StructData {
                 }
             }
             self.flattened_fields.replace(vec);
-            self.flattened_fields.borrow()
+            self.flattened_fields.borrow().unwrap()
         }
     }
 

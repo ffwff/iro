@@ -1,5 +1,5 @@
-use crate::ssa::isa::*;
 use crate::compiler::Flow;
+use crate::ssa::isa::*;
 use std::collections::BTreeSet;
 
 pub fn data_flow_analysis(context: &mut Context) -> Flow {

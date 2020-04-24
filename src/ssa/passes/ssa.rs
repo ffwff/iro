@@ -1,5 +1,5 @@
-use crate::ssa::isa::*;
 use crate::compiler::Flow;
+use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
