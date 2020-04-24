@@ -597,8 +597,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 unreachable!()
             }
         }
-        for (block_idx, idx) in env.break_idx.unwrap() {
-            if let InsType::Jmp(x) = &mut self.context.blocks[block_idx].ins[idx].typed {
+        for InsPosition { block_idx, ins_idx, } in env.break_idx.unwrap() {
+            if let InsType::Jmp(x) = &mut self.context.blocks[block_idx].ins[ins_idx].typed {
                 *x = new_block;
             } else {
                 unreachable!()
@@ -1373,13 +1373,16 @@ impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_break(&mut self, _n: &BreakExpr, _b: &NodeBox) -> VisitorResult {
         self.has_break = true;
         let block_idx = self.context.blocks.len() - 1;
-        let idx = self.with_block_mut(|block| {
+        let ins_idx = self.with_block_mut(|block| {
             let idx = block.ins.len();
             block.ins.push(Ins::new(0, InsType::Jmp(0)));
             idx
         });
         let env = self.get_breakable().unwrap();
-        env.break_idx.as_mut().unwrap().push((block_idx, idx));
+        env.break_idx.as_mut().unwrap().push(InsPosition {
+            block_idx,
+            ins_idx,
+        });
         Ok(())
     }
 }

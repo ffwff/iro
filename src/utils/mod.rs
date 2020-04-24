@@ -1,5 +1,4 @@
 pub mod optcell;
-pub mod pipeline;
 pub mod uniquerc;
 
 #[macro_use]

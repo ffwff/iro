@@ -1,3 +1,4 @@
+use crate::ssa::isa::InsPosition;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -12,7 +13,7 @@ pub struct Env {
     /// Table of variable identifiers to variable numbers
     pub vars: HashMap<Rc<str>, Variable>,
     /// Indices of break instructions in this environment
-    pub break_idx: Option<Vec<(usize, usize)>>,
+    pub break_idx: Option<Vec<InsPosition>>,
 }
 
 impl Env {

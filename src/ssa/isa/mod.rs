@@ -23,6 +23,12 @@ impl IntrinsicType {
 
 pub type Variable = usize;
 
+#[derive(Debug, Clone, Copy)]
+pub struct InsPosition {
+    pub block_idx: usize,
+    pub ins_idx: usize,
+}
+
 #[derive(Clone)]
 pub struct Context {
     pub blocks: Vec<Block>,

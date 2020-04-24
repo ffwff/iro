@@ -1,5 +1,5 @@
 use crate::ssa::isa::*;
-use crate::utils::pipeline::Flow;
+use crate::compiler::Flow;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
@@ -26,11 +26,11 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         {
             fn walk(node: usize, context: &Context, post_order: &mut Vec<usize>) {
                 let block = &context.blocks[node];
-                for succ in &block.succs {
+                for &succ in &block.succs {
                     // Since this is a DFS tree, all non-looping descendents
                     // must have larger indices that its parent
-                    if *succ > node {
-                        walk(*succ, context, post_order);
+                    if succ > node {
+                        walk(succ, context, post_order);
                     }
                 }
                 post_order.push(node);

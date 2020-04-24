@@ -1,5 +1,5 @@
 use crate::ssa::isa::*;
-use crate::utils::pipeline::Flow;
+use crate::compiler::Flow;
 use std::collections::BTreeMap;
 
 pub fn preprocess(context: &mut Context) -> Flow {

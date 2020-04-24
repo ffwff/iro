@@ -1,5 +1,5 @@
 use crate::ssa::isa::*;
-use crate::utils::pipeline::Flow;
+use crate::compiler::Flow;
 use std::collections::BTreeMap;
 
 macro_rules! ins_to_const_ins {

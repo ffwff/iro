@@ -4,3 +4,4 @@ pub mod gc;
 pub mod graph;
 pub mod postlude;
 pub mod ssa;
+pub mod memcheck;
