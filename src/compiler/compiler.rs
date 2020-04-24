@@ -12,31 +12,31 @@ use crate::utils::optcell::OptCell;
 pub enum Flow {
     Continue,
     Break,
+    Err,
 }
 
 const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
-    // Stage 0:
+    // Stage 0: preprocess and build the IR graph
     passes::graph::preprocess,
     passes::graph::build_graph,
     passes::gc::collect_garbage_vars_with_multiple_assigns,
-    // Stage 1:
+    // Stage 1: "SSA" generation
     passes::dfa::data_flow_analysis,
     passes::ssa::rename_vars_and_insert_phis,
+    // Stage 2: constant folding and graph cleanup
     passes::fold::fold_constants,
     passes::gc::collect_garbage_vars,
-    // Stage 2:
     passes::postlude::separate_postlude,
     passes::graph::cleanup_jump_blocks,
     passes::postlude::fuse_postlude,
     passes::graph::build_graph,
-    // Stage 3:
+    // Stage 3: SSA elimination and high-level memory ops
+    passes::ssa::eliminate_phi,
     passes::dfa::data_flow_analysis,
     passes::postlude::separate_postlude,
     passes::dfa::drop_insertion,
+    passes::memcheck::check,
     passes::postlude::fuse_postlude,
-    // Stage 4:
-    // passes::memcheck::move_checker::check,
-    passes::ssa::eliminate_phi,
 ];
 
 pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
@@ -52,6 +52,12 @@ pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
                 Flow::Continue => (),
                 Flow::Break => {
                     break;
+                }
+                Flow::Err => {
+                    return Err(compiler::Error {
+                        error: Box::new("ssa pass error"),
+                        span: (0, 0),
+                    });
                 }
             }
         }

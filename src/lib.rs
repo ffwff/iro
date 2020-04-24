@@ -1,6 +1,7 @@
 #![feature(vec_remove_item)]
 #![feature(ptr_offset_from)]
 #![feature(trait_alias)]
+#![feature(move_ref_pattern)]
 
 #[macro_use]
 extern crate lalrpop_util;

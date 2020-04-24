@@ -1,4 +1,6 @@
 pub mod optcell;
+#[macro_use]
+pub mod overlay;
 pub mod uniquerc;
 
 #[macro_use]

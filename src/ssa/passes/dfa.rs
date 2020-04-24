@@ -4,14 +4,7 @@ use std::collections::BTreeSet;
 
 pub fn data_flow_analysis(context: &mut Context) -> Flow {
     // Generate the initial worklist by putting returning blocks
-    let mut worklist: Vec<usize> = context
-        .blocks
-        .iter()
-        .enumerate()
-        .filter(|(_idx, block)| block.ins.iter().any(|ins| ins.typed.has_side_effects()))
-        .map(|(idx, _block)| idx)
-        .collect();
-    dbg_println!("initial worklist: {:#?}", worklist);
+    let mut worklist: Vec<usize> = (1..context.blocks.len()).rev().collect();
 
     for block in &mut context.blocks {
         let mut vars_declared_in_this_block = BTreeSet::new();
@@ -24,6 +17,9 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
                 vars_used.insert(used);
             });
         }
+        // Reset every variable flow information
+        block.vars_in = btreeset![];
+        block.vars_out = btreeset![];
         block.vars_declared_in_this_block = vars_declared_in_this_block;
         block.vars_used = vars_used;
         block.vars_block_local = btreeset![];
@@ -62,11 +58,12 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
 }
 
 pub fn drop_insertion(context: &mut Context) -> Flow {
-    for block in &mut context.blocks {
+    for (idx, block) in context.blocks.iter_mut().enumerate() {
         let dead_vars_in_this_block = (&block.vars_in | &block.vars_declared_in_this_block)
             .difference(&block.vars_out)
             .cloned()
             .collect::<BTreeSet<Variable>>();
+        dbg_println!("{}: {:?} -> dead vars: {:?}", idx, block.vars_out, dead_vars_in_this_block);
         if !dead_vars_in_this_block.is_empty() {
             let old_ins = std::mem::replace(&mut block.ins, vec![]);
             // Calculate the usage for each dead var

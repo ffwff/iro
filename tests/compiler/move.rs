@@ -7,7 +7,7 @@ fn nested_class() {
     extern "C" fn noop(_: i32) {}
     let mut runtime = Runtime::new();
     runtime.insert_func("noop", noop as extern "C" fn(i32));
-    utils::parse_and_run(
+    assert!(utils::parse_and_run(
         "\
     extern def noop(n: I32): Nil
 
@@ -29,7 +29,8 @@ fn nested_class() {
     noop(thing.other.a_int)
     ",
         runtime,
-    );
+    )
+    .is_err());
 }
 
 #[test]
@@ -38,7 +39,7 @@ fn class() {
     let mut runtime = Runtime::new();
     runtime.insert_func("noop", noop as extern "C" fn(i32));
     runtime.insert_func("noop_i32", noop as extern "C" fn(i32));
-    utils::parse_and_run(
+    assert!(utils::parse_and_run(
         "\
     class Other =>
         a_int: I32
@@ -54,6 +55,6 @@ fn class() {
     noop_i32(x.a_int)
     ",
         runtime,
-    );
-    panic!();
+    )
+    .is_err());
 }

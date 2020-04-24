@@ -1,2 +1,4 @@
-pub mod move_checker;
 pub mod path;
+
+mod memcheck;
+pub use memcheck::*;
