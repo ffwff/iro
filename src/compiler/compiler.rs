@@ -35,7 +35,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::dfa::data_flow_analysis,
     passes::postlude::separate_postlude,
     passes::dfa::drop_insertion,
-    passes::memcheck::check,
+    // passes::memcheck::check,
     passes::postlude::fuse_postlude,
 ];
 

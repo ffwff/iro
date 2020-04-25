@@ -63,7 +63,12 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
             .difference(&block.vars_out)
             .cloned()
             .collect::<BTreeSet<Variable>>();
-        dbg_println!("{}: {:?} -> dead vars: {:?}", idx, block.vars_out, dead_vars_in_this_block);
+        dbg_println!(
+            "{}: {:?} -> dead vars: {:?}",
+            idx,
+            block.vars_out,
+            dead_vars_in_this_block
+        );
         if !dead_vars_in_this_block.is_empty() {
             let old_ins = std::mem::replace(&mut block.ins, vec![]);
             // Calculate the usage for each dead var

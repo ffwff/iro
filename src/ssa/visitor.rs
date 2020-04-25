@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 pub struct TopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<NodeBox>>,
+    pub class_stmts: HashMap<Rc<str>, NodeBox>,
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
     pub builtins: Builtins,
@@ -25,6 +26,7 @@ impl TopLevelInfo {
         generic_fat_pointer_struct.append(Rc::from("len"), Type::ISize);
         TopLevelInfo {
             defstmts: HashMap::new(),
+            class_stmts: HashMap::new(),
             func_contexts: HashMap::new(),
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
@@ -287,6 +289,25 @@ impl<'a> SSAVisitor<'a> {
             _ => true,
         }
     }
+
+    fn forward_decl_class(
+        &mut self,
+        name: &Rc<str>,
+    ) -> Result<Option<UniqueRc<StructType>>, compiler::Error> {
+        if let Some(boxed) = self
+            .top_level
+            .borrow()
+            .map(|top_level| top_level.class_stmts.get(name).cloned())
+            .flatten()
+        {
+            let class_stmt = boxed.borrow().downcast_ref::<ClassStatement>().unwrap();
+            self.visit_class(class_stmt, &boxed)?;
+            let top_level = self.top_level.borrow().unwrap();
+            Ok(top_level.builtins.structs.get(name).cloned())
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl<'a> Visitor for SSAVisitor<'a> {
@@ -303,8 +324,11 @@ impl<'a> Visitor for SSAVisitor<'a> {
                         .defstmts
                         .insert(defstmt.id.clone(), vec![expr.clone()]);
                 }
-            } else if let Some(_) = expr.borrow().downcast_ref::<ClassStatement>() {
-                top_level_stmts.push(expr);
+            } else if let Some(class_stmt) = expr.borrow().downcast_ref::<ClassStatement>() {
+                let mut top_level = self.top_level.borrow_mut().unwrap();
+                top_level
+                    .class_stmts
+                    .insert(class_stmt.id.clone(), expr.clone());
             } else if let Some(_) = expr.borrow().downcast_ref::<ImportStatement>() {
                 top_level_stmts.push(expr);
             } else {
@@ -369,13 +393,17 @@ impl<'a> Visitor for SSAVisitor<'a> {
     }
 
     fn visit_class_init(&mut self, n: &ClassInitExpr, b: &NodeBox) -> VisitorResult {
-        let struct_data = {
-            let top_level = self.top_level.borrow().unwrap();
-            if let Some(struct_data) = top_level.builtins.structs.get(&n.id) {
-                struct_data.clone()
-            } else {
-                return Err(Error::UnknownType(n.id.clone()).into_compiler_error(b));
-            }
+        let struct_data = if let Some(struct_data) = self
+            .top_level
+            .borrow()
+            .map(|top_level| top_level.builtins.structs.get(&n.id).cloned())
+            .flatten()
+        {
+            struct_data
+        } else if let Some(struct_data) = self.forward_decl_class(&n.id)? {
+            struct_data
+        } else {
+            return Err(Error::UnknownType(n.id.clone()).into_compiler_error(b));
         };
         let retvar = self.context.insert_var(Type::Struct(struct_data.clone()));
         self.with_block_mut(|block| {
@@ -1329,11 +1357,18 @@ impl<'a> Visitor for SSAVisitor<'a> {
     fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult {
         match &n.data {
             TypeIdData::Identifier(id) => {
-                let top_level = self.top_level.borrow().unwrap();
                 if n.typed.borrow().is_some() {
                     Ok(())
-                } else if let Some(typed) = top_level.types.get(id) {
-                    n.typed.replace(Some(typed.clone()));
+                } else if let Some(typed) = self
+                    .top_level
+                    .borrow()
+                    .map(|top_level| top_level.types.get(id).cloned())
+                    .flatten()
+                {
+                    n.typed.replace(Some(typed));
+                    Ok(())
+                } else if let Some(struct_data) = self.forward_decl_class(id)? {
+                    n.typed.replace(Some(Type::Struct(struct_data)));
                     Ok(())
                 } else {
                     Err(Error::UnknownType(id.clone()).into_compiler_error(b))

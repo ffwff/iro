@@ -117,3 +117,48 @@ fn nested_slice_class_init() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn nested_class_init_with_forward_decl() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
+    extern "C" fn record_substr(first_name: FatPointer<u8>, last_name: FatPointer<u8>, age: i32) {
+        unsafe {
+            assert_eq!(std::str::from_utf8(first_name.slice()).unwrap(), "Abc");
+            assert_eq!(std::str::from_utf8(last_name.slice()).unwrap(), "Def");
+        }
+        assert_eq!(age, 20);
+        RUN_FLAG.store(true, Ordering::Relaxed);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func(
+        "record_substr",
+        record_substr as extern "C" fn(FatPointer<u8>, FatPointer<u8>, i32),
+    );
+    utils::parse_and_run(
+        "\
+    extern def record=\"record_substr\"(first_name: &Substring, last_name: &Substring, age: I32): Nil
+
+    class Person =>
+        name: Name
+        age: I32
+
+    class Name =>
+        first: &Substring
+        last: &Substring
+
+    person := (
+        Person =>
+            name: (
+                Name => 
+                    first: \"Abc\"
+                    last: \"Def\"
+            )
+            age: 20
+    )
+    record(person.name.first, person.name.last, person.age)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
+}

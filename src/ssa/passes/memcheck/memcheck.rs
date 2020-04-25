@@ -2,8 +2,6 @@ use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
-use std::collections::{BTreeMap, HashSet};
-use std::rc::Rc;
 
 #[derive(Debug)]
 struct MoveError {
@@ -30,8 +28,7 @@ pub fn check(context: &mut Context) -> Flow {
                     modifier,
                 } => {
                     let mut overlay = overlay_hashmap![&mut moved_set, previous_moved_set];
-                    let mut directory = if let Some(mut memory_state) = overlay.get_or_clone(*left)
-                    {
+                    let mut directory = if let Some(memory_state) = overlay.get_or_clone(*left) {
                         match memory_state {
                             MemoryState::PartiallyMoved(dir) => dir,
                             MemoryState::FullyMoved => {
@@ -40,22 +37,21 @@ pub fn check(context: &mut Context) -> Flow {
                                 })
                             }
                         }
+                    } else if let MemoryState::PartiallyMoved(dict) = overlay
+                        .map_mut()
+                        .entry(*left)
+                        .or_insert(MemoryState::PartiallyMoved(Directory::new()))
+                    {
+                        dict
                     } else {
-                        if let MemoryState::PartiallyMoved(dict) = overlay
-                            .map_mut()
-                            .entry(*left)
-                            .or_insert(MemoryState::PartiallyMoved(Directory::new()))
-                        {
-                            dict
-                        } else {
-                            unreachable!()
-                        }
+                        unreachable!()
                     };
                     for index in indices {
                         let index = match &index.var {
                             MemberExprIndexVar::StructIndex(x) => Index::Struct(*x),
                             MemberExprIndexVar::Variable(_) => Index::Dynamic,
                         };
+                        // We may not move a sub path which is already moved
                         if directory.sub_paths.contains_key(&index) {
                             return Err(MoveError {
                                 position: InsPosition { block_idx, ins_idx },
