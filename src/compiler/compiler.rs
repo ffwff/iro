@@ -21,7 +21,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::graph::build_graph,
     passes::gc::collect_garbage_vars_with_multiple_assigns,
     // Stage 1: "SSA" generation
-    passes::dfa::data_flow_analysis,
+    passes::mem::calculate_block_variable_usage,
     passes::ssa::rename_vars_and_insert_phis,
     // Stage 2: constant folding and graph cleanup
     passes::fold::fold_constants,
@@ -31,21 +31,18 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::postlude::fuse_postlude,
     passes::graph::build_graph,
     // Stage 3: SSA elimination and high-level memory ops
-    passes::ssa::eliminate_phi,
-    passes::dfa::data_flow_analysis,
+    passes::mem::calculate_block_variable_usage,
     passes::postlude::separate_postlude,
-    passes::dfa::drop_insertion,
-    // passes::memcheck::check,
+    passes::mem::drop_insertion,
+    passes::memcheck::check,
     passes::postlude::fuse_postlude,
+    passes::ssa::eliminate_phi,
 ];
 
 pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(input);
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    let top_level_info = OptCell::some(ssa::visitor::TopLevelInfo::new());
-    let mut visitor = ssa::visitor::SSAVisitor::new(&top_level_info);
-    visitor.visit_program(&ast)?;
-    let mut program = visitor.into_program();
+    let mut program = ssa::visitor::SSAVisitor::generate(&ast)?;
     for (_, context) in &mut program.contexts {
         for pass in SSA_PASSES {
             match pass(context) {

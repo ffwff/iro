@@ -111,14 +111,23 @@ impl Context {
 
 #[derive(Clone)]
 pub struct Block {
+    /// List of instructions in this block
     pub ins: Vec<Ins>,
+    /// Temporary variable to store the postlude of this block,
+    /// set to `v0 = nop` if it isn't used
     pub postlude: Ins,
+    /// Predecessors of the block in the context graph
     pub preds: Vec<usize>,
+    /// Successors of the block in the context graph
     pub succs: Vec<usize>,
-    pub vars_in: BTreeSet<Variable>,
-    pub vars_out: BTreeSet<Variable>,
+    /// Variables declared in this block
     pub vars_declared_in_this_block: BTreeSet<Variable>,
+    /// Variables used in this block
     pub vars_used: BTreeSet<Variable>,
+    /// Variables that flow into this block or are declared in the block,
+    /// and flow out into successor blocks
+    pub vars_exported: BTreeSet<Variable>,
+    /// Variables declared in this block, and is used only in this block
     pub vars_block_local: BTreeSet<Variable>,
 }
 
@@ -129,10 +138,9 @@ impl Block {
             postlude: Ins::new(0, InsType::Nop),
             preds: vec![],
             succs: vec![],
-            vars_in: BTreeSet::new(),
-            vars_out: BTreeSet::new(),
             vars_declared_in_this_block: BTreeSet::new(),
             vars_used: BTreeSet::new(),
+            vars_exported: BTreeSet::new(),
             vars_block_local: BTreeSet::new(),
         }
     }
@@ -695,6 +703,13 @@ impl InsType {
     pub fn is_phi(&self) -> bool {
         match self {
             InsType::Phi { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_dead_end_return(&self) -> bool {
+        match self {
+            InsType::Return(_) | InsType::Exit => true,
             _ => false,
         }
     }

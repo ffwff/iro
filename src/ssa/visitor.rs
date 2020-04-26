@@ -8,12 +8,25 @@ use crate::ssa::isa::*;
 use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub struct TopLevelInfo {
+pub struct AstTopLevelInfo {
     pub defstmts: HashMap<Rc<str>, Vec<NodeBox>>,
     pub class_stmts: HashMap<Rc<str>, NodeBox>,
+}
+
+impl AstTopLevelInfo {
+    pub fn new() -> Self {
+        Self {
+            defstmts: HashMap::new(),
+            class_stmts: HashMap::new(),
+        }
+    }
+}
+
+pub struct TopLevelInfo {
     pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
     pub types: HashMap<Rc<str>, Type>,
     pub builtins: Builtins,
@@ -25,8 +38,6 @@ impl TopLevelInfo {
         generic_fat_pointer_struct.append(Rc::from("address"), Type::ISize);
         generic_fat_pointer_struct.append(Rc::from("len"), Type::ISize);
         TopLevelInfo {
-            defstmts: HashMap::new(),
-            class_stmts: HashMap::new(),
             func_contexts: HashMap::new(),
             types: hashmap![
                 Rc::from("Nil") => Type::Nil,
@@ -49,6 +60,7 @@ pub struct SSAVisitor<'a> {
     context: Context,
     envs: Vec<Env>,
     top_level: &'a OptCell<TopLevelInfo>,
+    ast_top_level: &'a RefCell<AstTopLevelInfo>,
     has_direct_return: bool,
     has_break: bool,
     last_retvar: Option<Variable>,
@@ -76,33 +88,48 @@ macro_rules! propagate_cf_state {
 }
 
 impl<'a> SSAVisitor<'a> {
-    pub fn new(top_level: &'a OptCell<TopLevelInfo>) -> Self {
+    pub fn generate(program: &ast::Program) -> Result<isa::Program, compiler::Error> {
+        let top_level = OptCell::some(TopLevelInfo::new());
+        let ast_top_level = RefCell::new(AstTopLevelInfo::new());
+        let mut visitor = SSAVisitor::new(&top_level, &ast_top_level);
+        match visitor.visit_program(program) {
+            Ok(_) => Ok(visitor.into_program()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn new(
+        top_level: &'a OptCell<TopLevelInfo>,
+        ast_top_level: &'a RefCell<AstTopLevelInfo>,
+    ) -> Self {
         Self {
             context: Context::new(Rc::from("main")),
             envs: Vec::with_capacity(4),
             top_level,
+            ast_top_level,
             has_direct_return: false,
             has_break: false,
             last_retvar: None,
         }
     }
 
-    pub fn derive_with_context(&mut self, context: Context) -> Self {
+    fn derive_with_context(&mut self, context: Context) -> Self {
         Self {
             context,
             envs: Vec::with_capacity(4),
             top_level: self.top_level,
+            ast_top_level: self.ast_top_level,
             has_direct_return: false,
             has_break: false,
             last_retvar: None,
         }
     }
 
-    pub fn into_context(self) -> Context {
+    fn into_context(self) -> Context {
         self.context
     }
 
-    pub fn into_program(self) -> isa::Program {
+    fn into_program(self) -> isa::Program {
         let top_level = self.top_level.take().into_inner().unwrap();
         let context = self.context;
         let mut func_contexts = top_level.func_contexts;
@@ -294,12 +321,7 @@ impl<'a> SSAVisitor<'a> {
         &mut self,
         name: &Rc<str>,
     ) -> Result<Option<UniqueRc<StructType>>, compiler::Error> {
-        if let Some(boxed) = self
-            .top_level
-            .borrow()
-            .map(|top_level| top_level.class_stmts.get(name).cloned())
-            .flatten()
-        {
+        if let Some(boxed) = self.ast_top_level.borrow().class_stmts.get(name).cloned() {
             let class_stmt = boxed.borrow().downcast_ref::<ClassStatement>().unwrap();
             self.visit_class(class_stmt, &boxed)?;
             let top_level = self.top_level.borrow().unwrap();
@@ -316,17 +338,17 @@ impl<'a> Visitor for SSAVisitor<'a> {
         let mut outerstmts = vec![];
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
-                let mut top_level = self.top_level.borrow_mut().unwrap();
-                if let Some(vec) = top_level.defstmts.get_mut(&defstmt.id) {
+                let mut ast_top_level = self.ast_top_level.borrow_mut();
+                if let Some(vec) = ast_top_level.defstmts.get_mut(&defstmt.id) {
                     vec.push(expr.clone());
                 } else {
-                    top_level
+                    ast_top_level
                         .defstmts
                         .insert(defstmt.id.clone(), vec![expr.clone()]);
                 }
             } else if let Some(class_stmt) = expr.borrow().downcast_ref::<ClassStatement>() {
-                let mut top_level = self.top_level.borrow_mut().unwrap();
-                top_level
+                let mut ast_top_level = self.ast_top_level.borrow_mut();
+                ast_top_level
                     .class_stmts
                     .insert(class_stmt.id.clone(), expr.clone());
             } else if let Some(_) = expr.borrow().downcast_ref::<ImportStatement>() {
@@ -341,8 +363,8 @@ impl<'a> Visitor for SSAVisitor<'a> {
         }
 
         {
-            let top_level = self.top_level.borrow().unwrap();
-            for (_, defstmt_vec) in &top_level.defstmts {
+            let ast_top_level = self.ast_top_level.borrow();
+            for (_, defstmt_vec) in &ast_top_level.defstmts {
                 for boxed in defstmt_vec {
                     let defstmt: &DefStatement =
                         boxed.borrow().downcast_ref::<DefStatement>().unwrap();
@@ -825,7 +847,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                     } else {
                         None
                     }
-                } else if top_level.defstmts.contains_key(id) {
+                } else if self.ast_top_level.borrow().defstmts.contains_key(id) {
                     None
                 } else {
                     return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
@@ -838,7 +860,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                 let (defstmt, func_insert) = {
                     let mut top_level = self.top_level.borrow_mut().unwrap();
                     let mut usable_defstmt = None;
-                    if let Some(vec) = top_level.defstmts.get(id) {
+                    if let Some(vec) = self.ast_top_level.borrow().defstmts.get(id) {
                         for boxed in vec {
                             let defstmt = boxed.rc().downcast_rc::<DefStatement>().unwrap();
                             match defstmt.compatibility_with_args(&arg_types) {

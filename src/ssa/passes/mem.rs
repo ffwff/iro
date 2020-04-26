@@ -2,13 +2,16 @@ use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use std::collections::BTreeSet;
 
-pub fn data_flow_analysis(context: &mut Context) -> Flow {
-    // Generate the initial worklist by putting returning blocks
-    let mut worklist: Vec<usize> = (1..context.blocks.len()).rev().collect();
-
-    for block in &mut context.blocks {
+pub fn calculate_block_variable_usage(context: &mut Context) -> Flow {
+    fn walk(
+        block_idx: usize,
+        context: &mut Context,
+        prev_vars_exported: Option<&mut BTreeSet<usize>>,
+    ) {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
+        let mut vars_exported = BTreeSet::new();
+        let block = &context.blocks[block_idx];
         for ins in block.ins.iter() {
             if let Some(retvar) = ins.retvar() {
                 vars_declared_in_this_block.insert(retvar);
@@ -17,56 +20,50 @@ pub fn data_flow_analysis(context: &mut Context) -> Flow {
                 vars_used.insert(used);
             });
         }
-        // Reset every variable flow information
-        block.vars_in = btreeset![];
-        block.vars_out = btreeset![];
-        block.vars_declared_in_this_block = vars_declared_in_this_block;
-        block.vars_used = vars_used;
-        block.vars_block_local = btreeset![];
-    }
-
-    while let Some(node) = worklist.pop() {
-        let block = &mut context.blocks[node];
-        let mut new_vars_in: BTreeSet<usize> = &block.vars_out | &block.vars_used;
-        new_vars_in = new_vars_in
-            .difference(&block.vars_declared_in_this_block)
+        let block = {
+            let block = &mut context.blocks[block_idx];
+            let succs = std::mem::replace(&mut block.succs, vec![]);
+            for &succ in &succs {
+                if succ > block_idx {
+                    walk(succ, context, Some(&mut vars_exported));
+                }
+            }
+            let block = &mut context.blocks[block_idx];
+            block.succs = succs;
+            block
+        };
+        // Imported variables are used in this block but are not declared in this block
+        if let Some(prev_vars_exported) = prev_vars_exported {
+            let imported = vars_used.difference(&vars_declared_in_this_block).cloned();
+            prev_vars_exported.extend(imported);
+        }
+        // Block locals are declared in this block but are not exported
+        let vars_block_local = vars_declared_in_this_block
+            .difference(&vars_exported)
             .cloned()
             .collect();
-        dbg_println!("new_vars_in: {:?}", new_vars_in);
-        // Borrow preds temporarily so as to not borrow multiple blocks in context.blocks
-        let preds = std::mem::replace(&mut block.preds, vec![]);
-        if block.vars_in != new_vars_in {
-            for &pred in &preds {
-                worklist.push(pred);
-            }
-            block.vars_in = new_vars_in.clone();
-        }
-        std::mem::drop(block);
-        for &pred in &preds {
-            let block = &mut context.blocks[pred];
-            block.vars_out.extend(new_vars_in.iter());
-        }
-        // Give preds back to the current block
-        {
-            let block = &mut context.blocks[node];
-            block.preds = preds;
-        }
+        // Set block variables
+        block.vars_declared_in_this_block = vars_declared_in_this_block;
+        block.vars_used = vars_used;
+        block.vars_exported = vars_exported;
+        block.vars_block_local = vars_block_local;
     }
-
-    // dbg_println!("after dfa: {:#?}", context);
+    walk(0, context, None);
     Flow::Continue
 }
 
 pub fn drop_insertion(context: &mut Context) -> Flow {
     for (idx, block) in context.blocks.iter_mut().enumerate() {
-        let dead_vars_in_this_block = (&block.vars_in | &block.vars_declared_in_this_block)
-            .difference(&block.vars_out)
+        // Variables that die in this block are variables which are
+        // used/declared in the block and are never exported
+        let dead_vars_in_this_block = block.vars_used
+            .difference(&block.vars_exported)
+            .chain(&block.vars_block_local)
             .cloned()
             .collect::<BTreeSet<Variable>>();
         dbg_println!(
-            "{}: {:?} -> dead vars: {:?}",
+            "{}: -> dead vars: {:?}",
             idx,
-            block.vars_out,
             dead_vars_in_this_block
         );
         if !dead_vars_in_this_block.is_empty() {

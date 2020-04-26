@@ -14,11 +14,6 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                     set.insert(idx);
                 }
             }
-            block.vars_block_local = block
-                .vars_declared_in_this_block
-                .difference(&block.vars_out)
-                .cloned()
-                .collect();
         }
 
         // Build the post-order traversal array
