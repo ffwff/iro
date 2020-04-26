@@ -19,6 +19,7 @@ pub fn check(context: &mut Context) -> Flow {
         for (ins_idx, ins) in block.ins.iter().enumerate() {
             match &ins.typed {
                 InsType::Drop(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
+                    // FIXME
                     moved_set.insert(*var, MemoryState::FullyMoved);
                 }
                 InsType::Phi { .. } => (),
@@ -32,6 +33,7 @@ pub fn check(context: &mut Context) -> Flow {
                         match memory_state {
                             MemoryState::PartiallyMoved(dir) => dir,
                             MemoryState::FullyMoved => {
+                                panic!("v{} already moved", *left);
                                 return Err(MoveError {
                                     position: InsPosition { block_idx, ins_idx },
                                 })
@@ -53,6 +55,7 @@ pub fn check(context: &mut Context) -> Flow {
                         };
                         // We may not move a sub path which is already moved
                         if directory.sub_paths.contains_key(&index) {
+                            panic!("v{} already moved", *left);
                             return Err(MoveError {
                                 position: InsPosition { block_idx, ins_idx },
                             });
@@ -81,6 +84,7 @@ pub fn check(context: &mut Context) -> Flow {
                             return;
                         }
                         if overlay_hashmap![&mut moved_set, previous_moved_set].contains_key(var) {
+                            panic!("v{} already moved", var);
                             error = Some(MoveError {
                                 position: InsPosition { block_idx, ins_idx },
                             });

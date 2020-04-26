@@ -124,11 +124,15 @@ pub struct Block {
     pub vars_declared_in_this_block: BTreeSet<Variable>,
     /// Variables used in this block
     pub vars_used: BTreeSet<Variable>,
+    /// Phi assignments in this block
+    pub vars_phi: BTreeSet<Variable>,
+    /// Variables that flow into this block
+    pub vars_imported: BTreeSet<Variable>,
+    /// All variables that flow into this block, regardless of if it's used or not
+    pub vars_total_imported: BTreeSet<Variable>,
     /// Variables that flow into this block or are declared in the block,
     /// and flow out into successor blocks
     pub vars_exported: BTreeSet<Variable>,
-    /// Variables declared in this block, and is used only in this block
-    pub vars_block_local: BTreeSet<Variable>,
 }
 
 impl Block {
@@ -140,8 +144,10 @@ impl Block {
             succs: vec![],
             vars_declared_in_this_block: BTreeSet::new(),
             vars_used: BTreeSet::new(),
+            vars_phi: BTreeSet::new(),
+            vars_imported: BTreeSet::new(),
             vars_exported: BTreeSet::new(),
-            vars_block_local: BTreeSet::new(),
+            vars_total_imported: BTreeSet::new(),
         }
     }
 }
@@ -689,13 +695,6 @@ impl InsType {
             | InsType::Call { .. }
             | InsType::Return(_)
             | InsType::Exit => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_return(&self) -> bool {
-        match self {
-            InsType::Return(_) => true,
             _ => false,
         }
     }

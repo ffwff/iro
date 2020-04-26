@@ -128,20 +128,16 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                 for &y in &dom_frontier[n] {
                     if !phi_inserted.contains(&y) {
                         let block = &mut context.blocks[y];
-                        if !block.vars_block_local.contains(&var) {
-                            block.ins.insert(
-                                0,
-                                Ins::new(
-                                    var,
-                                    InsType::Phi {
-                                        vars: std::iter::repeat(var)
-                                            .take(block.preds.len())
-                                            .collect(),
-                                        defines: var,
-                                    },
-                                ),
-                            );
-                        }
+                        block.ins.insert(
+                            0,
+                            Ins::new(
+                                var,
+                                InsType::Phi {
+                                    vars: std::iter::repeat(var).take(block.preds.len()).collect(),
+                                    defines: var,
+                                },
+                            ),
+                        );
                         phi_inserted.insert(y);
                         if !origin[y].contains(&var) {
                             worklist.push(y);
@@ -256,51 +252,5 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         }
     }
 
-    Flow::Continue
-}
-
-pub fn eliminate_phi(context: &mut Context) -> Flow {
-    if context.blocks.len() < 2 {
-        return Flow::Continue;
-    }
-
-    let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    for block in &context.blocks {
-        for ins in &block.ins {
-            let retvar = ins.retvar();
-            match &ins.typed {
-                InsType::Phi { vars, .. } => {
-                    let retvar = retvar.unwrap();
-                    for var in vars {
-                        if let Some(vec) = replacements.get_mut(var) {
-                            vec.push(retvar);
-                        } else {
-                            replacements.insert(*var, vec![retvar]);
-                        }
-                    }
-                }
-                _ => (),
-            }
-        }
-    }
-    while !replacements.is_empty() {
-        for block in &mut context.blocks {
-            let oldins = std::mem::replace(&mut block.ins, Vec::new());
-            for ins in &oldins {
-                match &ins.typed {
-                    InsType::Phi { .. } => continue,
-                    _ => (),
-                }
-                block.ins.push(ins.clone());
-                if let Some(retvar) = ins.retvar() {
-                    if let Some(newvars) = replacements.remove(&retvar) {
-                        for newvar in newvars {
-                            block.ins.push(Ins::new(newvar, InsType::Move(retvar)));
-                        }
-                    }
-                }
-            }
-        }
-    }
     Flow::Continue
 }

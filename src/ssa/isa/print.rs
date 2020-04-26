@@ -173,14 +173,17 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
         } else {
             for (idx, block) in self.1.blocks.iter().enumerate() {
                 write!(f, "b{}:\n", idx)?;
+                write!(f, "- preds: {:?}\n", block.preds)?;
+                write!(f, "- succs: {:?}\n", block.succs)?;
                 write!(
                     f,
                     "- vars_declared_in_this_block: {:?}\n",
                     block.vars_declared_in_this_block
                 )?;
                 write!(f, "- vars_used: {:?}\n", block.vars_used)?;
+                write!(f, "- vars_imported: {:?}\n", block.vars_imported)?;
+                write!(f, "- vars_total_imported: {:?}\n", block.vars_total_imported)?;
                 write!(f, "- vars_exported: {:?}\n", block.vars_exported)?;
-                write!(f, "- vars_block_local: {:?}\n", block.vars_block_local)?;
                 for ins in &block.ins {
                     write!(f, "\t{}\n", InsPrinter(ins))?;
                 }

@@ -16,27 +16,26 @@ pub enum Flow {
 }
 
 const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
-    // Stage 0: preprocess and build the IR graph
+    // Stage 0: preprocess and build the SSA graph
     passes::graph::preprocess,
     passes::graph::build_graph,
     passes::gc::collect_garbage_vars_with_multiple_assigns,
-    // Stage 1: "SSA" generation
-    passes::mem::calculate_block_variable_usage,
     passes::ssa::rename_vars_and_insert_phis,
-    // Stage 2: constant folding and graph cleanup
+    // Stage 1: constant folding and graph cleanup
     passes::fold::fold_constants,
     passes::gc::collect_garbage_vars,
     passes::postlude::separate_postlude,
     passes::graph::cleanup_jump_blocks,
     passes::postlude::fuse_postlude,
     passes::graph::build_graph,
-    // Stage 3: SSA elimination and high-level memory ops
-    passes::mem::calculate_block_variable_usage,
+    // Stage 2: SSA elimination and high-level memory ops insertion
     passes::postlude::separate_postlude,
+    passes::mem::eliminate_phi,
+    passes::mem::calculate_block_variable_declaration,
+    passes::mem::calculate_data_flow,
     passes::mem::drop_insertion,
     passes::memcheck::check,
     passes::postlude::fuse_postlude,
-    passes::ssa::eliminate_phi,
 ];
 
 pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {

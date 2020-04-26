@@ -58,3 +58,35 @@ fn class() {
     )
     .is_err());
 }
+
+#[test]
+fn if_expr() {
+    let mut runtime = Runtime::new();
+    assert!(utils::parse_and_run(
+        "\
+    mut i := 0
+    if i < 10 =>
+        i += 1
+    else =>
+        i += 2
+    ",
+        runtime,
+    )
+    .is_ok());
+}
+
+#[test]
+fn while_loop() {
+    let mut runtime = Runtime::new();
+    assert!(utils::parse_and_run(
+        "\
+    extern def noop(n: I32): Nil
+
+    mut i := 0
+    while i < 10 =>
+        i += 1
+    ",
+        runtime,
+    )
+    .is_ok());
+}
