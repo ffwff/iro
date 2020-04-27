@@ -1,5 +1,6 @@
 use crate::lexer;
-
+use crate::ssa::isa;
+use std::rc::Rc;
 use lalrpop_util;
 
 struct Location {
@@ -13,8 +14,79 @@ impl Location {
     }
 }
 
+pub enum Code {
+    InvalidToken,
+    UnrecognizedEOF {
+        expected: Vec<String>,
+    },
+    UnrecognizedToken {
+        token: lexer::Tok,
+        expected: Vec<String>,
+    },
+    ExtraToken(lexer::Tok),
+    UnexpectedCharacter(char),
+    InvalidIndent,
+    InvalidLHS,
+    IncompatibleType { got: isa::Type, expected: isa::Type },
+    CannotInfer,
+    UnknownIdentifier(Rc<str>),
+    UnknownType(Rc<str>),
+    UnknownMemberRef(Rc<str>),
+    UnknownStructField(Rc<str>),
+    UnknownAttribute(String),
+    UnknownStatic(String),
+    NotEnoughArguments,
+    InvalidArguments,
+    InvalidReturnType,
+    MutatingImmutable(Rc<str>),
+}
+
+impl std::fmt::Display for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Code::InvalidLHS => write!(f, "Invalid left-hand-side expression"),
+            Code::IncompatibleType { got, expected } => {
+                write!(f, "Incompatible type (got {}, expected {})", got, expected)
+            }
+            Code::CannotInfer => write!(f, "Cannot infer type for value"),
+            Code::UnknownIdentifier(id) => write!(f, "Unknown identifier {:?}", id),
+            Code::UnknownType(id) => write!(f, "Unknown type {:?}", id),
+            Code::UnknownMemberRef(id) => write!(f, "Unknown member {:?}", id),
+            Code::UnknownStructField(id) => write!(f, "Unknown struct field {:?}", id),
+            Code::UnknownAttribute(id) => write!(f, "Unknown attribute {:?}", id),
+            Code::UnknownStatic(id) => write!(f, "Unknown external function {:?}", id),
+            Code::NotEnoughArguments => write!(f, "Not enough arguments for function"),
+            Code::InvalidArguments => write!(f, "Invalid arguments for function"),
+            Code::InvalidReturnType => write!(f, "Invalid return type"),
+            Code::MutatingImmutable(id) => write!(f, "Mutating immutable variable {:?}", id),
+            Code::UnexpectedCharacter(ch) => write!(f, "Unexpected character '{}'", ch),
+            Code::InvalidIndent => write!(f, "Invalid indentation"),
+            Code::InvalidToken => write!(f, "Invalid token"),
+            Code::UnrecognizedEOF { expected } => if expected.is_empty() {
+                write!(
+                    f,
+                    "Unexpected end of file",
+                )
+            } else {
+                write!(
+                    f,
+                    "Unexpected end of file, expected {}",
+                    expected.join(", ")
+                )
+            },
+            Code::UnrecognizedToken { token, expected } => write!(
+                f,
+                "Unexpected token (got {}, expected {})",
+                token,
+                expected.join(", ")
+            ),
+            Code::ExtraToken(token) => write!(f, "Invalid token (got {})", token),
+        }
+    }
+}
+
 pub struct Error {
-    pub error: Box<dyn std::fmt::Display>,
+    pub error: Code,
     pub span: (usize, usize),
 }
 
@@ -65,59 +137,27 @@ impl From<LalrParseError> for Error {
     fn from(error: LalrParseError) -> Error {
         match error {
             LalrParseError::InvalidToken { location } => Error {
-                error: Box::new(ParseError::InvalidToken),
+                error: Code::InvalidToken,
                 span: (location, location),
             },
             LalrParseError::UnrecognizedEOF { location, expected } => Error {
-                error: Box::new(ParseError::UnrecognizedEOF { expected }),
+                error: Code::UnrecognizedEOF { expected },
                 span: (location, location),
             },
             LalrParseError::UnrecognizedToken {
                 token: (start, token, end),
                 expected,
             } => Error {
-                error: Box::new(ParseError::UnrecognizedToken { token, expected }),
+                error: Code::UnrecognizedToken { token, expected },
                 span: (start, end),
             },
             LalrParseError::ExtraToken {
                 token: (start, token, end),
             } => Error {
-                error: Box::new(ParseError::ExtraToken(token)),
+                error: Code::ExtraToken(token),
                 span: (start, end),
             },
             LalrParseError::User { error } => error,
-        }
-    }
-}
-
-enum ParseError {
-    InvalidToken,
-    UnrecognizedEOF {
-        expected: Vec<String>,
-    },
-    UnrecognizedToken {
-        token: lexer::Tok,
-        expected: Vec<String>,
-    },
-    ExtraToken(lexer::Tok),
-}
-
-impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParseError::InvalidToken => write!(f, "Invalid token"),
-            ParseError::UnrecognizedEOF { expected } => write!(
-                f,
-                "Unexpected end of file, expected {}",
-                expected.join(", ")
-            ),
-            ParseError::UnrecognizedToken { token, expected } => write!(
-                f,
-                "Unexpected token (got {}, expected {})",
-                token,
-                expected.join(", ")
-            ),
-            ParseError::ExtraToken(token) => write!(f, "Invalid token (got {})", token),
         }
     }
 }

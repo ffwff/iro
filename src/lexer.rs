@@ -142,19 +142,16 @@ pub enum Error {
 
 impl Error {
     pub fn into_compiler_error(self, location: usize) -> compiler::Error {
+        use compiler::error::Code;
         compiler::Error {
-            error: Box::new(self),
+            error: match self {
+                Error::UnexpectedCharacter(ch) => Code::UnexpectedCharacter(ch),
+                Error::UnexpectedEof => Code::UnrecognizedEOF {
+                    expected: vec![]
+                },
+                Error::InvalidIndent => Code::InvalidIndent,
+            },
             span: (location, location),
-        }
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::UnexpectedCharacter(ch) => write!(f, "Unexpected character '{}'", ch),
-            Error::UnexpectedEof => write!(f, "Unexpected end of file"),
-            Error::InvalidIndent => write!(f, "Invalid indentation"),
         }
     }
 }

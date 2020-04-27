@@ -8,7 +8,6 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    InternalError,
     InvalidLHS,
     IncompatibleType { got: Type, expected: Type },
     CannotInfer,
@@ -26,32 +25,24 @@ pub enum Error {
 
 impl Error {
     pub fn into_compiler_error(self, ast: &NodeBox) -> compiler::Error {
+        use compiler::error::Code;
         compiler::Error {
-            error: Box::new(self),
+            error: match self {
+                Error::InvalidLHS => Code::InvalidLHS,
+                Error::IncompatibleType { got, expected } => Code::IncompatibleType { got, expected },
+                Error::CannotInfer => Code::CannotInfer,
+                Error::UnknownIdentifier(x)  => Code::UnknownIdentifier(x),
+                Error::UnknownType(x)        => Code::UnknownType(x),
+                Error::UnknownMemberRef(x)   => Code::UnknownMemberRef(x),
+                Error::UnknownStructField(x) => Code::UnknownStructField(x),
+                Error::UnknownAttribute(x)   => Code::UnknownAttribute(x),
+                Error::UnknownStatic(x)      => Code::UnknownStatic(x),
+                Error::NotEnoughArguments => Code::NotEnoughArguments,
+                Error::InvalidArguments => Code::InvalidArguments,
+                Error::InvalidReturnType => Code::InvalidReturnType,
+                Error::MutatingImmutable(x) => Code::MutatingImmutable(x),
+            },
             span: ast.span(),
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::InternalError => write!(f, "Internal error"),
-            Error::InvalidLHS => write!(f, "Invalid left-hand-side expression"),
-            Error::IncompatibleType { got, expected } => {
-                write!(f, "Incompatible type (got {}, expected {})", got, expected)
-            }
-            Error::CannotInfer => write!(f, "Cannot infer type for value"),
-            Error::UnknownIdentifier(id) => write!(f, "Unknown identifier {:?}", id),
-            Error::UnknownType(id) => write!(f, "Unknown type {:?}", id),
-            Error::UnknownMemberRef(id) => write!(f, "Unknown member {:?}", id),
-            Error::UnknownStructField(id) => write!(f, "Unknown struct field {:?}", id),
-            Error::UnknownAttribute(id) => write!(f, "Unknown attribute {:?}", id),
-            Error::UnknownStatic(id) => write!(f, "Unknown external function {:?}", id),
-            Error::NotEnoughArguments => write!(f, "Not enough arguments for function"),
-            Error::InvalidArguments => write!(f, "Invalid arguments for function"),
-            Error::InvalidReturnType => write!(f, "Invalid return type"),
-            Error::MutatingImmutable(id) => write!(f, "Mutating immutable variable {:?}", id),
         }
     }
 }

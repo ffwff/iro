@@ -2,10 +2,12 @@ use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
+use crate::compiler;
 
 #[derive(Debug)]
 struct MoveError {
     pub position: InsPosition,
+    pub var: usize,
 }
 
 pub fn check(context: &mut Context) -> Flow {
@@ -14,7 +16,7 @@ pub fn check(context: &mut Context) -> Flow {
         block_idx: usize,
         context: &Context,
         previous_moved_set: Option<&Paths>,
-    ) -> Result<Paths, MoveError> {
+    ) -> Result<Paths, compiler::Error> {
         let mut moved_set = Paths::new();
         for (ins_idx, ins) in block.ins.iter().enumerate() {
             match &ins.typed {
@@ -33,10 +35,11 @@ pub fn check(context: &mut Context) -> Flow {
                         match memory_state {
                             MemoryState::PartiallyMoved(dir) => dir,
                             MemoryState::FullyMoved => {
-                                panic!("v{} already moved", *left);
-                                return Err(MoveError {
+                                panic!();
+                                /* return Err(MoveError {
                                     position: InsPosition { block_idx, ins_idx },
-                                })
+                                    var: *left,
+                                }) */
                             }
                         }
                     } else if let MemoryState::PartiallyMoved(dict) = overlay
@@ -55,10 +58,11 @@ pub fn check(context: &mut Context) -> Flow {
                         };
                         // We may not move a sub path which is already moved
                         if directory.sub_paths.contains_key(&index) {
-                            panic!("v{} already moved", *left);
-                            return Err(MoveError {
+                            panic!();
+                            /* return Err(MoveError {
                                 position: InsPosition { block_idx, ins_idx },
-                            });
+                                var: *left,
+                            }); */
                         }
                         match *modifier {
                             ReferenceModifier::Copy => {
@@ -78,20 +82,22 @@ pub fn check(context: &mut Context) -> Flow {
                     }
                 }
                 _ => {
-                    let mut error = None;
+                    let mut error: Option<compiler::Error> = None;
                     ins.each_used_var(|var| {
                         if error.is_some() {
                             return;
                         }
                         if overlay_hashmap![&mut moved_set, previous_moved_set].contains_key(var) {
-                            panic!("v{} already moved", var);
-                            error = Some(MoveError {
+                            panic!();
+                            /* error = Some(MoveError {
                                 position: InsPosition { block_idx, ins_idx },
-                            });
+                                var,
+                            }); */
                         }
                     });
                     if let Some(error) = error {
-                        return Err(error);
+                        panic!();
+                        // return Err(error);
                     }
                 }
             }
@@ -140,6 +146,6 @@ pub fn check(context: &mut Context) -> Flow {
     }
     match walk(&context.blocks[0], 0, context, None) {
         Ok(_) => Flow::Continue,
-        Err(_) => Flow::Err,
+        Err(err) => Flow::Err(err),
     }
 }

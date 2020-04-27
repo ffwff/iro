@@ -480,7 +480,6 @@ where
     ) {
         let context = ins_context.context;
         match &ins.typed {
-            isa::InsType::Nop => (),
             isa::InsType::MarkMoved(_) => (),
             isa::InsType::Drop(_arg) => {
                 // TODO: implement me
@@ -791,11 +790,11 @@ where
             | isa::InsType::ModC(regconst)
                 if regconst
                     .as_reg_left()
-                    .map(|(_, k)| k.as_i64().is_some())
+                    .map(|(_, k)| k.as_int().is_some())
                     .is_some() =>
             {
                 let (left, right) = regconst.as_reg_left().unwrap();
-                let int = right.as_i64().unwrap();
+                let int = right.as_int().unwrap();
                 let var = builder.use_var(to_var(left));
                 let tmp = match &ins.typed {
                     isa::InsType::AddC(_) => builder.ins().iadd_imm(var, int),

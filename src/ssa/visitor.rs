@@ -920,7 +920,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
                                 .insert(func_name.clone(), Some(context));
                             rettype
                         } else {
-                            return Err(Error::InternalError.into_compiler_error(b));
+                            unimplemented!()
                         }
                     } else {
                         let (func_name, context) = {
@@ -1279,7 +1279,7 @@ impl<'a> Visitor for SSAVisitor<'a> {
 
     fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult {
         match n {
-            Value::Uninitialized => Err(Error::InternalError.into_compiler_error(b)),
+            Value::Uninitialized => unimplemented!(),
             Value::I32(x) => {
                 let retvar = self.context.insert_var(Type::I32);
                 self.with_block_mut(|block| {

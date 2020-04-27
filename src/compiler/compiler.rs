@@ -12,7 +12,7 @@ use crate::utils::optcell::OptCell;
 pub enum Flow {
     Continue,
     Break,
-    Err,
+    Err(compiler::Error),
 }
 
 const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
@@ -49,12 +49,7 @@ pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
                 Flow::Break => {
                     break;
                 }
-                Flow::Err => {
-                    return Err(compiler::Error {
-                        error: Box::new("ssa pass error"),
-                        span: (0, 0),
-                    });
-                }
+                Flow::Err(err) => return Err(err),
             }
         }
     }
