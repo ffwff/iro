@@ -61,7 +61,7 @@ fn class() {
 
 #[test]
 fn if_expr() {
-    let mut runtime = Runtime::new();
+    let runtime = Runtime::new();
     assert!(utils::parse_and_run(
         "\
     mut i := 0
@@ -77,7 +77,7 @@ fn if_expr() {
 
 #[test]
 fn while_loop() {
-    let mut runtime = Runtime::new();
+    let runtime = Runtime::new();
     assert!(utils::parse_and_run(
         "\
     extern def noop(n: I32): Nil

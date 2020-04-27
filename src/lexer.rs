@@ -1,4 +1,5 @@
 use crate::compiler;
+use crate::compiler::sources::FileIndex;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::str::CharIndices;
@@ -141,17 +142,20 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn into_compiler_error(self, location: usize) -> compiler::Error {
+    pub fn into_compiler_error(self, file: FileIndex, location: usize) -> compiler::Error {
         use compiler::error::Code;
+        use compiler::sources::SourceSpan;
         compiler::Error {
             error: match self {
                 Error::UnexpectedCharacter(ch) => Code::UnexpectedCharacter(ch),
-                Error::UnexpectedEof => Code::UnrecognizedEOF {
-                    expected: vec![]
-                },
+                Error::UnexpectedEof => Code::UnrecognizedEOF { expected: vec![] },
                 Error::InvalidIndent => Code::InvalidIndent,
             },
-            span: (location, location),
+            span: Some(SourceSpan {
+                file,
+                start: location,
+                end: location,
+            }),
         }
     }
 }
@@ -164,10 +168,11 @@ pub struct Lexer<'input> {
     indent_stack: Vec<usize>,
     curr_indent: usize,
     last_token: VecDeque<Spanned<Tok>>,
+    file: FileIndex,
 }
 
 impl<'input> Lexer<'input> {
-    pub fn new(input: &'input str) -> Self {
+    pub fn new(input: &'input str, file: FileIndex) -> Self {
         Lexer {
             size: input.len(),
             chars: input.char_indices(),
@@ -176,6 +181,7 @@ impl<'input> Lexer<'input> {
             indent_stack: vec![],
             curr_indent: 0,
             last_token: VecDeque::new(),
+            file,
         }
     }
 
@@ -240,7 +246,7 @@ impl<'input> Iterator for Lexer<'input> {
                                     }
                                     _ => {
                                         return Some(Err(Error::UnexpectedCharacter('i')
-                                            .into_compiler_error(idx0)));
+                                            .into_compiler_error(self.file, idx0)));
                                     }
                                 }
                             }
@@ -397,9 +403,8 @@ impl<'input> Iterator for Lexer<'input> {
                                         string.push(ch)
                                     }
                                     None => {
-                                        return Some(Err(
-                                            Error::UnexpectedEof.into_compiler_error(self.size)
-                                        ))
+                                        return Some(Err(Error::UnexpectedEof
+                                            .into_compiler_error(self.file, self.size)))
                                     }
                                 }
                             }
@@ -409,7 +414,7 @@ impl<'input> Iterator for Lexer<'input> {
                             }
                             None => {
                                 return Some(Err(
-                                    Error::UnexpectedEof.into_compiler_error(self.size)
+                                    Error::UnexpectedEof.into_compiler_error(self.file, self.size)
                                 ))
                             }
                         }
@@ -474,7 +479,7 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((_, ch)) if ch.is_whitespace() => continue,
                 Some((idx, other)) => {
                     return Some(Err(
-                        Error::UnexpectedCharacter(other).into_compiler_error(idx)
+                        Error::UnexpectedCharacter(other).into_compiler_error(self.file, idx)
                     ))
                 }
             }
@@ -488,7 +493,7 @@ mod lexer_test {
 
     macro_rules! lex {
         ($str:expr) => {
-            Lexer::new($str)
+            Lexer::new($str, 0)
                 .filter(|x| x.is_ok())
                 .map(|x| x.unwrap())
                 .collect::<Vec<_>>()

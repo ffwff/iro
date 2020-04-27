@@ -1,3 +1,4 @@
+use crate::compiler::sources::SpanIndex;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -10,13 +11,15 @@ pub enum Index {
 
 #[derive(Debug, Clone)]
 pub struct Directory {
+    pub last_used: SpanIndex,
     pub sub_paths: HashMap<Index, Directory>,
 }
 
 impl Directory {
-    pub fn new() -> Self {
+    pub fn new(last_used: SpanIndex) -> Self {
         Directory {
             sub_paths: HashMap::new(),
+            last_used,
         }
     }
 
@@ -34,7 +37,16 @@ impl Directory {
 #[derive(Debug, Clone)]
 pub enum MemoryState {
     PartiallyMoved(Directory),
-    FullyMoved,
+    FullyMoved(SpanIndex),
+}
+
+impl MemoryState {
+    pub fn last_used(&self) -> SpanIndex {
+        match self {
+            MemoryState::PartiallyMoved(dict) => dict.last_used,
+            MemoryState::FullyMoved(last_used) => *last_used,
+        }
+    }
 }
 
 pub type Paths = HashMap<usize, MemoryState>;

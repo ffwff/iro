@@ -1,3 +1,4 @@
+use crate::compiler::sources::Sources;
 use crate::utils::uniquerc::UniqueRc;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
@@ -60,6 +61,7 @@ impl Context {
                     .map(|(idx, _)| Ins {
                         retvar: idx,
                         typed: InsType::LoadArg(idx),
+                        source_location: std::u32::MAX,
                     })
                     .collect(),
             )],
@@ -156,11 +158,20 @@ impl Block {
 pub struct Ins {
     retvar: Variable,
     pub typed: InsType,
+    source_location: u32,
 }
 
 impl Ins {
-    pub fn new(retvar: Variable, typed: InsType) -> Self {
-        Ins { retvar, typed }
+    pub fn new(retvar: Variable, typed: InsType, source_location: u32) -> Self {
+        Ins {
+            retvar,
+            typed,
+            source_location,
+        }
+    }
+
+    pub fn source_location(&self) -> u32 {
+        self.source_location
     }
 
     pub fn retvar(&self) -> Option<Variable> {
@@ -200,82 +211,80 @@ impl Ins {
             }
             indices
         }
-        take_mut::take(&mut self.typed, |typed| {
-            match typed {
-                InsType::Move(x) => InsType::Move(swap(x)),
-                InsType::MarkMoved(x) => InsType::MarkMoved(swap(x)),
-                InsType::Drop(x) => InsType::Drop(swap(x)),
-                InsType::Copy(x) => InsType::Copy(swap(x)),
-                InsType::LoadSlice(mut args) => {
-                    for arg in &mut args {
-                        let oldvar = *arg;
-                        *arg = swap(oldvar);
-                    }
-                    InsType::LoadSlice(args)
+        take_mut::take(&mut self.typed, |typed| match typed {
+            InsType::Move(x) => InsType::Move(swap(x)),
+            InsType::MarkMoved(x) => InsType::MarkMoved(swap(x)),
+            InsType::Drop(x) => InsType::Drop(swap(x)),
+            InsType::Copy(x) => InsType::Copy(swap(x)),
+            InsType::LoadSlice(mut args) => {
+                for arg in &mut args {
+                    let oldvar = *arg;
+                    *arg = swap(oldvar);
                 }
-                InsType::Call { name, mut args } => {
-                    for arg in &mut args {
-                        let oldvar = *arg;
-                        *arg = swap(oldvar);
-                    }
-                    InsType::Call { name, args }
-                }
-                InsType::Return(x) => InsType::Return(swap(x)),
-                InsType::Phi { .. } => unreachable!(),
-                InsType::MemberReference {
-                    left,
-                    indices,
-                    modifier,
-                } => InsType::MemberReference {
-                    left: swap(left),
-                    indices: swap_indices(indices, &mut swap),
-                    modifier,
-                },
-                InsType::MemberReferenceStore {
-                    left,
-                    indices,
-                    modifier,
-                    right,
-                } => InsType::MemberReferenceStore {
-                    left: swap(left),
-                    indices: swap_indices(indices, &mut swap),
-                    modifier,
-                    right: swap(right),
-                },
-                InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
-                InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
-                InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
-                InsType::Div((x, y)) => InsType::Div((swap(x), swap(y))),
-                InsType::Mod((x, y)) => InsType::Mod((swap(x), swap(y))),
-                InsType::Lt((x, y)) => InsType::Lt((swap(x), swap(y))),
-                InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
-                InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
-                InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
-                InsType::Equ((x, y)) => InsType::Equ((swap(x), swap(y))),
-                InsType::AddC(_)
-                | InsType::SubC(_)
-                | InsType::MulC(_)
-                | InsType::DivC(_)
-                | InsType::ModC(_)
-                | InsType::LtC(_)
-                | InsType::GtC(_)
-                | InsType::LteC(_)
-                | InsType::GteC(_) => unimplemented!(),
-                InsType::IfJmp {
-                    condvar,
-                    iftrue,
-                    iffalse,
-                } => InsType::IfJmp {
-                    condvar: swap(condvar),
-                    iftrue,
-                    iffalse,
-                },
-                InsType::Cast { var, typed } => InsType::Cast {
-                    var: swap(var),
-                    typed,
-                },
-                other => other,
+                InsType::LoadSlice(args)
             }
+            InsType::Call { name, mut args } => {
+                for arg in &mut args {
+                    let oldvar = *arg;
+                    *arg = swap(oldvar);
+                }
+                InsType::Call { name, args }
+            }
+            InsType::Return(x) => InsType::Return(swap(x)),
+            InsType::Phi { .. } => unreachable!(),
+            InsType::MemberReference {
+                left,
+                indices,
+                modifier,
+            } => InsType::MemberReference {
+                left: swap(left),
+                indices: swap_indices(indices, &mut swap),
+                modifier,
+            },
+            InsType::MemberReferenceStore {
+                left,
+                indices,
+                modifier,
+                right,
+            } => InsType::MemberReferenceStore {
+                left: swap(left),
+                indices: swap_indices(indices, &mut swap),
+                modifier,
+                right: swap(right),
+            },
+            InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
+            InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
+            InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
+            InsType::Div((x, y)) => InsType::Div((swap(x), swap(y))),
+            InsType::Mod((x, y)) => InsType::Mod((swap(x), swap(y))),
+            InsType::Lt((x, y)) => InsType::Lt((swap(x), swap(y))),
+            InsType::Gt((x, y)) => InsType::Gt((swap(x), swap(y))),
+            InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
+            InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
+            InsType::Equ((x, y)) => InsType::Equ((swap(x), swap(y))),
+            InsType::AddC(_)
+            | InsType::SubC(_)
+            | InsType::MulC(_)
+            | InsType::DivC(_)
+            | InsType::ModC(_)
+            | InsType::LtC(_)
+            | InsType::GtC(_)
+            | InsType::LteC(_)
+            | InsType::GteC(_) => unimplemented!(),
+            InsType::IfJmp {
+                condvar,
+                iftrue,
+                iffalse,
+            } => InsType::IfJmp {
+                condvar: swap(condvar),
+                iftrue,
+                iffalse,
+            },
+            InsType::Cast { var, typed } => InsType::Cast {
+                var: swap(var),
+                typed,
+            },
+            other => other,
         });
     }
 
@@ -390,9 +399,7 @@ impl Ins {
                 true
             }
             InsType::MemberReferenceStore {
-                modifier,
-                right,
-                ..
+                modifier, right, ..
             } if *modifier == ReferenceModifier::Move => {
                 callback(*right);
                 true

@@ -32,12 +32,13 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                     InsType::Phi { .. } => continue,
                     _ => (),
                 }
+                let source_location = ins.source_location();
                 let retvar = ins.retvar();
                 block.ins.push(ins);
                 if let Some(retvar) = retvar {
                     if let Some(newvars) = replacements.remove(&retvar) {
                         for newvar in newvars {
-                            replacement_body.push(Ins::new(newvar, InsType::Move(retvar)));
+                            replacement_body.push(Ins::new(newvar, InsType::Move(retvar), source_location));
                             block.vars_phi.insert(newvar);
                             block_local_replacements.insert(retvar, newvar);
                         }
@@ -212,7 +213,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 if let Some(usage) = dead_var_usage.get(var).cloned() {
                     if usage == 0 {
                         dead_var_usage.remove(var);
-                        block.ins.push(Ins::new(0, InsType::Drop(*var)));
+                        block.ins.push(Ins::new(0, InsType::Drop(*var), 0));
                     }
                 }
             }
@@ -227,7 +228,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                         *usage -= 1;
                         if *usage == 0 {
                             dead_var_usage.remove(&var);
-                            block.ins.push(Ins::new(0, InsType::Drop(var)));
+                            block.ins.push(Ins::new(0, InsType::Drop(var), 0));
                         }
                     }
                 });
@@ -236,7 +237,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                         *usage -= 1;
                         if *usage == 0 {
                             dead_var_usage.remove(&var);
-                            block.ins.push(Ins::new(0, InsType::Drop(var)));
+                            block.ins.push(Ins::new(0, InsType::Drop(var), 0));
                         }
                     }
                 }

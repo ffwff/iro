@@ -136,6 +136,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                                     vars: std::iter::repeat(var).take(block.preds.len()).collect(),
                                     defines: var,
                                 },
+                                0,
                             ),
                         );
                         phi_inserted.insert(y);

@@ -1,10 +1,13 @@
 use crate::compiler;
+use crate::compiler::sources::SourceSpan;
 use crate::ssa::isa::{IntrinsicType, Type};
 use downcast_rs::Downcast;
 use std::borrow::Borrow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
+
+pub mod postprocess;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -29,20 +32,22 @@ impl Error {
         compiler::Error {
             error: match self {
                 Error::InvalidLHS => Code::InvalidLHS,
-                Error::IncompatibleType { got, expected } => Code::IncompatibleType { got, expected },
+                Error::IncompatibleType { got, expected } => {
+                    Code::IncompatibleType { got, expected }
+                }
                 Error::CannotInfer => Code::CannotInfer,
-                Error::UnknownIdentifier(x)  => Code::UnknownIdentifier(x),
-                Error::UnknownType(x)        => Code::UnknownType(x),
-                Error::UnknownMemberRef(x)   => Code::UnknownMemberRef(x),
+                Error::UnknownIdentifier(x) => Code::UnknownIdentifier(x),
+                Error::UnknownType(x) => Code::UnknownType(x),
+                Error::UnknownMemberRef(x) => Code::UnknownMemberRef(x),
                 Error::UnknownStructField(x) => Code::UnknownStructField(x),
-                Error::UnknownAttribute(x)   => Code::UnknownAttribute(x),
-                Error::UnknownStatic(x)      => Code::UnknownStatic(x),
+                Error::UnknownAttribute(x) => Code::UnknownAttribute(x),
+                Error::UnknownStatic(x) => Code::UnknownStatic(x),
                 Error::NotEnoughArguments => Code::NotEnoughArguments,
                 Error::InvalidArguments => Code::InvalidArguments,
                 Error::InvalidReturnType => Code::InvalidReturnType,
                 Error::MutatingImmutable(x) => Code::MutatingImmutable(x),
             },
-            span: ast.span(),
+            span: Some(ast.span()),
         }
     }
 }
@@ -98,7 +103,7 @@ impl std::fmt::Debug for dyn Node {
 #[derive(Debug, Clone)]
 pub struct NodeBox {
     data: Rc<dyn Node>,
-    span: (usize, usize),
+    span: Cell<SourceSpan>,
 }
 
 impl NodeBox {
@@ -108,7 +113,7 @@ impl NodeBox {
     {
         NodeBox {
             data: Rc::new(node),
-            span,
+            span: Cell::new(SourceSpan::from_tuple((span.0, span.1 + 1))),
         }
     }
 
@@ -116,8 +121,12 @@ impl NodeBox {
         self.data.clone()
     }
 
-    pub fn span(&self) -> (usize, usize) {
-        self.span.clone()
+    pub fn span(&self) -> SourceSpan {
+        self.span.clone().into_inner()
+    }
+
+    pub fn span_ref(&self) -> &Cell<SourceSpan> {
+        &self.span
     }
 
     pub fn borrow(&self) -> &dyn Node {

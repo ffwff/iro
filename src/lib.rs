@@ -2,6 +2,7 @@
 #![feature(ptr_offset_from)]
 #![feature(trait_alias)]
 #![feature(move_ref_pattern)]
+#![feature(cell_update)]
 
 #[macro_use]
 extern crate lalrpop_util;
@@ -19,6 +20,8 @@ extern crate cranelift_simplejit;
 extern crate target_lexicon;
 #[macro_use]
 extern crate derivative;
+#[macro_use]
+extern crate codespan_reporting;
 
 #[macro_use]
 pub mod utils;

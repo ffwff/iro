@@ -1,14 +1,9 @@
+use crate::compiler;
+use crate::compiler::error::{Code, MemoryErrorType};
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
-use crate::compiler;
-
-#[derive(Debug)]
-struct MoveError {
-    pub position: InsPosition,
-    pub var: usize,
-}
 
 pub fn check(context: &mut Context) -> Flow {
     fn walk(
@@ -16,13 +11,21 @@ pub fn check(context: &mut Context) -> Flow {
         block_idx: usize,
         context: &Context,
         previous_moved_set: Option<&Paths>,
-    ) -> Result<Paths, compiler::Error> {
+    ) -> Result<Paths, Code> {
         let mut moved_set = Paths::new();
-        for (ins_idx, ins) in block.ins.iter().enumerate() {
+        for ins in &block.ins {
             match &ins.typed {
                 InsType::Drop(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
-                    // FIXME
-                    moved_set.insert(*var, MemoryState::FullyMoved);
+                    if let Some(sub_path) =
+                        moved_set.insert(*var, MemoryState::FullyMoved(ins.source_location()))
+                    {
+                        return Err(Code::MemoryError {
+                            position: ins.source_location(),
+                            var: *var,
+                            typed: MemoryErrorType::Move,
+                            last_used: sub_path.last_used(),
+                        });
+                    }
                 }
                 InsType::Phi { .. } => (),
                 InsType::MemberReference {
@@ -34,18 +37,23 @@ pub fn check(context: &mut Context) -> Flow {
                     let mut directory = if let Some(memory_state) = overlay.get_or_clone(*left) {
                         match memory_state {
                             MemoryState::PartiallyMoved(dir) => dir,
-                            MemoryState::FullyMoved => {
-                                panic!();
-                                /* return Err(MoveError {
-                                    position: InsPosition { block_idx, ins_idx },
+                            MemoryState::FullyMoved(last_used) => {
+                                return Err(Code::MemoryError {
+                                    position: ins.source_location(),
                                     var: *left,
-                                }) */
+                                    typed: MemoryErrorType::Move,
+                                    last_used: *last_used,
+                                });
                             }
                         }
+                    } else if *modifier == ReferenceModifier::Copy {
+                        continue;
                     } else if let MemoryState::PartiallyMoved(dict) = overlay
                         .map_mut()
                         .entry(*left)
-                        .or_insert(MemoryState::PartiallyMoved(Directory::new()))
+                        .or_insert(MemoryState::PartiallyMoved(Directory::new(
+                            ins.source_location(),
+                        )))
                     {
                         dict
                     } else {
@@ -57,14 +65,15 @@ pub fn check(context: &mut Context) -> Flow {
                             MemberExprIndexVar::Variable(_) => Index::Dynamic,
                         };
                         // We may not move a sub path which is already moved
-                        if directory.sub_paths.contains_key(&index) {
-                            panic!();
-                            /* return Err(MoveError {
-                                position: InsPosition { block_idx, ins_idx },
+                        if let Some(sub_path) = directory.sub_paths.get(&index) {
+                            return Err(Code::MemoryError {
+                                position: ins.source_location(),
                                 var: *left,
-                            }); */
+                                typed: MemoryErrorType::Move,
+                                last_used: sub_path.last_used,
+                            });
                         }
-                        match *modifier {
+                        match modifier {
                             ReferenceModifier::Copy => {
                                 // Continue checking whether we can use this sub-path
                                 if let Some(maybe_dir) = directory.sub_paths.get_mut(&index) {
@@ -75,29 +84,33 @@ pub fn check(context: &mut Context) -> Flow {
                             }
                             ReferenceModifier::Move => {
                                 // Insert a new sub-path to the moved chain
-                                directory.sub_paths.insert(index, Directory::new());
+                                directory
+                                    .sub_paths
+                                    .insert(index, Directory::new(ins.source_location()));
                                 directory = directory.sub_paths.get_mut(&index).unwrap();
                             }
                         }
                     }
                 }
                 _ => {
-                    let mut error: Option<compiler::Error> = None;
+                    let mut error: Option<Code> = None;
                     ins.each_used_var(|var| {
                         if error.is_some() {
                             return;
                         }
-                        if overlay_hashmap![&mut moved_set, previous_moved_set].contains_key(var) {
-                            panic!();
-                            /* error = Some(MoveError {
-                                position: InsPosition { block_idx, ins_idx },
+                        if let Some(sub_path) =
+                            overlay_hashmap![&mut moved_set, previous_moved_set].get(var)
+                        {
+                            error = Some(Code::MemoryError {
+                                position: ins.source_location(),
                                 var,
-                            }); */
+                                typed: MemoryErrorType::Move,
+                                last_used: sub_path.last_used(),
+                            });
                         }
                     });
                     if let Some(error) = error {
-                        panic!();
-                        // return Err(error);
+                        return Err(error);
                     }
                 }
             }
@@ -123,12 +136,13 @@ pub fn check(context: &mut Context) -> Flow {
                             ) => {
                                 old_dir.extend(new_dir);
                             }
-                            (MemoryState::PartiallyMoved(_), MemoryState::FullyMoved) => {
+                            (MemoryState::PartiallyMoved(dict), MemoryState::FullyMoved(_)) => {
+                                let last_used = dict.last_used;
                                 overlay_move_set
                                     .map_mut()
-                                    .insert(key, MemoryState::FullyMoved);
+                                    .insert(key, MemoryState::FullyMoved(last_used));
                             }
-                            (MemoryState::FullyMoved, MemoryState::FullyMoved) => (),
+                            (MemoryState::FullyMoved(_), MemoryState::FullyMoved(_)) => (),
                             (_, _) => {
                                 // These states are unreachable since we've already handled it while
                                 // checking the instructions above, hopefully.
@@ -146,6 +160,6 @@ pub fn check(context: &mut Context) -> Flow {
     }
     match walk(&context.blocks[0], 0, context, None) {
         Ok(_) => Flow::Continue,
-        Err(err) => Flow::Err(err),
+        Err(code) => Flow::Err(code),
     }
 }

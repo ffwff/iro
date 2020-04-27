@@ -1,17 +1,12 @@
+use crate::compiler::sources::{SourceSpan, SpanIndex};
 use crate::lexer;
 use crate::ssa::isa;
-use std::rc::Rc;
 use lalrpop_util;
+use std::rc::Rc;
 
-struct Location {
-    pub row: usize,
-    pub col: usize,
-}
-
-impl Location {
-    pub fn new() -> Location {
-        Location { row: 0, col: 0 }
-    }
+pub enum MemoryErrorType {
+    Move,
+    Borrow,
 }
 
 pub enum Code {
@@ -27,7 +22,10 @@ pub enum Code {
     UnexpectedCharacter(char),
     InvalidIndent,
     InvalidLHS,
-    IncompatibleType { got: isa::Type, expected: isa::Type },
+    IncompatibleType {
+        got: isa::Type,
+        expected: isa::Type,
+    },
     CannotInfer,
     UnknownIdentifier(Rc<str>),
     UnknownType(Rc<str>),
@@ -39,6 +37,23 @@ pub enum Code {
     InvalidArguments,
     InvalidReturnType,
     MutatingImmutable(Rc<str>),
+    BackendNoSupport,
+    IoError(std::io::Error),
+    MemoryError {
+        position: SpanIndex,
+        last_used: SpanIndex,
+        var: usize,
+        typed: MemoryErrorType,
+    },
+}
+
+impl Code {
+    pub fn diagnostics(&self) -> Vec<(SpanIndex, &'static str)> {
+        match self {
+            Code::MemoryError { last_used, .. } => vec![(*last_used, "last used here")],
+            _ => vec![],
+        }
+    }
 }
 
 impl std::fmt::Display for Code {
@@ -62,18 +77,17 @@ impl std::fmt::Display for Code {
             Code::UnexpectedCharacter(ch) => write!(f, "Unexpected character '{}'", ch),
             Code::InvalidIndent => write!(f, "Invalid indentation"),
             Code::InvalidToken => write!(f, "Invalid token"),
-            Code::UnrecognizedEOF { expected } => if expected.is_empty() {
-                write!(
-                    f,
-                    "Unexpected end of file",
-                )
-            } else {
-                write!(
-                    f,
-                    "Unexpected end of file, expected {}",
-                    expected.join(", ")
-                )
-            },
+            Code::UnrecognizedEOF { expected } => {
+                if expected.is_empty() {
+                    write!(f, "Unexpected end of file",)
+                } else {
+                    write!(
+                        f,
+                        "Unexpected end of file, expected {}",
+                        expected.join(", ")
+                    )
+                }
+            }
             Code::UnrecognizedToken { token, expected } => write!(
                 f,
                 "Unexpected token (got {}, expected {})",
@@ -81,47 +95,36 @@ impl std::fmt::Display for Code {
                 expected.join(", ")
             ),
             Code::ExtraToken(token) => write!(f, "Invalid token (got {})", token),
+            Code::BackendNoSupport => {
+                write!(f, "Current backend doesn't support this functionality")
+            }
+            Code::IoError(error) => write!(f, "IO error: {}", error),
+            Code::MemoryError { typed, .. } => write!(
+                f,
+                "Trying to {} a variable which has already been {}",
+                match typed {
+                    MemoryErrorType::Move => "move",
+                    MemoryErrorType::Borrow => "borrow",
+                },
+                match typed {
+                    MemoryErrorType::Move => "moved",
+                    MemoryErrorType::Borrow => "borrowed",
+                }
+            ),
         }
     }
 }
 
 pub struct Error {
     pub error: Code,
-    pub span: (usize, usize),
+    pub span: Option<SourceSpan>,
 }
 
 impl Error {
-    pub fn print(&self, source: &String) {
-        println!("{}", self.error);
-        let mut line_contents = vec![];
-        let mut row = 0;
-        let mut col = 0;
-        let mut row_start = 0;
-        let mut current_span = (Location::new(), Location::new());
-        for (idx, ch) in source.chars().enumerate() {
-            if idx == self.span.0 {
-                current_span.0.row = row;
-                current_span.0.col = col;
-            } else if idx == self.span.1 {
-                current_span.1.row = row;
-                current_span.1.col = col;
-            }
-            match ch {
-                '\n' => {
-                    line_contents.push(&source[row_start..idx]);
-                    col = 0;
-                    row += 1;
-                    row_start = idx + 1;
-                }
-                _ => {
-                    col += 1;
-                }
-            }
-        }
-        line_contents.push(&source[row_start..source.len()]);
-        {
-            let row = current_span.0.row;
-            println!(" {}:{} | {}", row + 1, col + 1, line_contents[row]);
+    pub fn io_error(error: std::io::Error) -> Self {
+        Self {
+            error: Code::IoError(error),
+            span: None,
         }
     }
 }
@@ -135,7 +138,8 @@ impl std::fmt::Debug for Error {
 type LalrParseError = lalrpop_util::ParseError<usize, lexer::Tok, Error>;
 impl From<LalrParseError> for Error {
     fn from(error: LalrParseError) -> Error {
-        match error {
+        unimplemented!()
+        /* match error {
             LalrParseError::InvalidToken { location } => Error {
                 error: Code::InvalidToken,
                 span: (location, location),
@@ -158,6 +162,6 @@ impl From<LalrParseError> for Error {
                 span: (start, end),
             },
             LalrParseError::User { error } => error,
-        }
+        }*/
     }
 }

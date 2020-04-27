@@ -1,0 +1,18 @@
+extern def noop(n: I32): Nil
+
+class Other =>
+    a_int: I32
+
+class Thing =>
+    other: Other
+    
+thing := (
+    Thing =>
+        other: (
+            Other =>
+                a_int: 10
+        )
+)
+j := thing.other
+noop(j.a_int)
+noop(thing.other.a_int)

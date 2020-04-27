@@ -2,16 +2,19 @@ use crate::ast::Visitor;
 use crate::codegen::backend;
 use crate::codegen::settings::Settings;
 use crate::compiler;
+use crate::compiler::sources::Sources;
 use crate::lexer;
 use crate::parser;
 use crate::runtime;
 use crate::ssa;
 use crate::ssa::passes;
+use std::cell::RefCell;
+use std::path::Path;
 
 pub enum Flow {
     Continue,
     Break,
-    Err(compiler::Error),
+    Err(compiler::error::Code),
 }
 
 const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
@@ -37,10 +40,30 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::postlude::fuse_postlude,
 ];
 
-pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
-    let tokenizer = lexer::Lexer::new(input);
+pub fn parse_file_to_ssa(
+    sources: &mut Sources,
+    main_file: &Path,
+) -> Result<ssa::isa::Program, compiler::Error> {
+    let tokenizer = lexer::Lexer::new(sources.main_file().unwrap(), 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    let mut program = ssa::visitor::SSAVisitor::generate(&ast)?;
+    let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(sources))?;
+    process_ssa(sources, &mut program)?;
+    Ok(program)
+}
+
+pub fn parse_source_to_ssa(source: &str) -> Result<ssa::isa::Program, compiler::Error> {
+    let mut sources = Sources::new();
+    let tokenizer = lexer::Lexer::new(source, 0);
+    let ast = parser::TopParser::new().parse(tokenizer)?;
+    let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(&mut sources))?;
+    process_ssa(&mut sources, &mut program)?;
+    Ok(program)
+}
+
+fn process_ssa(
+    sources: &mut Sources,
+    program: &mut ssa::isa::Program,
+) -> Result<(), compiler::Error> {
     for (_, context) in &mut program.contexts {
         for pass in SSA_PASSES {
             match pass(context) {
@@ -48,11 +71,18 @@ pub fn parse_to_ssa(input: &str) -> Result<ssa::isa::Program, compiler::Error> {
                 Flow::Break => {
                     break;
                 }
-                Flow::Err(err) => return Err(err),
+                Flow::Err(code) => {
+                    use crate::compiler::error::Code;
+                    let span = match &code {
+                        Code::MemoryError { position, .. } => sources.get_span(*position),
+                        _ => None,
+                    };
+                    return Err(compiler::Error { error: code, span });
+                }
             }
         }
     }
-    Ok(program)
+    Ok(())
 }
 
 pub struct Compiler {
@@ -60,30 +90,68 @@ pub struct Compiler {
     settings: Settings,
 }
 
+macro_rules! try_sources {
+    ($expr:expr, $sources:expr) => {
+        match $expr {
+            Ok(x) => x,
+            Err(x) => return (Some($sources), Err(x)),
+        }
+    };
+}
+
+macro_rules! with_sources {
+    ($expr:expr, $sources:expr) => {
+        (Some($sources), $expr)
+    };
+}
+
 impl Compiler {
     pub fn new(backend: backend::Backend, settings: Settings) -> Self {
         Self { backend, settings }
     }
 
-    pub unsafe fn parse_and_run(
+    pub unsafe fn parse_and_run<P: AsRef<Path>>(
         &self,
-        input: &str,
+        path: P,
         runtime: &runtime::Runtime,
-    ) -> Result<(), compiler::Error> {
-        let program = parse_to_ssa(input)?;
-        if let Some(backend) = self.backend.as_jit_backend() {
-            backend.run(&program, &self.settings, runtime)
-        } else {
-            panic!()
-        }
+    ) -> (Option<Sources>, Result<(), compiler::Error>) {
+        let mut sources = match Sources::with_main_file(path.as_ref()) {
+            Ok(sources) => sources,
+            Err(error) => return (None, Err(compiler::Error::io_error(error))),
+        };
+        let program = try_sources!(parse_file_to_ssa(&mut sources, path.as_ref()), sources);
+        with_sources!(
+            if let Some(backend) = self.backend.as_jit_backend() {
+                backend.run(&program, &self.settings, runtime)
+            } else {
+                Err(compiler::Error {
+                    error: compiler::error::Code::BackendNoSupport,
+                    span: None,
+                })
+            },
+            sources
+        )
     }
 
-    pub fn parse_to_object(&self, input: &str) -> Result<Vec<u8>, compiler::Error> {
-        let program = parse_to_ssa(input)?;
-        if let Some(backend) = self.backend.as_object_backend() {
-            backend.generate_object(&program, &self.settings)
-        } else {
-            panic!()
-        }
+    pub fn parse_to_object<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> (Option<Sources>, Result<Vec<u8>, compiler::Error>) {
+        let mut sources = match Sources::with_main_file(path.as_ref()) {
+            Ok(sources) => sources,
+            Err(error) => return (None, Err(compiler::Error::io_error(error))),
+        };
+        let mut program = try_sources!(parse_file_to_ssa(&mut sources, path.as_ref()), sources);
+        with_sources!(
+            if let Some(backend) = self.backend.as_object_backend() {
+                backend.generate_object(&program, &self.settings)
+            } else {
+                Err(compiler::Error {
+                    error: compiler::error::Code::BackendNoSupport,
+                    span: None,
+                })
+            },
+            sources
+        )
     }
 }

@@ -34,6 +34,16 @@ where
                 .map(|map| map.contains_key(&key))
                 .unwrap_or(false)
     }
+
+    pub fn get<Q: Sized>(&self, key: Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.first
+            .get(&key)
+            .or_else(|| self.second.map(|map| map.get(&key)).flatten())
+    }
 }
 
 impl<'a, K, V: Clone> OverlayHashMap<'a, K, V>
