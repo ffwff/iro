@@ -4,6 +4,7 @@ use crate::ssa::isa;
 use lalrpop_util;
 use std::rc::Rc;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryErrorType {
     Move,
     Borrow,

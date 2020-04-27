@@ -23,7 +23,6 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     if context.blocks.len() < 2 {
         return Flow::Continue;
     }
-    // dbg_println!("cleanup: {:#?}", context);
 
     // map of new block idx -> old block idx
     let mut idx_map: Vec<usize> = (0..context.blocks.len()).collect();

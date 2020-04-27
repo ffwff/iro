@@ -229,10 +229,11 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
             let mut version_stack = vec![var];
             let mut version = 1;
             rename_variables(var, 0, &mut version, &mut version_stack, context, &dom_tree);
-            // dbg_println!("rename var {} ==> {:#?}", var, context);
         }
     } else {
-        let mut mapping: Vec<Option<usize>> = (0..context.variables.len()).map(|_| None).collect();
+        let mut mapping: Vec<Option<usize>> = std::iter::repeat(None)
+            .take(context.variables.len())
+            .collect();
         if mapping.is_empty() {
             return Flow::Continue;
         }

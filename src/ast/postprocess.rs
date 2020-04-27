@@ -143,4 +143,10 @@ impl Visitor for PostprocessVisitor {
         self.fill_box(b);
         Ok(())
     }
+
+    fn visit_borrow(&mut self, n: &BorrowExpr, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
+        n.expr.visit(self)?;
+        Ok(())
+    }
 }

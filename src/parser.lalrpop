@@ -335,6 +335,18 @@ CallExpr: NodeBox = {
     <end:@L> => {
         NodeBox::new(CallExpr::new(callee, args), (start, end))
     },
+    BorrowExpr,
+};
+
+BorrowExpr: NodeBox = {
+    <start:@L> 
+        "&" <pointer_tag:TypePointerTag?> <expr:MemberExpr>
+    <end:@L> => {
+        NodeBox::new(BorrowExpr {
+            expr,
+            pointer_tag: pointer_tag.unwrap_or(PointerTag::Immutable),
+        }, (start, end))
+    },
     MemberExpr,
 };
 
@@ -376,16 +388,10 @@ Type: TypeId = {
 };
 
 TypePointer: TypeIdData = {
-    "&" <first:Type> => {
+    "&" <pointer_tag:TypePointerTag?> <first:Type> => {
         TypeIdData::Pointer {
             typed: Box::new(first),
-            pointer_tag: PointerTag::Immutable,
-        }
-    },
-    "&" <pointer_tag:TypePointerTag> <first:Type> => {
-        TypeIdData::Pointer {
-            typed: Box::new(first),
-            pointer_tag,
+            pointer_tag: pointer_tag.unwrap_or(PointerTag::Immutable),
         }
     },
     TypeSlice,

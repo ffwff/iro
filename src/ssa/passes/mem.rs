@@ -38,7 +38,11 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                 if let Some(retvar) = retvar {
                     if let Some(newvars) = replacements.remove(&retvar) {
                         for newvar in newvars {
-                            replacement_body.push(Ins::new(newvar, InsType::Move(retvar), source_location));
+                            replacement_body.push(Ins::new(
+                                newvar,
+                                InsType::Move(retvar),
+                                source_location,
+                            ));
                             block.vars_phi.insert(newvar);
                             block_local_replacements.insert(retvar, newvar);
                         }

@@ -1560,4 +1560,8 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             .push(InsPosition { block_idx, ins_idx });
         Ok(())
     }
+
+    fn visit_borrow(&mut self, n: &BorrowExpr, b: &NodeBox) -> VisitorResult {
+        unimplemented!()
+    }
 }

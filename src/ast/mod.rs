@@ -77,6 +77,7 @@ pub trait Visitor {
     visit_func!(visit_value, Value);
     visit_func!(visit_typeid, TypeId);
     visit_func!(visit_break, BreakExpr);
+    visit_func!(visit_borrow, BorrowExpr);
 }
 
 pub trait Node: Downcast {
@@ -463,4 +464,15 @@ pub struct ClassInitExpr {
 impl Node for ClassInitExpr {
     debuggable!();
     visitable!(visit_class_init);
+}
+
+#[derive(Debug)]
+pub struct BorrowExpr {
+    pub expr: NodeBox,
+    pub pointer_tag: PointerTag,
+}
+
+impl Node for BorrowExpr {
+    debuggable!();
+    visitable!(visit_borrow);
 }
