@@ -27,7 +27,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
             let oldins = std::mem::replace(&mut block.ins, Vec::new());
             let mut replacement_body = vec![];
             let mut block_local_replacements = btreemap![];
-            for mut ins in oldins {
+            for ins in oldins {
                 match &ins.typed {
                     InsType::Phi { .. } => continue,
                     _ => (),
@@ -45,7 +45,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                 }
             }
             block.ins.extend(replacement_body.into_iter());
-            block.postlude.rename_var_by(|var| {
+            block.postlude.as_mut().unwrap().rename_var_by(|var| {
                 if let Some(replaced) = block_local_replacements.get(&var) {
                     *replaced
                 } else {
@@ -169,7 +169,13 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
         for exported in &block.vars_exported {
             dead_vars.remove(exported);
         }
-        dbg_println!("dead_vars for {}: {:?} {:?}, {:?}", idx, block.vars_declared_in_this_block, block.vars_total_imported,dead_vars);
+        dbg_println!(
+            "dead_vars for {}: {:?} {:?}, {:?}",
+            idx,
+            block.vars_declared_in_this_block,
+            block.vars_total_imported,
+            dead_vars
+        );
 
         if !dead_vars.is_empty() {
             let old_ins = std::mem::replace(&mut block.ins, vec![]);
@@ -195,8 +201,9 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                     });
                 }
             }
+
             // Postlude instruction does not count towards usage
-            block.postlude.each_used_var(|var| {
+            block.postlude.as_mut().unwrap().each_used_var(|var| {
                 dead_var_usage.remove(&var);
             });
 

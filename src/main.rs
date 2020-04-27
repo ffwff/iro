@@ -154,6 +154,7 @@ fn usage(program: &String, commands: &BTreeMap<&str, (&str, CommandFn)>) {
 }
 
 fn main() {
+    println!("{}", std::mem::size_of::<[iro::ssa::isa::Ins; 2]>());
     let args: Vec<String> = std::env::args().collect();
     let program = &args[0];
     let commands: BTreeMap<&str, (&str, CommandFn)> = btreemap![

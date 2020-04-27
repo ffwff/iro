@@ -31,7 +31,7 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     let mut jmp_map: BTreeMap<usize, usize> = btreemap![];
     let old_vec = std::mem::replace(&mut context.blocks, vec![]);
     for (idx, block) in old_vec.iter().enumerate() {
-        if let InsType::Jmp(n) = block.postlude.typed {
+        if let InsType::Jmp(n) = block.postlude.as_ref().unwrap().typed {
             if block.ins.is_empty() {
                 jmp_map.insert(idx, n);
             }
@@ -64,7 +64,8 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     // Do the cleanup
     for (idx, mut block) in old_vec.into_iter().enumerate() {
         if !jmp_map.contains_key(&idx) {
-            match &mut block.postlude.typed {
+            let postlude = block.postlude.as_mut().unwrap();
+            match &mut postlude.typed {
                 InsType::IfJmp {
                     iftrue, iffalse, ..
                 } => {
@@ -106,7 +107,6 @@ pub fn build_graph(context: &mut Context) -> Flow {
                 return false;
             }
             match &ins.typed {
-                InsType::Nop => false,
                 InsType::Return(_) | InsType::Trap(_) | InsType::Exit => {
                     jumped = true;
                     true

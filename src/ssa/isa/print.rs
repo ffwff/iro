@@ -32,7 +32,6 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             write!(f, "v{} = ", retvar)?;
         }
         match &self.0.typed {
-            InsType::Nop => write!(f, "nop"),
             InsType::LoadNil => write!(f, "nil"),
             InsType::Drop(arg) => write!(f, "drop v{}", arg),
             InsType::Move(var) => write!(f, "move v{}", var),
@@ -182,13 +181,17 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
                 )?;
                 write!(f, "- vars_used: {:?}\n", block.vars_used)?;
                 write!(f, "- vars_imported: {:?}\n", block.vars_imported)?;
-                write!(f, "- vars_total_imported: {:?}\n", block.vars_total_imported)?;
+                write!(
+                    f,
+                    "- vars_total_imported: {:?}\n",
+                    block.vars_total_imported
+                )?;
                 write!(f, "- vars_exported: {:?}\n", block.vars_exported)?;
                 for ins in &block.ins {
                     write!(f, "\t{}\n", InsPrinter(ins))?;
                 }
-                if block.postlude.typed != InsType::Nop {
-                    write!(f, "\t{}\n", InsPrinter(&block.postlude))?;
+                if let Some(postlude) = block.postlude.as_ref() {
+                    write!(f, "\t{}\n", InsPrinter(postlude))?;
                 }
             }
         }

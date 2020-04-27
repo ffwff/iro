@@ -7,7 +7,6 @@ use crate::parser;
 use crate::runtime;
 use crate::ssa;
 use crate::ssa::passes;
-use crate::utils::optcell::OptCell;
 
 pub enum Flow {
     Continue,
