@@ -1,4 +1,3 @@
-use crate::compiler;
 use crate::compiler::error::{Code, MemoryErrorType};
 use crate::compiler::Flow;
 use crate::ssa::isa::*;

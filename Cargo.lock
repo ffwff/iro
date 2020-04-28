@@ -423,6 +423,7 @@ dependencies = [
 name = "iro"
 version = "0.1.0"
 dependencies = [
+ "bit-set 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "codespan-reporting 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "cranelift 0.61.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cranelift-codegen 0.61.0 (registry+https://github.com/rust-lang/crates.io-index)",

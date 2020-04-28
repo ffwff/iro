@@ -1,6 +1,6 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
     let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
@@ -46,7 +46,8 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
 
         // Calculate the dominators for each block
         // Reference: https://www.doc.ic.ac.uk/~livshits/classes/CO444H/reading/dom14.pdf
-        let mut doms: BTreeMap<usize, usize> = btreemap![ 0 => 0 ];
+        let mut doms = btreemap![ 0 => 0 ];
+
         let mut changed = true;
         while changed {
             changed = false;
@@ -234,9 +235,6 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         let mut mapping: Vec<Option<usize>> = std::iter::repeat(None)
             .take(context.variables.len())
             .collect();
-        if mapping.is_empty() {
-            return Flow::Continue;
-        }
         let block = &mut context.blocks[0];
         for ins in &mut block.ins {
             ins.rename_var_by(|var| mapping[var].unwrap());

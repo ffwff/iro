@@ -42,7 +42,6 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
 
 pub fn parse_file_to_ssa(
     sources: &mut Sources,
-    main_file: &Path,
 ) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(sources.main_file().unwrap(), 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
@@ -119,7 +118,7 @@ impl Compiler {
             Ok(sources) => sources,
             Err(error) => return (None, Err(compiler::Error::io_error(error))),
         };
-        let program = try_sources!(parse_file_to_ssa(&mut sources, path.as_ref()), sources);
+        let program = try_sources!(parse_file_to_ssa(&mut sources), sources);
         with_sources!(
             if let Some(backend) = self.backend.as_jit_backend() {
                 backend.run(&program, &self.settings, runtime)
@@ -141,7 +140,7 @@ impl Compiler {
             Ok(sources) => sources,
             Err(error) => return (None, Err(compiler::Error::io_error(error))),
         };
-        let mut program = try_sources!(parse_file_to_ssa(&mut sources, path.as_ref()), sources);
+        let program = try_sources!(parse_file_to_ssa(&mut sources), sources);
         with_sources!(
             if let Some(backend) = self.backend.as_object_backend() {
                 backend.generate_object(&program, &self.settings)

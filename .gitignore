@@ -4,3 +4,7 @@
 *.o
 examples/*
 !examples/*.iro
+/debug-test*
+/flamegraph.svg
+/perf.data*
+/cachegrind.*

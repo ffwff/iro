@@ -160,6 +160,27 @@ impl Error {
     }
 }
 
+#[inline(always)]
+fn is_identifier_start(ch: char) -> bool {
+    match ch {
+        // Cache common identifier start characters
+        'A'..='Z' => true,
+        'a'..='z' => true,
+        _ => UnicodeXID::is_xid_start(ch),
+    }
+}
+
+#[inline(always)]
+fn is_identifier_continue(ch: char) -> bool {
+    match ch {
+        // Cache common identifier continuation characters
+        'A'..='Z' => true,
+        'a'..='z' => true,
+        '0'..='9' => true,
+        _ => UnicodeXID::is_xid_continue(ch),
+    }
+}
+
 pub struct Lexer<'input> {
     size: usize,
     chars: CharIndices<'input>,
@@ -320,12 +341,12 @@ impl<'input> Iterator for Lexer<'input> {
                 Some((idx0, ']')) => return Some(Ok((idx0, Tok::RightBracket, idx0))),
                 Some((idx0, '&')) => return Some(Ok((idx0, Tok::Amp, idx0))),
 
-                Some((idx0, ch)) if UnicodeXID::is_xid_start(ch) => {
+                Some((idx0, ch)) if is_identifier_start(ch) => {
                     let mut idx1 = idx0;
                     let mut string = ch.to_string();
                     loop {
                         match self.chars.next() {
-                            Some((m_idx1, ch)) if UnicodeXID::is_xid_continue(ch) => {
+                            Some((m_idx1, ch)) if is_identifier_continue(ch) => {
                                 string.push(ch);
                                 idx1 = m_idx1;
                             }

@@ -1,4 +1,3 @@
-use crate::compiler::sources::Sources;
 use crate::utils::uniquerc::UniqueRc;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;

@@ -20,7 +20,6 @@ extern crate cranelift_simplejit;
 extern crate target_lexicon;
 #[macro_use]
 extern crate derivative;
-#[macro_use]
 extern crate codespan_reporting;
 
 #[macro_use]

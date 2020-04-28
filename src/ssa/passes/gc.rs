@@ -1,6 +1,7 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet};
+use bit_set::BitSet;
 
 pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow {
     dbg_println!("before tracing: {}", context.print());
@@ -25,9 +26,9 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
             dbg_println!("var_to_ins: {} => {}", name, ins.print());
         }
     }
-    let mut alive: BTreeSet<usize> = btreeset![];
-    fn trace(var: usize, var_to_ins: &Vec<Vec<Ins>>, alive: &mut BTreeSet<usize>) {
-        if alive.contains(&var) {
+    let mut alive: BitSet = BitSet::with_capacity(context.variables.len());
+    fn trace(var: usize, var_to_ins: &Vec<Vec<Ins>>, alive: &mut BitSet) {
+        if alive.contains(var) {
             return;
         }
         alive.insert(var);
@@ -41,7 +42,7 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
     for block in &mut context.blocks {
         block.ins.retain(|ins| {
             if let Some(retvar) = ins.retvar() {
-                alive.contains(&retvar)
+                alive.contains(retvar)
             } else {
                 true
             }
@@ -49,7 +50,7 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
     }
     let mut removed = 0;
     for (idx, var) in context.variables.iter_mut().enumerate() {
-        if !alive.contains(&idx) {
+        if !alive.contains(idx) {
             removed += 1;
             *var = Type::NeverUsed;
         }
@@ -61,12 +62,12 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
 
 pub fn collect_garbage_vars(context: &mut Context) -> Flow {
     dbg_println!("before tracing: {}", context.print());
-    let mut var_to_ins: BTreeMap<usize, Ins> = BTreeMap::new();
+    let mut var_to_ins: Vec<Option<Ins>> = vec![None; context.variables.len()];
     let mut roots = vec![];
     for block in &mut context.blocks {
         for ins in &mut block.ins {
             if let Some(retvar) = ins.retvar() {
-                var_to_ins.insert(retvar, ins.clone());
+                var_to_ins[retvar] = Some(ins.clone());
             }
             if ins.typed.is_jmp() || ins.typed.has_side_effects() {
                 if let Some(retvar) = ins.retvar() {
@@ -76,13 +77,13 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
             }
         }
     }
-    let mut alive: BTreeSet<usize> = btreeset![];
-    fn trace(var: usize, var_to_ins: &BTreeMap<usize, Ins>, alive: &mut BTreeSet<usize>) {
-        if alive.contains(&var) {
+    let mut alive: BitSet = BitSet::with_capacity(context.variables.len());
+    fn trace(var: usize, var_to_ins: &Vec<Option<Ins>>, alive: &mut BitSet) {
+        if alive.contains(var) {
             return;
         }
         alive.insert(var);
-        if let Some(used) = var_to_ins.get(&var) {
+        if let Some(used) = &var_to_ins[var] {
             used.each_used_var(|cvar| trace(cvar, var_to_ins, alive));
         } else {
             unreachable!("no entry found for {}", var)
@@ -94,14 +95,14 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
         block.ins.retain(|ins| {
             if let Some(retvar) = ins.retvar() {
-                alive.contains(&retvar)
+                alive.contains(retvar)
             } else {
                 true
             }
         });
     }
     for (idx, var) in context.variables.iter_mut().enumerate() {
-        if !alive.contains(&idx) {
+        if !alive.contains(idx) {
             *var = Type::NeverUsed;
         }
     }

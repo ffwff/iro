@@ -1,5 +1,4 @@
 use codespan_reporting::files::Files;
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
