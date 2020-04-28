@@ -1,6 +1,5 @@
-use crate::ast::PointerTag;
 use crate::codegen::structs::StructData;
-
+use crate::ssa::isa::BorrowModifier;
 use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
@@ -29,7 +28,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn pointer(self, tag: PointerTag) -> Self {
+    pub fn pointer(self, tag: BorrowModifier) -> Self {
         Type::Pointer(Rc::new(PointerType::new(self, tag)))
     }
 
@@ -122,6 +121,20 @@ impl Type {
                 Type::Slice(slice) => slice.is_dyn(),
                 _ => false,
             },
+            _ => false,
+        }
+    }
+
+    pub fn is_primitive(&self) -> bool {
+        match self {
+            Type::Nil => true,
+            Type::Bool => true,
+            Type::I8 => true,
+            Type::I16 => true,
+            Type::I32 => true,
+            Type::I64 => true,
+            Type::ISize => true,
+            Type::F64 => true,
             _ => false,
         }
     }
@@ -286,11 +299,11 @@ impl Ord for SliceType {
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct PointerType {
     pub typed: Type,
-    pub tag: PointerTag,
+    pub tag: BorrowModifier,
 }
 
 impl PointerType {
-    pub fn new(typed: Type, tag: PointerTag) -> Self {
+    pub fn new(typed: Type, tag: BorrowModifier) -> Self {
         Self { typed, tag }
     }
 }

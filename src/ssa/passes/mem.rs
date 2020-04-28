@@ -254,3 +254,106 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
     dbg_println!("{}", context.print());
     Flow::Continue
 }
+
+pub fn register_to_memory(context: &mut Context) -> Flow {
+    dbg_println!("before r2m: {}", context.print());
+
+    let mut borrowed_vars: BTreeSet<usize> = BTreeSet::new();
+    for (idx, block) in context.blocks.iter_mut().enumerate() {
+        for ins in &block.ins {
+            match &ins.typed {
+                InsType::Borrow { var, modifier } => {
+                    borrowed_vars.insert(*var);
+                }
+                _ => (),
+            }
+        }
+    }
+    if borrowed_vars.is_empty() {
+        return Flow::Continue;
+    }
+    let borrowed_vars = borrowed_vars
+        .into_iter()
+        .filter(|var| context.variables[*var].is_primitive())
+        .collect::<Vec<usize>>();
+    for &var in &borrowed_vars {
+        let mut declared = false;
+        let mut new_var_count = context.variables.len();
+        for block in &mut context.blocks {
+            let old_len = block.ins.len();
+            let old_ins = std::mem::replace(&mut block.ins, Vec::with_capacity(old_len));
+
+            for mut ins in old_ins {
+                let location = ins.source_location();
+                match ins.typed {
+                    InsType::Borrow { var: borrowed_var, .. } => {
+                        if borrowed_var == var {
+                            assert_ne!(ins.retvar().unwrap(), borrowed_var);
+                            block.ins.push(ins);
+                            continue;
+                        }
+                    }
+                    InsType::Deref(x) => {
+                        if x == var {
+                            assert_ne!(ins.retvar().unwrap(), x);
+                            block.ins.push(Ins::new(ins.retvar().unwrap(), InsType::Load(x), location));
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
+                ins.rename_var_by(|ren_var| {
+                    if ren_var == var {
+                        // Rewrite any other vars used with new vars,
+                        // loaded from the source var
+                        let new_var = new_var_count;
+                        new_var_count += 1;
+                        block
+                            .ins
+                            .push(Ins::new(new_var, InsType::Load(var), location));
+                        new_var
+                    } else {
+                        ren_var
+                    }
+                });
+                if let Some(retvar) = ins.mut_retvar() {
+                    if *retvar == var {
+                        if !declared {
+                            block.ins.push(Ins::new(var, InsType::Alloca, location));
+                            declared = true;
+                        }
+
+                        // Map the following SSA instruction
+                        //   v0 = ...
+                        // into
+                        //   v? = ...
+                        //   store v? -> v0
+                        let new_var = new_var_count;
+                        new_var_count += 1;
+                        *retvar = new_var;
+
+                        block.ins.push(ins);
+                        block.ins.push(Ins::new(
+                            0,
+                            InsType::Store {
+                                source: new_var,
+                                dest: var,
+                            },
+                            location,
+                        ));
+
+                        continue;
+                    }
+                }
+                block.ins.push(ins);
+            }
+        }
+        let typed = context.variables[var].clone();
+        for _ in context.variables.len()..new_var_count {
+            context.variables.push(typed.clone());
+        }
+    }
+
+    dbg_println!("after r2m: {}", context.print());
+    Flow::Continue
+}

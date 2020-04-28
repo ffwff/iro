@@ -1,6 +1,6 @@
 use crate::compiler;
 use crate::compiler::sources::SourceSpan;
-use crate::ssa::isa::{IntrinsicType, Type};
+use crate::ssa::isa::{BorrowModifier, IntrinsicType, Type};
 use downcast_rs::Downcast;
 use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
@@ -78,6 +78,7 @@ pub trait Visitor {
     visit_func!(visit_typeid, TypeId);
     visit_func!(visit_break, BreakExpr);
     visit_func!(visit_borrow, BorrowExpr);
+    visit_func!(visit_deref, DerefExpr);
 }
 
 pub trait Node: Downcast {
@@ -215,18 +216,12 @@ impl TypeId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub enum PointerTag {
-    Immutable,
-    Mutable,
-}
-
 #[derive(Debug, Clone)]
 pub enum TypeIdData {
     Identifier(Rc<str>),
     Pointer {
         typed: Box<TypeId>,
-        pointer_tag: PointerTag,
+        borrow_mod: BorrowModifier,
     },
     Slice {
         typed: Box<TypeId>,
@@ -469,10 +464,20 @@ impl Node for ClassInitExpr {
 #[derive(Debug)]
 pub struct BorrowExpr {
     pub expr: NodeBox,
-    pub pointer_tag: PointerTag,
+    pub borrow_mod: BorrowModifier,
 }
 
 impl Node for BorrowExpr {
     debuggable!();
     visitable!(visit_borrow);
+}
+
+#[derive(Debug)]
+pub struct DerefExpr {
+    pub expr: NodeBox,
+}
+
+impl Node for DerefExpr {
+    debuggable!();
+    visitable!(visit_deref);
 }

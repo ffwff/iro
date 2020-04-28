@@ -1433,7 +1433,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             Value::String(x) => {
                 let retvar = self
                     .context
-                    .insert_var(Type::I8.dyn_slice().pointer(PointerTag::Immutable));
+                    .insert_var(Type::I8.dyn_slice().pointer(BorrowModifier::Immutable));
                 self.with_block_mut(|block| {
                     block.ins.push(Ins::new(
                         retvar,
@@ -1515,7 +1515,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             }
             TypeIdData::Pointer {
                 typed: internal,
-                pointer_tag,
+                borrow_mod,
             } => {
                 self.visit_typeid(&internal, b)?;
                 n.typed.replace(Some(
@@ -1524,7 +1524,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                         .borrow()
                         .clone()
                         .unwrap()
-                        .pointer(*pointer_tag),
+                        .pointer(*borrow_mod),
                 ));
                 Ok(())
             }
@@ -1562,6 +1562,41 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
     }
 
     fn visit_borrow(&mut self, n: &BorrowExpr, b: &NodeBox) -> VisitorResult {
-        unimplemented!()
+        n.expr.visit(self)?;
+        let location = self.location_for(b);
+        let expr = self.last_retvar.take().unwrap();
+        let expr_typed = self.context.variables[expr].clone();
+        let retvar = self.context.insert_var(expr_typed.pointer(n.borrow_mod));
+        self.with_block_mut(|block| {
+            block.ins.push(Ins::new(
+                retvar,
+                InsType::Borrow {
+                    var: expr,
+                    modifier: n.borrow_mod,
+                },
+                location,
+            ));
+        });
+        self.last_retvar = Some(retvar);
+        Ok(())
+    }
+
+    fn visit_deref(&mut self, n: &DerefExpr, b: &NodeBox) -> VisitorResult {
+        n.expr.visit(self)?;
+        let location = self.location_for(b);
+        let expr = self.last_retvar.take().unwrap();
+        let typed = if let Some(typed) = self.context.variables[expr].instance_type() {
+            typed.clone()
+        } else {
+            self.context.variables[expr].clone()
+        };
+        let retvar = self.context.insert_var(typed);
+        self.with_block_mut(|block| {
+            block
+                .ins
+                .push(Ins::new(retvar, InsType::Deref(expr), location));
+        });
+        self.last_retvar = Some(retvar);
+        Ok(())
     }
 }

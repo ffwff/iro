@@ -3,6 +3,7 @@ use crate::ssa::isa::*;
 use std::collections::BTreeMap;
 
 pub fn preprocess(context: &mut Context) -> Flow {
+    dbg_println!("start: {}", context.print());
     let len = context.blocks.len();
     if len == 0 {
         return Flow::Break;

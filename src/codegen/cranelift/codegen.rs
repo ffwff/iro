@@ -490,6 +490,39 @@ where
                 builder.declare_var(to_var(ins.retvar().unwrap()), typed);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::Alloca => {
+                let retvar = ins.retvar().unwrap();
+                let typed = self
+                    .ir_to_cranelift_type(&context.variables[retvar])
+                    .unwrap();
+                let slot = builder.create_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    typed.bytes() as u32,
+                ));
+                let pointer = builder.ins().stack_addr(self.pointer_type(), slot, 0);
+                builder.declare_var(to_var(retvar), self.pointer_type());
+                builder.def_var(to_var(retvar), pointer);
+            }
+            isa::InsType::Load(x) => {
+                let retvar = ins.retvar().unwrap();
+                let typed = self.ir_to_cranelift_type(&context.variables[retvar]).unwrap();
+                let src_var = builder.use_var(to_var(*x));
+                let tmp = builder.ins().load(typed, MemFlags::trusted(), src_var, 0);
+                builder.declare_var(to_var(retvar), typed);
+                builder.def_var(to_var(retvar), tmp);
+            }
+            isa::InsType::Store { source, dest } => {
+                let src_var = builder.use_var(to_var(*source));
+                let dest_var = builder.use_var(to_var(*dest));
+                builder
+                    .ins()
+                    .store(MemFlags::trusted(), src_var, dest_var, 0);
+            }
+            isa::InsType::Borrow { var, .. } => {
+                let tmp = builder.use_var(to_var(*var));
+                builder.declare_var(to_var(ins.retvar().unwrap()), self.pointer_type());
+                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+            }
             isa::InsType::LoadArg(arg) => {
                 if let Some((slot, struct_ins)) = ins_context.stack_loads_ins.get(arg) {
                     for (offset, value) in struct_ins {

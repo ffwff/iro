@@ -149,4 +149,10 @@ impl Visitor for PostprocessVisitor {
         n.expr.visit(self)?;
         Ok(())
     }
+
+    fn visit_deref(&mut self, n: &DerefExpr, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
+        n.expr.visit(self)?;
+        Ok(())
+    }
 }

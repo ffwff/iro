@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::ssa::isa::IntrinsicType;
+use crate::ssa::isa::{IntrinsicType, BorrowModifier};
 use crate::ast::*;
 use crate::lexer;
 use crate::compiler;
@@ -335,16 +335,27 @@ CallExpr: NodeBox = {
     <end:@L> => {
         NodeBox::new(CallExpr::new(callee, args), (start, end))
     },
+    DerefExpr,
+};
+
+DerefExpr: NodeBox = {
+    <start:@L> 
+        "*" <expr:BorrowExpr>
+    <end:@L> => {
+        NodeBox::new(DerefExpr {
+            expr,
+        }, (start, end))
+    },
     BorrowExpr,
 };
 
 BorrowExpr: NodeBox = {
     <start:@L> 
-        "&" <pointer_tag:TypePointerTag?> <expr:MemberExpr>
+        "&" <borrow_mod:TypeBorrowModifier?> <expr:MemberExpr>
     <end:@L> => {
         NodeBox::new(BorrowExpr {
             expr,
-            pointer_tag: pointer_tag.unwrap_or(PointerTag::Immutable),
+            borrow_mod: borrow_mod.unwrap_or(BorrowModifier::Immutable),
         }, (start, end))
     },
     MemberExpr,
@@ -388,17 +399,17 @@ Type: TypeId = {
 };
 
 TypePointer: TypeIdData = {
-    "&" <pointer_tag:TypePointerTag?> <first:Type> => {
+    "&" <borrow_mod:TypeBorrowModifier?> <first:Type> => {
         TypeIdData::Pointer {
             typed: Box::new(first),
-            pointer_tag: pointer_tag.unwrap_or(PointerTag::Immutable),
+            borrow_mod: borrow_mod.unwrap_or(BorrowModifier::Immutable),
         }
     },
     TypeSlice,
 };
 
-TypePointerTag: PointerTag = {
-    "mut" => PointerTag::Mutable,
+TypeBorrowModifier: BorrowModifier = {
+    "mut" => BorrowModifier::Mutable,
 };
 
 TypeSlice: TypeIdData = {

@@ -33,10 +33,23 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
         }
         match &self.0.typed {
             InsType::LoadNil => write!(f, "nil"),
+            InsType::Alloca => write!(f, "alloca"),
             InsType::Drop(arg) => write!(f, "drop v{}", arg),
             InsType::Move(var) => write!(f, "move v{}", var),
             InsType::MarkMoved(var) => write!(f, "mark_moved v{}", var),
             InsType::Copy(var) => write!(f, "copy v{}", var),
+            InsType::Borrow { var, modifier } => write!(
+                f,
+                "borrow.{} v{}",
+                match modifier {
+                    BorrowModifier::Immutable => "imm",
+                    BorrowModifier::Mutable => "mut",
+                },
+                var
+            ),
+            InsType::Load(var) => write!(f, "load v{}", var),
+            InsType::Deref(var) => write!(f, "deref v{}", var),
+            InsType::Store { source, dest } => write!(f, "store v{} -> v{}", source, dest),
             InsType::LoadArg(arg) => write!(f, "load_arg {}", arg),
             InsType::LoadI32(n) => write!(f, "load.I32 {}", n),
             InsType::LoadI64(n) => write!(f, "load.I64 {}", n),
@@ -55,6 +68,10 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                 match modifier {
                     ReferenceModifier::Copy => "copy",
                     ReferenceModifier::Move => "move",
+                    ReferenceModifier::Borrow(modifier) => match modifier {
+                        BorrowModifier::Immutable => "borrow.imm",
+                        BorrowModifier::Mutable => "borrow.mut",
+                    },
                 },
                 left,
                 indices
@@ -90,6 +107,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                 match modifier {
                     ReferenceModifier::Copy => "copy",
                     ReferenceModifier::Move => "move",
+                    _ => "(invalid)",
                 },
                 right
             ),

@@ -88,6 +88,7 @@ pub fn check(context: &mut Context) -> Flow {
                                     .insert(index, Directory::new(ins.source_location()));
                                 directory = directory.sub_paths.get_mut(&index).unwrap();
                             }
+                            _ => unimplemented!(),
                         }
                     }
                 }

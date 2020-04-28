@@ -21,6 +21,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::graph::preprocess,
     passes::graph::build_graph,
     passes::gc::collect_garbage_vars_with_multiple_assigns,
+    passes::mem::register_to_memory,
     passes::ssa::rename_vars_and_insert_phis,
     // Stage 1: constant folding and graph cleanup
     passes::fold::fold_constants,

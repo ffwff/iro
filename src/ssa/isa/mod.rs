@@ -215,6 +215,16 @@ impl Ins {
             InsType::MarkMoved(x) => InsType::MarkMoved(swap(x)),
             InsType::Drop(x) => InsType::Drop(swap(x)),
             InsType::Copy(x) => InsType::Copy(swap(x)),
+            InsType::Load(x) => InsType::Load(swap(x)),
+            InsType::Deref(x) => InsType::Deref(swap(x)),
+            InsType::Store { source, dest } => InsType::Store {
+                source: swap(source),
+                dest: swap(dest),
+            },
+            InsType::Borrow { var, modifier } => InsType::Borrow {
+                var: swap(var),
+                modifier,
+            },
             InsType::LoadSlice(mut args) => {
                 for arg in &mut args {
                     let oldvar = *arg;
@@ -312,8 +322,20 @@ impl Ins {
             }
         }
         match &self.typed {
-            InsType::Move(x) | InsType::MarkMoved(x) | InsType::Drop(x) | InsType::Copy(x) => {
+            InsType::Move(x)
+            | InsType::MarkMoved(x)
+            | InsType::Drop(x)
+            | InsType::Copy(x)
+            | InsType::Load(x)
+            | InsType::Deref(x) => {
                 callback(*x);
+            }
+            InsType::Store { source, dest } => {
+                callback(*source);
+                callback(*dest);
+            }
+            InsType::Borrow { var, .. } => {
+                callback(*var);
             }
             InsType::LoadSlice(args) => {
                 for arg in args {
@@ -569,15 +591,33 @@ pub struct MemberExprIndex {
 pub enum ReferenceModifier {
     Copy,
     Move,
+    Borrow(BorrowModifier),
+}
+
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub enum BorrowModifier {
+    Immutable,
+    Mutable,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     LoadNil,
+    Alloca,
     Drop(Variable),
     MarkMoved(Variable),
     Move(Variable),
     Copy(Variable),
+    Borrow {
+        var: Variable,
+        modifier: BorrowModifier,
+    },
+    Load(Variable),
+    Deref(Variable),
+    Store {
+        source: Variable,
+        dest: Variable,
+    },
     LoadArg(usize),
     LoadI32(i32),
     LoadI64(i64),
@@ -667,6 +707,7 @@ impl InsType {
             InsType::MarkMoved(_) => false,
             InsType::Drop(_) => false,
             InsType::MemberReferenceStore { .. } => false,
+            InsType::Store { .. } => false,
             _ => true,
         }
     }
@@ -705,9 +746,18 @@ impl InsType {
     pub fn has_side_effects(&self) -> bool {
         match self {
             InsType::MemberReferenceStore { .. }
+            | InsType::Store { .. }
+            | InsType::Borrow { .. }
             | InsType::Call { .. }
             | InsType::Return(_)
             | InsType::Exit => true,
+            InsType::MemberReference { modifier, .. } => {
+                if let ReferenceModifier::Borrow(_) = modifier {
+                    true
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }
