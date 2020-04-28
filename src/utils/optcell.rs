@@ -19,7 +19,7 @@ impl<'a, T> OptCell<T> {
     }
 
     #[inline]
-    unsafe fn get_unchecked(&self) -> &Option<RefCell<T>> {
+    unsafe fn get_unchecked(&self) -> &'a Option<RefCell<T>> {
         std::mem::transmute::<_, _>(self.data.get())
     }
 
