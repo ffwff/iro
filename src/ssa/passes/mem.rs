@@ -10,7 +10,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
             match &ins.typed {
                 InsType::Phi { vars, .. } => {
                     let retvar = retvar.unwrap();
-                    for var in vars {
+                    for var in vars.iter() {
                         if let Some(vec) = replacements.get_mut(var) {
                             vec.push(retvar);
                         } else {

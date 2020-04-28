@@ -71,6 +71,7 @@ pub struct Context {
     pub args: Vec<Type>,
     pub rettype: Type,
     pub intrinsic: IntrinsicType,
+    pub call_names: Vec<Rc<FunctionName>>,
 }
 
 impl Context {
@@ -82,6 +83,7 @@ impl Context {
             args: vec![],
             rettype: Type::NoReturn,
             intrinsic: IntrinsicType::None,
+            call_names: vec![],
         }
     }
 
@@ -91,17 +93,18 @@ impl Context {
             blocks: vec![Block::new(
                 args.iter()
                     .enumerate()
-                    .map(|(idx, _)| Ins {
-                        retvar: Variable::from(idx),
-                        typed: InsType::LoadArg(idx),
-                        source_location: std::u32::MAX,
-                    })
+                    .map(|(idx, _)| Ins::new(
+                        Variable::from(idx),
+                        InsType::LoadArg(idx),
+                        std::u32::MAX,
+                    ))
                     .collect(),
             )],
             name,
             args,
             rettype: Type::NoReturn,
             intrinsic: IntrinsicType::None,
+            call_names: vec![],
         }
     }
 
@@ -118,6 +121,7 @@ impl Context {
             args,
             rettype,
             intrinsic,
+            call_names: vec![],
         }
     }
 
@@ -141,6 +145,12 @@ impl Context {
 
     pub fn block_mut(&mut self) -> &mut Block {
         self.blocks.last_mut().unwrap()
+    }
+
+    pub fn call_name(&mut self, name: Rc<FunctionName>) -> u32 {
+        let len = self.call_names.len();
+        self.call_names.push(name);
+        len as u32
     }
 
     pub fn print(&self) -> print::ContextPrinter {
@@ -191,17 +201,16 @@ impl Block {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-#[repr(align(64))]
 pub struct Ins {
-    retvar: Variable,
+    auxvar: Variable,
     pub typed: InsType,
     source_location: u32,
 }
 
 impl Ins {
-    pub fn new(retvar: Variable, typed: InsType, source_location: u32) -> Self {
+    pub fn new(auxvar: Variable, typed: InsType, source_location: u32) -> Self {
         Ins {
-            retvar,
+            auxvar,
             typed,
             source_location,
         }
@@ -209,7 +218,7 @@ impl Ins {
 
     pub fn empty_ret(typed: InsType, source_location: u32) -> Self {
         Ins {
-            retvar: Variable::with_u32(0),
+            auxvar: Variable::with_u32(0),
             typed,
             source_location,
         }
@@ -221,7 +230,7 @@ impl Ins {
 
     pub fn retvar(&self) -> Option<Variable> {
         if self.typed.has_retvar() {
-            Some(self.retvar)
+            Some(self.auxvar)
         } else {
             None
         }
@@ -229,9 +238,23 @@ impl Ins {
 
     pub fn mut_retvar(&mut self) -> Option<&mut Variable> {
         if self.typed.has_retvar() {
-            Some(&mut self.retvar)
+            Some(&mut self.auxvar)
         } else {
             None
+        }
+    }
+
+    pub fn memref_store_left(&self) -> Option<&Variable> {
+        match &self.typed {
+            InsType::MemberReferenceStore { .. } => Some(&self.auxvar),
+            _ => None,
+        }
+    }
+
+    pub fn memref_store_left_mut(&mut self) -> Option<&mut Variable> {
+        match &self.typed {
+            InsType::MemberReferenceStore { .. } => Some(&mut self.auxvar),
+            _ => None,
         }
     }
 
@@ -239,7 +262,10 @@ impl Ins {
     where
         T: FnMut(Variable) -> Variable,
     {
-        fn swap_indices<T>(mut indices: Vec<MemberExprIndex>, swap: &mut T) -> Vec<MemberExprIndex>
+        fn swap_indices<T>(
+            mut indices: Box<[MemberExprIndex]>,
+            swap: &mut T,
+        ) -> Box<[MemberExprIndex]>
         where
             T: FnMut(Variable) -> Variable,
         {
@@ -256,6 +282,9 @@ impl Ins {
             }
             indices
         }
+        if let Some(left) = self.memref_store_left_mut() {
+            *left = swap(*left);
+        }
         take_mut::take(&mut self.typed, |typed| match typed {
             InsType::Move(x) => InsType::Move(swap(x)),
             InsType::MarkMoved(x) => InsType::MarkMoved(swap(x)),
@@ -271,14 +300,14 @@ impl Ins {
                 modifier,
             },
             InsType::LoadSlice(mut args) => {
-                for arg in &mut args {
+                for arg in args.iter_mut() {
                     let oldvar = *arg;
                     *arg = swap(oldvar);
                 }
                 InsType::LoadSlice(args)
             }
             InsType::Call { name, mut args } => {
-                for arg in &mut args {
+                for arg in args.iter_mut() {
                     let oldvar = *arg;
                     *arg = swap(oldvar);
                 }
@@ -296,16 +325,16 @@ impl Ins {
                 modifier,
             },
             InsType::MemberReferenceStore {
-                left,
                 indices,
                 modifier,
                 right,
-            } => InsType::MemberReferenceStore {
-                left: swap(left),
-                indices: swap_indices(indices, &mut swap),
-                modifier,
-                right: swap(right),
-            },
+            } => {
+                InsType::MemberReferenceStore {
+                    indices: swap_indices(indices, &mut swap),
+                    modifier,
+                    right: swap(right),
+                }
+            }
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
             InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
@@ -316,15 +345,7 @@ impl Ins {
             InsType::Lte((x, y)) => InsType::Lte((swap(x), swap(y))),
             InsType::Gte((x, y)) => InsType::Gte((swap(x), swap(y))),
             InsType::Equ((x, y)) => InsType::Equ((swap(x), swap(y))),
-            InsType::AddC(_)
-            | InsType::SubC(_)
-            | InsType::MulC(_)
-            | InsType::DivC(_)
-            | InsType::ModC(_)
-            | InsType::LtC(_)
-            | InsType::GtC(_)
-            | InsType::LteC(_)
-            | InsType::GteC(_) => unimplemented!(),
+            InsType::OpConst { .. } => unimplemented!(),
             InsType::IfJmp {
                 condvar,
                 iftrue,
@@ -350,11 +371,11 @@ impl Ins {
     where
         T: FnMut(Variable),
     {
-        fn each_indices<T>(indices: &Vec<MemberExprIndex>, callback: &mut T)
+        fn each_indices<T>(indices: &Box<[MemberExprIndex]>, callback: &mut T)
         where
             T: FnMut(Variable),
         {
-            for idx in indices {
+            for idx in indices.iter() {
                 match idx {
                     MemberExprIndex {
                         var: MemberExprIndexVar::Variable(var),
@@ -382,12 +403,12 @@ impl Ins {
                 callback(*var);
             }
             InsType::LoadSlice(args) => {
-                for arg in args {
+                for arg in args.iter() {
                     callback(*arg);
                 }
             }
             InsType::Call { name: _, args } => {
-                for arg in args {
+                for arg in args.iter() {
                     callback(*arg);
                 }
             }
@@ -395,7 +416,7 @@ impl Ins {
                 callback(*x);
             }
             InsType::Phi { vars, .. } => {
-                for arg in vars {
+                for arg in vars.iter() {
                     callback(*arg);
                 }
             }
@@ -404,12 +425,11 @@ impl Ins {
                 each_indices(indices, &mut callback);
             }
             InsType::MemberReferenceStore {
-                left,
                 indices,
                 right,
                 ..
             } => {
-                callback(*left);
+                callback(*self.memref_store_left().unwrap());
                 each_indices(indices, &mut callback);
                 callback(*right);
             }
@@ -432,18 +452,7 @@ impl Ins {
             InsType::Cast { var, .. } => {
                 callback(*var);
             }
-            InsType::AddC(rc)
-            | InsType::SubC(rc)
-            | InsType::MulC(rc)
-            | InsType::DivC(rc)
-            | InsType::ModC(rc)
-            | InsType::LtC(rc)
-            | InsType::GtC(rc)
-            | InsType::LteC(rc)
-            | InsType::GteC(rc) => match rc {
-                RegConst::RegLeft((reg, _)) => callback(*reg),
-                RegConst::RegRight((_, reg)) => callback(*reg),
-            },
+            InsType::OpConst { register, .. } => callback(*register),
             _ => (),
         }
     }
@@ -458,7 +467,7 @@ impl Ins {
                 true
             }
             InsType::Phi { vars, .. } => {
-                for var in vars {
+                for var in vars.iter() {
                     callback(*var);
                 }
                 true
@@ -590,6 +599,28 @@ impl Constant {
             (_, _) => None,
         }
     }
+
+    pub fn equ(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x == y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::Bool(x == y)),
+            (Constant::F64(x), Constant::F64(y)) => {
+                Some(Constant::Bool(f64::from_bits(x) == f64::from_bits(y)))
+            }
+            (_, _) => None,
+        }
+    }
+
+    pub fn neq(&self, right: Constant) -> Option<Constant> {
+        match (*self, right) {
+            (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x != y)),
+            (Constant::I64(x), Constant::I64(y)) => Some(Constant::Bool(x != y)),
+            (Constant::F64(x), Constant::F64(y)) => {
+                Some(Constant::Bool(f64::from_bits(x) != f64::from_bits(y)))
+            }
+            (_, _) => None,
+        }
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -645,6 +676,21 @@ pub enum BorrowModifier {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
+pub enum OpConst {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Lt,
+    Gt,
+    Lte,
+    Gte,
+    Equ,
+    Neq,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum InsType {
     LoadNil,
     Alloca,
@@ -667,26 +713,25 @@ pub enum InsType {
     LoadF64(u64),
     LoadBool(bool),
     LoadSubstring(Rc<str>),
-    LoadSlice(Vec<Variable>),
+    LoadSlice(Box<[Variable]>),
     LoadStruct,
     MemberReference {
         left: Variable,
-        indices: Vec<MemberExprIndex>,
+        indices: Box<[MemberExprIndex]>,
         modifier: ReferenceModifier,
     },
     MemberReferenceStore {
-        left: Variable,
-        indices: Vec<MemberExprIndex>,
+        indices: Box<[MemberExprIndex]>,
         modifier: ReferenceModifier,
         right: Variable,
     },
     Phi {
-        vars: Vec<Variable>,
+        vars: Box<[Variable]>,
         defines: Variable,
     },
     Call {
-        name: Rc<FunctionName>,
-        args: Vec<Variable>,
+        name: u32,
+        args: Box<[Variable]>,
     },
     Return(Variable),
     Trap(TrapType),
@@ -702,15 +747,12 @@ pub enum InsType {
     Gte((Variable, Variable)),
     Equ((Variable, Variable)),
     Neq((Variable, Variable)),
-    AddC(RegConst),
-    SubC(RegConst),
-    MulC(RegConst),
-    DivC(RegConst),
-    ModC(RegConst),
-    LtC(RegConst),
-    GtC(RegConst),
-    LteC(RegConst),
-    GteC(RegConst),
+    OpConst {
+        register: Variable,
+        constant: Constant,
+        op: OpConst,
+        reg_left: bool,
+    },
     Cast {
         var: Variable,
         typed: Type,
@@ -858,5 +900,16 @@ pub struct Program {
 impl Program {
     pub fn print(&self) -> print::ProgramPrinter {
         print::ProgramPrinter(self)
+    }
+}
+
+#[cfg(test)]
+mod isa_test {
+    use super::*;
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn ins_is_32_bytes() {
+        assert_eq!(std::mem::size_of::<Ins>(), 32);
     }
 }

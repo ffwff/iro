@@ -2,29 +2,6 @@ use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use std::collections::BTreeMap;
 
-macro_rules! ins_to_const_ins {
-    ($left:expr, $right:expr, $var_to_const:expr, $ins:expr, $typed:tt, $method:tt) => {{
-        match ($var_to_const.get(&$left), $var_to_const.get(&$right)) {
-            (None, Some(k)) => {
-                $ins.typed = InsType::$typed(RegConst::RegLeft(($left, k.to_const().unwrap())));
-            }
-            (Some(k), None) => {
-                $ins.typed = InsType::$typed(RegConst::RegRight((k.to_const().unwrap(), $right)));
-            }
-            (Some(kleft), Some(kright)) => {
-                if let Some(eval) = kleft
-                    .to_const()
-                    .unwrap()
-                    .$method(kright.to_const().unwrap())
-                {
-                    $ins.typed = InsType::load_const(eval);
-                }
-            }
-            (None, None) => (),
-        }
-    }};
-}
-
 pub fn fold_constants(context: &mut Context) -> Flow {
     dbg_println!("before folding: {}", context.print());
 
@@ -55,36 +32,59 @@ pub fn fold_constants(context: &mut Context) -> Flow {
     }
     for block in &mut context.blocks {
         for ins in &mut block.ins {
-            match &ins.typed {
-                const_ins if const_ins.is_const() => (),
-                InsType::Add((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, AddC, add)
+            let (left, right, op_const) = match &ins.typed {
+                InsType::Add((left, right)) => (*left, *right, OpConst::Add),
+                InsType::Sub((left, right)) => (*left, *right, OpConst::Sub),
+                InsType::Mul((left, right)) => (*left, *right, OpConst::Mul),
+                InsType::Div((left, right)) => (*left, *right, OpConst::Div),
+                InsType::Mod((left, right)) => (*left, *right, OpConst::Mod),
+                InsType::Lt((left, right)) => (*left, *right, OpConst::Lt),
+                InsType::Gt((left, right)) => (*left, *right, OpConst::Gt),
+                InsType::Lte((left, right)) => (*left, *right, OpConst::Lte),
+                InsType::Gte((left, right)) => (*left, *right, OpConst::Gte),
+                InsType::Equ((left, right)) => (*left, *right, OpConst::Equ),
+                InsType::Neq((left, right)) => (*left, *right, OpConst::Neq),
+                const_ins if const_ins.is_const() => continue,
+                _ => continue,
+            };
+            let function = match op_const {
+                OpConst::Add => Constant::add,
+                OpConst::Sub => Constant::sub,
+                OpConst::Mul => Constant::mul,
+                OpConst::Div => Constant::div,
+                OpConst::Mod => Constant::imod,
+                OpConst::Lt => Constant::lt,
+                OpConst::Gt => Constant::gt,
+                OpConst::Lte => Constant::lte,
+                OpConst::Gte => Constant::gte,
+                OpConst::Equ => Constant::equ,
+                OpConst::Neq => Constant::neq,
+            };
+            match (var_to_const.get(&left), var_to_const.get(&right)) {
+                (None, Some(k)) => {
+                    ins.typed = InsType::OpConst {
+                        register: left,
+                        constant: k.to_const().unwrap(),
+                        op: op_const,
+                        reg_left: false,
+                    };
                 }
-                InsType::Sub((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, SubC, sub)
+                (Some(k), None) => {
+                    ins.typed = InsType::OpConst {
+                        register: right,
+                        constant: k.to_const().unwrap(),
+                        op: op_const,
+                        reg_left: true,
+                    };
                 }
-                InsType::Mul((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, MulC, mul)
+                (Some(kleft), Some(kright)) => {
+                    if let Some(eval) =
+                        function(&kleft.to_const().unwrap(), kright.to_const().unwrap())
+                    {
+                        ins.typed = InsType::load_const(eval);
+                    }
                 }
-                InsType::Div((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, DivC, div)
-                }
-                InsType::Mod((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, ModC, imod)
-                }
-                InsType::Lt((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, LtC, lt)
-                }
-                InsType::Gt((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, GtC, gt)
-                }
-                InsType::Lte((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, LteC, lte)
-                }
-                InsType::Gte((left, right)) => {
-                    ins_to_const_ins!(*left, *right, var_to_const, ins, GteC, gte)
-                }
-                _ => (),
+                (None, None) => (),
             }
         }
     }

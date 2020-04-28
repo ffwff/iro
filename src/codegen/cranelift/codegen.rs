@@ -356,7 +356,7 @@ where
     fn visit_member_ref(
         &mut self,
         left: isa::Variable,
-        indices: &Vec<isa::MemberExprIndex>,
+        indices: &Box<[isa::MemberExprIndex]>,
         builder: &mut FunctionBuilder,
         ins_context: &InsContext,
     ) -> (Value, isa::Type) {
@@ -654,8 +654,8 @@ where
                 let rettype = context.variable(ins.retvar().unwrap());
 
                 let mut arg_values = vec![];
+                let name: &isa::FunctionName = &ins_context.context.call_names[*name as usize];
                 {
-                    let name: &isa::FunctionName = name;
                     self.generate_function_signature(
                         ins_context.program,
                         &name.arg_types,
@@ -753,7 +753,8 @@ where
             | isa::InsType::Gt((x, y))
             | isa::InsType::Lte((x, y))
             | isa::InsType::Gte((x, y))
-            | isa::InsType::Equ((x, y)) => {
+            | isa::InsType::Equ((x, y))
+            | isa::InsType::Neq((x, y)) => {
                 let left = builder.use_var(to_var(*x));
                 let right = builder.use_var(to_var(*y));
                 match context.variable(*x) {
@@ -765,6 +766,7 @@ where
                                 isa::InsType::Lte(_) => IntCC::SignedLessThanOrEqual,
                                 isa::InsType::Gte(_) => IntCC::SignedGreaterThanOrEqual,
                                 isa::InsType::Equ(_) => IntCC::Equal,
+                                isa::InsType::Neq(_) => IntCC::NotEqual,
                                 _ => unreachable!(),
                             },
                             left,
@@ -780,6 +782,7 @@ where
                                 isa::InsType::Lte(_) => FloatCC::LessThanOrEqual,
                                 isa::InsType::Gte(_) => FloatCC::GreaterThanOrEqual,
                                 isa::InsType::Equ(_) => FloatCC::Equal,
+                                isa::InsType::Neq(_) => FloatCC::NotEqual,
                                 _ => unreachable!(),
                             },
                             left,
@@ -814,75 +817,91 @@ where
                 maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, srem),
                 _ => unimplemented!(),
             },
-            isa::InsType::AddC(regconst)
-            | isa::InsType::SubC(regconst)
-            | isa::InsType::MulC(regconst)
-            | isa::InsType::DivC(regconst)
-            | isa::InsType::ModC(regconst)
-                if regconst
-                    .as_reg_left()
-                    .map(|(_, k)| k.as_int().is_some())
-                    .is_some() =>
-            {
-                let (left, right) = regconst.as_reg_left().unwrap();
-                let int = right.as_int().unwrap();
-                let var = builder.use_var(to_var(left));
-                let tmp = match &ins.typed {
-                    isa::InsType::AddC(_) => builder.ins().iadd_imm(var, int),
-                    isa::InsType::SubC(_) => builder.ins().iadd_imm(var, -int),
-                    isa::InsType::MulC(_) => builder.ins().imul_imm(var, int),
-                    isa::InsType::DivC(_) => builder.ins().sdiv_imm(var, int),
-                    isa::InsType::ModC(_) => builder.ins().srem_imm(var, int),
-                    _ => unreachable!(),
-                };
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-            }
-            isa::InsType::AddC(regconst)
-            | isa::InsType::MulC(regconst)
-            | isa::InsType::SubC(regconst)
-            | isa::InsType::DivC(regconst)
-            | isa::InsType::ModC(regconst) => {
-                let (left, right, typed) = regconst_to_type(builder, &regconst);
-                let tmp = match typed {
-                    maybe_int if maybe_int.is_int() => match &ins.typed {
-                        isa::InsType::AddC(_) => builder.ins().iadd(left, right),
-                        isa::InsType::SubC(_) => builder.ins().isub(left, right),
-                        isa::InsType::MulC(_) => builder.ins().imul(left, right),
-                        isa::InsType::DivC(_) => builder.ins().sdiv(left, right),
-                        isa::InsType::ModC(_) => builder.ins().srem(left, right),
-                        _ => unreachable!(),
-                    },
-                    types::F64 => match &ins.typed {
-                        isa::InsType::AddC(_) => builder.ins().fadd(left, right),
-                        isa::InsType::SubC(_) => builder.ins().fsub(left, right),
-                        isa::InsType::MulC(_) => builder.ins().fmul(left, right),
-                        isa::InsType::DivC(_) => builder.ins().fdiv(left, right),
-                        _ => unreachable!(),
-                    },
-                    _ => unimplemented!(),
-                };
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
-            }
-            isa::InsType::LtC(regconst)
-            | isa::InsType::GtC(regconst)
-            | isa::InsType::LteC(regconst)
-            | isa::InsType::GteC(regconst) => {
-                let (left, right, typed) = regconst_to_type(builder, &regconst);
-                let tmp = match typed {
-                    types::I32 | types::I64 => builder.ins().icmp(
-                        match &ins.typed {
-                            isa::InsType::LtC(_) => IntCC::SignedLessThan,
-                            isa::InsType::GtC(_) => IntCC::SignedGreaterThan,
-                            isa::InsType::LteC(_) => IntCC::SignedLessThanOrEqual,
-                            isa::InsType::GteC(_) => IntCC::SignedGreaterThanOrEqual,
-                            _ => unreachable!(),
+            isa::InsType::OpConst {
+                register,
+                constant,
+                op,
+                reg_left,
+            } => {
+                if !*reg_left && constant.as_int().is_some() {
+                    let var = builder.use_var(to_var(*register));
+                    let int = constant.as_int().unwrap();
+                    let tmp = match op {
+                        isa::OpConst::Add => builder.ins().iadd_imm(var, int),
+                        isa::OpConst::Sub => builder.ins().iadd_imm(var, -int),
+                        isa::OpConst::Mul => builder.ins().imul_imm(var, int),
+                        isa::OpConst::Div => builder.ins().sdiv_imm(var, int),
+                        isa::OpConst::Mod => builder.ins().srem_imm(var, int),
+                        _ => builder.ins().icmp_imm(
+                            match op {
+                                isa::OpConst::Lt => IntCC::SignedLessThan,
+                                isa::OpConst::Gt => IntCC::SignedGreaterThan,
+                                isa::OpConst::Lte => IntCC::SignedLessThanOrEqual,
+                                isa::OpConst::Gte => IntCC::SignedGreaterThanOrEqual,
+                                isa::OpConst::Equ => IntCC::Equal,
+                                isa::OpConst::Neq => IntCC::NotEqual,
+                                _ => unreachable!(),
+                            },
+                            var,
+                            int,
+                        ),
+                    };
+                    builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                } else {
+                    let (left, right) = match *reg_left {
+                        true => (
+                            builder.use_var(to_var(*register)),
+                            const_to_value(builder, constant),
+                        ),
+                        false => (
+                            const_to_value(builder, constant),
+                            builder.use_var(to_var(*register)),
+                        ),
+                    };
+                    let typed = const_to_type(constant);
+                    let tmp = match typed {
+                        maybe_int if maybe_int.is_int() => match op {
+                            isa::OpConst::Add => builder.ins().iadd(left, right),
+                            isa::OpConst::Sub => builder.ins().isub(left, right),
+                            isa::OpConst::Mul => builder.ins().imul(left, right),
+                            isa::OpConst::Div => builder.ins().sdiv(left, right),
+                            isa::OpConst::Mod => builder.ins().srem(left, right),
+                            _ => builder.ins().icmp(
+                                match op {
+                                    isa::OpConst::Lt => IntCC::SignedLessThan,
+                                    isa::OpConst::Gt => IntCC::SignedGreaterThan,
+                                    isa::OpConst::Lte => IntCC::SignedLessThanOrEqual,
+                                    isa::OpConst::Gte => IntCC::SignedGreaterThanOrEqual,
+                                    isa::OpConst::Equ => IntCC::Equal,
+                                    isa::OpConst::Neq => IntCC::NotEqual,
+                                    _ => unreachable!(),
+                                },
+                                left,
+                                right,
+                            ),
                         },
-                        left,
-                        right,
-                    ),
-                    _ => unimplemented!(),
-                };
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                        types::F64 => match op {
+                            isa::OpConst::Add => builder.ins().fadd(left, right),
+                            isa::OpConst::Sub => builder.ins().fsub(left, right),
+                            isa::OpConst::Mul => builder.ins().fmul(left, right),
+                            isa::OpConst::Div => builder.ins().fdiv(left, right),
+                            _ => builder.ins().fcmp(
+                                match op {
+                                    isa::OpConst::Lt => FloatCC::LessThan,
+                                    isa::OpConst::Gt => FloatCC::GreaterThan,
+                                    isa::OpConst::Lte => FloatCC::LessThanOrEqual,
+                                    isa::OpConst::Gte => FloatCC::GreaterThanOrEqual,
+                                    isa::OpConst::Equ => FloatCC::Equal,
+                                    isa::OpConst::Neq => FloatCC::NotEqual,
+                                    _ => unreachable!(),
+                                },
+                                left,
+                                right,
+                            ),
+                        },
+                        _ => unimplemented!(),
+                    };
+                }
             }
             isa::InsType::MemberReference { left, indices, .. } => {
                 let retvar = ins.retvar().unwrap();
@@ -912,11 +931,11 @@ where
                 }
             }
             isa::InsType::MemberReferenceStore {
-                left,
                 indices,
                 right,
                 ..
             } => {
+                let left = ins.memref_store_left().unwrap();
                 let right_var = builder.use_var(to_var(*right));
                 let (member_ptr, typed) =
                     self.visit_member_ref(*left, indices, builder, ins_context);

@@ -58,7 +58,7 @@ pub fn check(context: &mut Context) -> Flow {
                     } else {
                         unreachable!()
                     };
-                    for index in indices {
+                    for index in indices.iter() {
                         let index = match &index.var {
                             MemberExprIndexVar::StructIndex(x) => Index::Struct(*x),
                             MemberExprIndexVar::Variable(_) => Index::Dynamic,

@@ -85,14 +85,13 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     .join(", ")
             ),
             InsType::MemberReferenceStore {
-                left,
                 indices,
                 modifier,
                 right,
             } => write!(
                 f,
                 "member v{} [{}] = {} v{}",
-                left,
+                *self.0.memref_store_left().unwrap(),
                 indices
                     .iter()
                     .map(|index| {
@@ -120,8 +119,8 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             ),
             InsType::Call { name, args } => write!(
                 f,
-                "call {}({})",
-                name.name,
+                "call %{}({})",
+                *name,
                 args.iter()
                     .map(|var| "v".to_string() + &var.to_string())
                     .collect::<Vec<String>>()
@@ -141,15 +140,31 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             InsType::Gte((x, y)) => write!(f, "v{} >= v{}", x, y),
             InsType::Equ((x, y)) => write!(f, "v{} == v{}", x, y),
             InsType::Neq((x, y)) => write!(f, "v{} != v{}", x, y),
-            InsType::AddC(rc) => RegConstPrinter(rc, "+").print(f),
-            InsType::SubC(rc) => RegConstPrinter(rc, "-").print(f),
-            InsType::MulC(rc) => RegConstPrinter(rc, "*").print(f),
-            InsType::DivC(rc) => RegConstPrinter(rc, "/").print(f),
-            InsType::ModC(rc) => RegConstPrinter(rc, "%").print(f),
-            InsType::LtC(rc) => RegConstPrinter(rc, "<").print(f),
-            InsType::GtC(rc) => RegConstPrinter(rc, ">").print(f),
-            InsType::LteC(rc) => RegConstPrinter(rc, "<=").print(f),
-            InsType::GteC(rc) => RegConstPrinter(rc, ">=").print(f),
+            InsType::OpConst {
+                register,
+                constant,
+                op,
+                reg_left,
+            } => {
+                let op_str = match *op {
+                    OpConst::Add => "+",
+                    OpConst::Sub => "-",
+                    OpConst::Mul => "*",
+                    OpConst::Div => "/",
+                    OpConst::Mod => "%",
+                    OpConst::Lt => "<",
+                    OpConst::Gt => ">",
+                    OpConst::Lte => "<=",
+                    OpConst::Gte => ">=",
+                    OpConst::Equ => "==",
+                    OpConst::Neq => "!=",
+                };
+                if *reg_left {
+                    write!(f, "v{} {} {}", register, op_str, ConstPrinter(constant))
+                } else {
+                    write!(f, "{} {} v{}", ConstPrinter(constant), register, op_str)
+                }
+            }
             InsType::Cast { var, typed } => write!(f, "cast.{} v{}", typed, var),
             InsType::IfJmp {
                 condvar,

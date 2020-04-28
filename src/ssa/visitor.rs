@@ -301,7 +301,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
         };
         Ok(InsType::MemberReference {
             left: left_var,
-            indices,
+            indices: indices.into_boxed_slice(),
             modifier,
         })
     }
@@ -463,13 +463,14 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 }
                 let copyable = self.is_copyable(self.context.variable(right));
                 self.with_block_mut(|block| {
-                    block.ins.push(Ins::empty_ret(
+                    block.ins.push(Ins::new(
+                        retvar,
                         InsType::MemberReferenceStore {
-                            left: retvar,
                             indices: vec![MemberExprIndex {
                                 var: MemberExprIndexVar::StructIndex(field.idx),
                                 typed: field.typed.clone(),
-                            }],
+                            }]
+                            .into_boxed_slice(),
                             modifier: if copyable {
                                 ReferenceModifier::Copy
                             } else {
@@ -982,12 +983,13 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             };
             let retvar = self.context.insert_var(rettype);
             {
+                let name = self.context.call_name(func_name.clone());
                 let block = self.context.block_mut();
                 block.ins.push(Ins::new(
                     retvar,
                     InsType::Call {
-                        name: func_name.clone(),
-                        args: args.clone(),
+                        name,
+                        args: args.clone().into_boxed_slice(),
                     },
                     location,
                 ));
@@ -1021,7 +1023,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                                     self.with_block_mut(|block| {
                                         block.ins.push(Ins::new(
                                             retvar,
-                                            InsType::LoadSlice(vec![]),
+                                            InsType::LoadSlice(vec![].into_boxed_slice()),
                                             location,
                                         ));
                                     });
@@ -1185,10 +1187,13 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                         match &n.op {
                             BinOp::Asg => {
                                 self.with_block_mut(|block| {
-                                    block.ins.push(Ins::empty_ret(
+                                    block.ins.push(Ins::new(
+                                        left,
                                         InsType::MemberReferenceStore {
-                                            left,
-                                            indices: std::mem::replace(&mut indices, vec![]),
+                                            indices: std::mem::replace(
+                                                &mut indices,
+                                                vec![].into_boxed_slice(),
+                                            ),
                                             modifier,
                                             right,
                                         },
@@ -1357,14 +1362,14 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             modifier,
         } = self.build_member_expr(n, b)?
         {
-            let typed = indices.last().unwrap().typed.clone();
+            let typed = indices.as_ref().last().unwrap().typed.clone();
             let retvar = self.context.insert_var(typed);
             self.with_block_mut(move |block| {
                 block.ins.push(Ins::new(
                     retvar,
                     InsType::MemberReference {
                         left,
-                        indices: std::mem::replace(&mut indices, vec![]),
+                        indices: std::mem::replace(&mut indices, vec![].into_boxed_slice()),
                         modifier,
                     },
                     location,
@@ -1474,7 +1479,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                         let retvars = std::mem::replace(&mut retvars, vec![]);
                         block.ins.push(Ins::new(
                             retvar,
-                            InsType::LoadSlice(retvars.clone()),
+                            InsType::LoadSlice(retvars.clone().into_boxed_slice()),
                             location,
                         ));
                         if !copyable {
