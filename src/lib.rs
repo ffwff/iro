@@ -3,6 +3,7 @@
 #![feature(trait_alias)]
 #![feature(move_ref_pattern)]
 #![feature(cell_update)]
+#![feature(core_intrinsics)]
 
 #[macro_use]
 extern crate lalrpop_util;

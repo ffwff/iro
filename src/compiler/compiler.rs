@@ -39,9 +39,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::postlude::fuse_postlude,
 ];
 
-pub fn parse_file_to_ssa(
-    sources: &mut Sources,
-) -> Result<ssa::isa::Program, compiler::Error> {
+pub fn parse_file_to_ssa(sources: &mut Sources) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(sources.main_file().unwrap(), 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
     let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(sources))?;

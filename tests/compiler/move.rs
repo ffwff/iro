@@ -1,6 +1,6 @@
 use crate::utils;
-use iro::runtime::Runtime;
 use iro::compiler::error;
+use iro::runtime::Runtime;
 
 #[cfg(test)]
 #[test]
@@ -30,12 +30,11 @@ fn nested_class() {
     noop(thing.other.a_int)
     ",
         runtime,
-    ).unwrap_err();
+    )
+    .unwrap_err();
     match err.error {
-        error::Code::MemoryError { typed, .. } => {
-            assert_eq!(typed, error::MemoryErrorType::Move)
-        }
-        _ => panic!("error isn't memory error")
+        error::Code::MemoryError { typed, .. } => assert_eq!(typed, error::MemoryErrorType::Move),
+        _ => panic!("error isn't memory error"),
     }
 }
 
@@ -61,12 +60,11 @@ fn class() {
     noop_i32(x.a_int)
     ",
         runtime,
-    ).unwrap_err();
+    )
+    .unwrap_err();
     match err.error {
-        error::Code::MemoryError { typed, .. } => {
-            assert_eq!(typed, error::MemoryErrorType::Move)
-        }
-        _ => panic!("error isn't memory error")
+        error::Code::MemoryError { typed, .. } => assert_eq!(typed, error::MemoryErrorType::Move),
+        _ => panic!("error isn't memory error"),
     }
 }
 

@@ -2,6 +2,7 @@ use crate::compiler;
 use crate::compiler::sources::FileIndex;
 use std::collections::VecDeque;
 use std::convert::TryInto;
+use std::intrinsics::likely;
 use std::str::CharIndices;
 use unicode_xid::UnicodeXID;
 
@@ -162,22 +163,21 @@ impl Error {
 
 #[inline(always)]
 fn is_identifier_start(ch: char) -> bool {
-    match ch {
-        // Cache common identifier start characters
-        'A'..='Z' => true,
-        'a'..='z' => true,
-        _ => UnicodeXID::is_xid_start(ch),
+    // Cache common identifier start characters
+    if likely(('A'..='Z').contains(&ch) || ('a'..='z').contains(&ch)) {
+        true
+    } else {
+        UnicodeXID::is_xid_start(ch)
     }
 }
 
 #[inline(always)]
 fn is_identifier_continue(ch: char) -> bool {
-    match ch {
-        // Cache common identifier continuation characters
-        'A'..='Z' => true,
-        'a'..='z' => true,
-        '0'..='9' => true,
-        _ => UnicodeXID::is_xid_continue(ch),
+    // Cache common identifier continuation characters
+    if likely(('A'..='Z').contains(&ch) || ('a'..='z').contains(&ch) || ('0'..='9').contains(&ch)) {
+        true
+    } else {
+        UnicodeXID::is_xid_continue(ch)
     }
 }
 
