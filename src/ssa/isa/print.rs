@@ -48,7 +48,6 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                 var
             ),
             InsType::Load(var) => write!(f, "load v{}", var),
-            InsType::Deref(var) => write!(f, "deref v{}", var),
             InsType::Store { source, dest } => write!(f, "store v{} -> v{}", source, dest),
             InsType::LoadArg(arg) => write!(f, "load_arg {}", arg),
             InsType::LoadI32(n) => write!(f, "load.I32 {}", n),

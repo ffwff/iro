@@ -216,7 +216,6 @@ impl Ins {
             InsType::Drop(x) => InsType::Drop(swap(x)),
             InsType::Copy(x) => InsType::Copy(swap(x)),
             InsType::Load(x) => InsType::Load(swap(x)),
-            InsType::Deref(x) => InsType::Deref(swap(x)),
             InsType::Store { source, dest } => InsType::Store {
                 source: swap(source),
                 dest: swap(dest),
@@ -326,8 +325,7 @@ impl Ins {
             | InsType::MarkMoved(x)
             | InsType::Drop(x)
             | InsType::Copy(x)
-            | InsType::Load(x)
-            | InsType::Deref(x) => {
+            | InsType::Load(x) => {
                 callback(*x);
             }
             InsType::Store { source, dest } => {
@@ -613,7 +611,6 @@ pub enum InsType {
         modifier: BorrowModifier,
     },
     Load(Variable),
-    Deref(Variable),
     Store {
         source: Variable,
         dest: Variable,

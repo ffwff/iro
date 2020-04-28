@@ -16,7 +16,7 @@ fn int_borrow() {
 
     i := 10
     x := &i
-    record(*i)
+    record(*x)
     ",
         runtime,
     )

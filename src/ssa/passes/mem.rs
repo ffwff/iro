@@ -293,14 +293,7 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
                             continue;
                         }
                     }
-                    InsType::Deref(x) => {
-                        if x == var {
-                            assert_ne!(ins.retvar().unwrap(), x);
-                            block.ins.push(Ins::new(ins.retvar().unwrap(), InsType::Load(x), location));
-                            continue;
-                        }
-                    }
-                    _ => {}
+                    _ => (),
                 }
                 ins.rename_var_by(|ren_var| {
                     if ren_var == var {

@@ -1585,16 +1585,13 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         n.expr.visit(self)?;
         let location = self.location_for(b);
         let expr = self.last_retvar.take().unwrap();
-        let typed = if let Some(typed) = self.context.variables[expr].instance_type() {
-            typed.clone()
-        } else {
-            self.context.variables[expr].clone()
-        };
+        dbg_println!("{:?}", self.context.variables[expr]);
+        let typed = self.context.variables[expr].instance_type().cloned().unwrap();
         let retvar = self.context.insert_var(typed);
         self.with_block_mut(|block| {
             block
                 .ins
-                .push(Ins::new(retvar, InsType::Deref(expr), location));
+                .push(Ins::new(retvar, InsType::Load(expr), location));
         });
         self.last_retvar = Some(retvar);
         Ok(())
