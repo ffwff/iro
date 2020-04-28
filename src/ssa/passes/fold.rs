@@ -26,13 +26,20 @@ macro_rules! ins_to_const_ins {
 }
 
 pub fn fold_constants(context: &mut Context) -> Flow {
-    // dbg_println!("before folding: {}", context.print());
+    dbg_println!("before folding: {}", context.print());
+
     let mut var_to_const = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &mut block.ins {
             match &ins.typed {
                 const_ins if const_ins.is_const() => {
                     var_to_const.insert(ins.retvar().unwrap(), const_ins.clone());
+                }
+                InsType::Copy(x) => {
+                    if let Some(k) = var_to_const.get(&x).cloned() {
+                        ins.typed = k.clone();
+                        var_to_const.insert(ins.retvar().unwrap(), k);
+                    }
                 }
                 InsType::Cast { var, typed } => {
                     if let Some(const_ins) = var_to_const.get(&var) {
@@ -81,6 +88,7 @@ pub fn fold_constants(context: &mut Context) -> Flow {
             }
         }
     }
-    // dbg_println!("after folding: {:#?}", context);
+
+    dbg_println!("after folding: {}", context.print());
     Flow::Continue
 }

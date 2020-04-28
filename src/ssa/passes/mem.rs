@@ -262,7 +262,7 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
     for (idx, block) in context.blocks.iter_mut().enumerate() {
         for ins in &block.ins {
             match &ins.typed {
-                InsType::Borrow { var, modifier } => {
+                InsType::Borrow { var, .. } => {
                     borrowed_vars.insert(*var);
                 }
                 _ => (),
