@@ -24,10 +24,12 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
     }
     while !replacements.is_empty() {
         for block in &mut context.blocks {
-            let oldins = std::mem::replace(&mut block.ins, Vec::new());
+            let old_len = block.ins.len();
+            let old_ins = std::mem::replace(&mut block.ins, Vec::with_capacity(old_len));
+
             let mut replacement_body = vec![];
             let mut block_local_replacements = btreemap![];
-            for ins in oldins {
+            for ins in old_ins {
                 match &ins.typed {
                     InsType::Phi { .. } => continue,
                     _ => (),
@@ -63,7 +65,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
 }
 
 pub fn calculate_block_variable_declaration(context: &mut Context) -> Flow {
-    for (idx, block) in context.blocks.iter_mut().enumerate() {
+    for block in &mut context.blocks {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
         for ins in block.ins.iter() {
@@ -183,7 +185,8 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
         );
 
         if !dead_vars.is_empty() {
-            let old_ins = std::mem::replace(&mut block.ins, vec![]);
+            let old_len = block.ins.len();
+            let old_ins = std::mem::replace(&mut block.ins, Vec::with_capacity(old_len));
 
             // Calculate the usage for each dead var
             let mut dead_var_usage = btreemap![];

@@ -1,4 +1,3 @@
-use crate::ast::Visitor;
 use crate::codegen::backend;
 use crate::codegen::settings::Settings;
 use crate::compiler;

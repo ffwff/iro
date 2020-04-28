@@ -1,6 +1,5 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
-use std::collections::{BTreeMap, BTreeSet};
 use bit_set::BitSet;
 
 pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow {
