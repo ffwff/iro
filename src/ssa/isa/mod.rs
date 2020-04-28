@@ -1,5 +1,6 @@
 use crate::utils::uniquerc::UniqueRc;
 use std::collections::{BTreeSet, HashMap};
+use std::convert::TryInto;
 use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
@@ -21,7 +22,40 @@ impl IntrinsicType {
     }
 }
 
-pub type Variable = usize;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Variable(u32);
+
+impl Variable {
+    pub fn with_u32(x: u32) -> Self {
+        Self(x)
+    }
+
+    pub fn from<T: TryInto<u32>>(x: T) -> Self {
+        if let Ok(x) = x.try_into() {
+            Self(x)
+        } else {
+            unreachable!("overflow error")
+        }
+    }
+}
+
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "v{}", self.0)
+    }
+}
+
+impl From<Variable> for u32 {
+    fn from(x: Variable) -> u32 {
+        x.0
+    }
+}
+
+impl From<Variable> for usize {
+    fn from(x: Variable) -> usize {
+        x.0 as usize
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct InsPosition {
@@ -58,7 +92,7 @@ impl Context {
                 args.iter()
                     .enumerate()
                     .map(|(idx, _)| Ins {
-                        retvar: idx,
+                        retvar: Variable::from(idx),
                         typed: InsType::LoadArg(idx),
                         source_location: std::u32::MAX,
                     })
@@ -87,9 +121,13 @@ impl Context {
         }
     }
 
-    pub fn insert_var(&mut self, typed: Type) -> Variable {
+    pub fn insert_var<'a>(&'a mut self, typed: Type) -> Variable {
         self.variables.push(typed);
-        self.variables.len() - 1
+        Variable::with_u32((self.variables.len() - 1).try_into().unwrap())
+    }
+
+    pub fn variable<'a>(&'a self, idx: Variable) -> &'a Type {
+        &self.variables[usize::from(idx)]
     }
 
     pub fn new_block(&mut self) -> usize {
@@ -164,6 +202,14 @@ impl Ins {
     pub fn new(retvar: Variable, typed: InsType, source_location: u32) -> Self {
         Ins {
             retvar,
+            typed,
+            source_location,
+        }
+    }
+
+    pub fn empty_ret(typed: InsType, source_location: u32) -> Self {
+        Ins {
+            retvar: Variable::with_u32(0),
             typed,
             source_location,
         }
@@ -576,7 +622,7 @@ pub enum TrapType {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum MemberExprIndexVar {
     StructIndex(usize),
-    Variable(usize),
+    Variable(Variable),
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]

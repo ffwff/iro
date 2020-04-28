@@ -43,7 +43,7 @@ pub enum Code {
     MemoryError {
         position: SpanIndex,
         last_used: SpanIndex,
-        var: usize,
+        var: isa::Variable,
         typed: MemoryErrorType,
     },
 }

@@ -10,7 +10,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         for (idx, block) in context.blocks.iter_mut().enumerate() {
             for ins in &block.ins {
                 if let Some(retvar) = ins.retvar() {
-                    let set = &mut defsites[retvar];
+                    let set: &mut BTreeSet<usize> = &mut defsites[usize::from(retvar)];
                     set.insert(idx);
                 }
             }
@@ -132,10 +132,12 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                         block.ins.insert(
                             0,
                             Ins::new(
-                                var,
+                                Variable::from(var),
                                 InsType::Phi {
-                                    vars: std::iter::repeat(var).take(block.preds.len()).collect(),
-                                    defines: var,
+                                    vars: std::iter::repeat(Variable::from(var))
+                                        .take(block.preds.len())
+                                        .collect(),
+                                    defines: Variable::from(var),
                                 },
                                 0,
                             ),
@@ -152,7 +154,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         // Rename variables
         // Reference: https://iith.ac.in/~ramakrishna/fc5264/ssa-intro-construct.pdf
         fn rename_variables(
-            var: usize,
+            var: Variable,
             node: usize,
             version: &mut usize,
             version_stack: &mut Vec<usize>,
@@ -167,15 +169,15 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                 let mut has_block_version = false;
                 for ins in &mut block.ins {
                     if !ins.typed.is_phi() {
-                        ins.rename_var(var, *version_stack.last().clone().unwrap());
+                        ins.rename_var(var, Variable::from(*version_stack.last().clone().unwrap()));
                     }
                     if let Some(retvar) = ins.mut_retvar() {
                         if *retvar == var {
                             if has_block_version {
-                                *retvar = new_variable_len;
+                                *retvar = Variable::from(new_variable_len);
                                 *version_stack.last_mut().unwrap() = new_variable_len;
                             } else if *version > 1 {
-                                *retvar = new_variable_len;
+                                *retvar = Variable::from(new_variable_len);
                                 version_stack.push(new_variable_len);
                                 has_block_version = true;
                             }
@@ -188,7 +190,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                 std::mem::replace(&mut block.succs, vec![])
             };
             {
-                let typed = context.variables[var].clone();
+                let typed = context.variable(var).clone();
                 let curr_len = context.variables.len();
                 for _ in curr_len..new_variable_len {
                     context.variables.push(typed.clone());
@@ -206,7 +208,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                     match &mut ins.typed {
                         InsType::Phi { vars, defines } => {
                             if *defines == var {
-                                vars[j] = *version_stack.last().unwrap();
+                                vars[j] = Variable::from(*version_stack.last().unwrap());
                                 dbg_println!("rename phi {} = {:?}", var, vars);
                             }
                         }
@@ -229,24 +231,36 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         for var in 0..old_len {
             let mut version_stack = vec![var];
             let mut version = 1;
-            rename_variables(var, 0, &mut version, &mut version_stack, context, &dom_tree);
+            rename_variables(
+                Variable::with_u32(var as u32),
+                0,
+                &mut version,
+                &mut version_stack,
+                context,
+                &dom_tree,
+            );
         }
     } else {
-        let mut mapping: Vec<Option<usize>> = std::iter::repeat(None)
+        let mut mapping: Vec<Option<Variable>> = std::iter::repeat(None)
             .take(context.variables.len())
             .collect();
         let block = &mut context.blocks[0];
         for ins in &mut block.ins {
-            ins.rename_var_by(|var| mapping[var].unwrap());
+            ins.rename_var_by(|var| mapping[usize::from(var)].unwrap());
             if let Some(retvar) = ins.mut_retvar() {
-                if mapping[*retvar] == None {
-                    mapping[*retvar] = Some(*retvar);
+                let index = usize::from(*retvar);
+                if mapping[index] == None {
+                    mapping[index] = Some(*retvar);
                 } else {
-                    let newlen = context.variables.len();
-                    let typed = context.variables[*retvar].clone();
+                    // FIXME: Rust currently does not allow us to call a mutable
+                    // method whilst also borrowing mutably, even if the
+                    // borrows do not interfere with each other, so we
+                    // have to do things manually. (#1)
+                    let new_var = Variable::from(context.variables.len());
+                    let typed = context.variables[usize::from(*retvar)].clone();
                     context.variables.push(typed);
-                    mapping[*retvar] = Some(newlen);
-                    *retvar = newlen;
+                    mapping[usize::from(*retvar)] = Some(new_var);
+                    *retvar = new_var;
                 }
             }
         }

@@ -3,7 +3,7 @@ use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn eliminate_phi(context: &mut Context) -> Flow {
-    let mut replacements: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    let mut replacements: BTreeMap<Variable, Vec<Variable>> = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &block.ins {
             let retvar = ins.retvar();
@@ -38,15 +38,15 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                 let retvar = ins.retvar();
                 block.ins.push(ins);
                 if let Some(retvar) = retvar {
-                    if let Some(newvars) = replacements.remove(&retvar) {
-                        for newvar in newvars {
+                    if let Some(new_vars) = replacements.remove(&retvar) {
+                        for new_var in new_vars {
                             replacement_body.push(Ins::new(
-                                newvar,
+                                new_var,
                                 InsType::Move(retvar),
                                 source_location,
                             ));
-                            block.vars_phi.insert(newvar);
-                            block_local_replacements.insert(retvar, newvar);
+                            block.vars_phi.insert(new_var);
+                            block_local_replacements.insert(retvar, new_var);
                         }
                     }
                 }
@@ -96,7 +96,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
     fn walk(
         block_idx: usize,
         context: &mut Context,
-        prev_vars_exported: Option<&mut BTreeSet<usize>>,
+        prev_vars_exported: Option<&mut BTreeSet<Variable>>,
     ) {
         let mut vars_exported = btreeset![];
         let block = {
@@ -123,7 +123,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
     let mut worklist = (0..context.blocks.len()).collect::<Vec<usize>>();
     while let Some(node) = worklist.pop() {
         let block = &mut context.blocks[node];
-        let mut new_vars_imported: BTreeSet<usize> = &block.vars_exported | &block.vars_used;
+        let mut new_vars_imported: BTreeSet<Variable> = &block.vars_exported | &block.vars_used;
         new_vars_imported = new_vars_imported
             .difference(&block.vars_declared_in_this_block)
             .cloned()
@@ -220,7 +220,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 if let Some(usage) = dead_var_usage.get(var).cloned() {
                     if usage == 0 {
                         dead_var_usage.remove(var);
-                        block.ins.push(Ins::new(0, InsType::Drop(*var), 0));
+                        block.ins.push(Ins::empty_ret(InsType::Drop(*var), 0));
                     }
                 }
             }
@@ -235,7 +235,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                         *usage -= 1;
                         if *usage == 0 {
                             dead_var_usage.remove(&var);
-                            block.ins.push(Ins::new(0, InsType::Drop(var), 0));
+                            block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
                         }
                     }
                 });
@@ -244,7 +244,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                         *usage -= 1;
                         if *usage == 0 {
                             dead_var_usage.remove(&var);
-                            block.ins.push(Ins::new(0, InsType::Drop(var), 0));
+                            block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
                         }
                     }
                 }
@@ -258,7 +258,7 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
 pub fn register_to_memory(context: &mut Context) -> Flow {
     dbg_println!("before r2m: {}", context.print());
 
-    let mut borrowed_vars: BTreeSet<usize> = BTreeSet::new();
+    let mut borrowed_vars: BTreeSet<Variable> = BTreeSet::new();
     for (idx, block) in context.blocks.iter_mut().enumerate() {
         for ins in &block.ins {
             match &ins.typed {
@@ -274,8 +274,8 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
     }
     let borrowed_vars = borrowed_vars
         .into_iter()
-        .filter(|var| context.variables[*var].is_primitive())
-        .collect::<Vec<usize>>();
+        .filter(|var| context.variable(*var).is_primitive())
+        .collect::<Vec<Variable>>();
     for &var in &borrowed_vars {
         let mut declared = false;
         let mut new_var_count = context.variables.len();
@@ -286,7 +286,9 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
             for mut ins in old_ins {
                 let location = ins.source_location();
                 match ins.typed {
-                    InsType::Borrow { var: borrowed_var, .. } => {
+                    InsType::Borrow {
+                        var: borrowed_var, ..
+                    } => {
                         if borrowed_var == var {
                             assert_ne!(ins.retvar().unwrap(), borrowed_var);
                             block.ins.push(ins);
@@ -299,7 +301,7 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
                     if ren_var == var {
                         // Rewrite any other vars used with new vars,
                         // loaded from the source var
-                        let new_var = new_var_count;
+                        let new_var = Variable::from(new_var_count);
                         new_var_count += 1;
                         block
                             .ins
@@ -321,13 +323,12 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
                         // into
                         //   v? = ...
                         //   store v? -> v0
-                        let new_var = new_var_count;
+                        let new_var = Variable::from(new_var_count);
                         new_var_count += 1;
                         *retvar = new_var;
 
                         block.ins.push(ins);
-                        block.ins.push(Ins::new(
-                            0,
+                        block.ins.push(Ins::empty_ret(
                             InsType::Store {
                                 source: new_var,
                                 dest: var,
@@ -341,7 +342,7 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
                 block.ins.push(ins);
             }
         }
-        let typed = context.variables[var].clone();
+        let typed = context.variable(var).clone();
         for _ in context.variables.len()..new_var_count {
             context.variables.push(typed.clone());
         }

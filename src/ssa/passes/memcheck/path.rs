@@ -1,4 +1,5 @@
 use crate::compiler::sources::SpanIndex;
+use crate::ssa::isa::Variable;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -49,4 +50,4 @@ impl MemoryState {
     }
 }
 
-pub type Paths = HashMap<usize, MemoryState>;
+pub type Paths = HashMap<Variable, MemoryState>;

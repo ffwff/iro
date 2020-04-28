@@ -371,7 +371,7 @@ where
             *current_offset = 0u32;
         }
 
-        let mut last_typed = &ins_context.context.variables[left];
+        let mut last_typed = ins_context.context.variable(left);
         for (idx, index) in indices.iter().enumerate() {
             let do_dereference = idx != indices.len() - 1;
             match &index.var {
@@ -492,9 +492,7 @@ where
             }
             isa::InsType::Alloca => {
                 let retvar = ins.retvar().unwrap();
-                let typed = self
-                    .ir_to_cranelift_type(&context.variables[retvar])
-                    .unwrap();
+                let typed = self.ir_to_cranelift_type(context.variable(retvar)).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
                     typed.bytes() as u32,
@@ -505,7 +503,7 @@ where
             }
             isa::InsType::Load(x) => {
                 let retvar = ins.retvar().unwrap();
-                let typed = self.ir_to_cranelift_type(&context.variables[retvar]).unwrap();
+                let typed = self.ir_to_cranelift_type(context.variable(retvar)).unwrap();
                 let src_var = builder.use_var(to_var(*x));
                 let tmp = builder.ins().load(typed, MemFlags::trusted(), src_var, 0);
                 builder.declare_var(to_var(retvar), typed);
@@ -610,7 +608,7 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::LoadSlice(x) => {
-                let typed = &context.variables[ins.retvar().unwrap()];
+                let typed = context.variable(ins.retvar().unwrap());
                 let (slice_bytes, instance_bytes) = {
                     let slice = typed.as_slice().unwrap();
                     let instance_bytes = self.size_of(&ins_context.program, &slice.typed);
@@ -632,7 +630,7 @@ where
                 }
             }
             isa::InsType::LoadStruct => {
-                let typed = &context.variables[ins.retvar().unwrap()];
+                let typed = context.variable(ins.retvar().unwrap());
                 let struct_data = self.get_struct_data(&ins_context.program, typed).unwrap();
                 let slot = builder.create_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
@@ -644,7 +642,7 @@ where
                 builder.def_var(to_var(retvar), pointer);
             }
             isa::InsType::LoadNil => {
-                let rettype = &context.variables[ins.retvar().unwrap()];
+                let rettype = context.variable(ins.retvar().unwrap());
                 if *rettype == isa::Type::Nil {
                     return;
                 } else {
@@ -653,7 +651,7 @@ where
             }
             isa::InsType::Call { name, args } => {
                 let mut sig = self.module.make_signature();
-                let rettype = &context.variables[ins.retvar().unwrap()];
+                let rettype = context.variable(ins.retvar().unwrap());
 
                 let mut arg_values = vec![];
                 {
@@ -716,7 +714,7 @@ where
                 builder.ins().return_(&[]);
             }
             isa::InsType::Return(x) => {
-                let rettype = &context.variables[*x];
+                let rettype = context.variable(*x);
                 if *rettype == isa::Type::Nil {
                     builder.ins().return_(&[]);
                 } else if let Some(struct_data) =
@@ -758,7 +756,7 @@ where
             | isa::InsType::Equ((x, y)) => {
                 let left = builder.use_var(to_var(*x));
                 let right = builder.use_var(to_var(*y));
-                match &context.variables[*x] {
+                match context.variable(*x) {
                     maybe_int if maybe_int.is_int() => {
                         let tmp = builder.ins().icmp(
                             match &ins.typed {
@@ -792,27 +790,27 @@ where
                     _ => unimplemented!(),
                 }
             }
-            isa::InsType::Add((x, y)) => match &context.variables[*x] {
+            isa::InsType::Add((x, y)) => match context.variable(*x) {
                 maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, iadd),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fadd),
                 _ => unimplemented!(),
             },
-            isa::InsType::Sub((x, y)) => match &context.variables[*x] {
+            isa::InsType::Sub((x, y)) => match context.variable(*x) {
                 maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, isub),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fsub),
                 _ => unimplemented!(),
             },
-            isa::InsType::Mul((x, y)) => match &context.variables[*x] {
+            isa::InsType::Mul((x, y)) => match context.variable(*x) {
                 maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, imul),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fmul),
                 _ => unimplemented!(),
             },
-            isa::InsType::Div((x, y)) => match &context.variables[*x] {
+            isa::InsType::Div((x, y)) => match context.variable(*x) {
                 maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, sdiv),
                 isa::Type::F64 => generate_arithmetic!(builder, ins, x, y, fdiv),
                 _ => unimplemented!(),
             },
-            isa::InsType::Mod((x, y)) => match &context.variables[*x] {
+            isa::InsType::Mod((x, y)) => match context.variable(*x) {
                 maybe_int if maybe_int.is_int() => generate_arithmetic!(builder, ins, x, y, srem),
                 _ => unimplemented!(),
             },
@@ -939,7 +937,7 @@ where
                 }
             }
             isa::InsType::Cast { var, typed } => {
-                let tmp = match (&context.variables[*var], typed) {
+                let tmp = match (context.variable(*var), typed) {
                     (left, right) if left.is_int_repr() && right.is_int_repr() => {
                         let left_typed = self.ir_to_cranelift_type(left).unwrap();
                         let right_typed = self.ir_to_cranelift_type(right).unwrap();

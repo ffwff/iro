@@ -9,7 +9,7 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
     for block in &mut context.blocks {
         for ins in &mut block.ins {
             if let Some(retvar) = ins.retvar() {
-                var_to_ins[retvar].push(ins.clone());
+                var_to_ins[usize::from(retvar)].push(ins.clone());
             }
             if ins.typed.is_jmp() || ins.typed.has_side_effects() {
                 if let Some(retvar) = ins.retvar() {
@@ -32,16 +32,16 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
         }
         alive.insert(var);
         for ins in &var_to_ins[var] {
-            ins.each_used_var(|cvar| trace(cvar, var_to_ins, alive));
+            ins.each_used_var(|cvar| trace(usize::from(cvar), var_to_ins, alive));
         }
     }
     for root in roots {
-        trace(root, &var_to_ins, &mut alive);
+        trace(usize::from(root), &var_to_ins, &mut alive);
     }
     for block in &mut context.blocks {
         block.ins.retain(|ins| {
             if let Some(retvar) = ins.retvar() {
-                alive.contains(retvar)
+                alive.contains(usize::from(retvar))
             } else {
                 true
             }
@@ -66,13 +66,13 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
         for ins in &mut block.ins {
             if let Some(retvar) = ins.retvar() {
-                var_to_ins[retvar] = Some(ins.clone());
+                var_to_ins[usize::from(retvar)] = Some(ins.clone());
             }
             if ins.typed.is_jmp() || ins.typed.has_side_effects() {
                 if let Some(retvar) = ins.retvar() {
-                    roots.push(retvar);
+                    roots.push(usize::from(retvar));
                 }
-                ins.each_used_var(|var| roots.push(var));
+                ins.each_used_var(|var| roots.push(usize::from(var)));
             }
         }
     }
@@ -83,18 +83,18 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
         }
         alive.insert(var);
         if let Some(used) = &var_to_ins[var] {
-            used.each_used_var(|cvar| trace(cvar, var_to_ins, alive));
+            used.each_used_var(|cvar| trace(usize::from(cvar), var_to_ins, alive));
         } else {
             unreachable!("no entry found for {}", var)
         }
     }
     for root in roots {
-        trace(root, &var_to_ins, &mut alive);
+        trace(usize::from(root), &var_to_ins, &mut alive);
     }
     for block in &mut context.blocks {
         block.ins.retain(|ins| {
             if let Some(retvar) = ins.retvar() {
-                alive.contains(retvar)
+                alive.contains(usize::from(retvar))
             } else {
                 true
             }

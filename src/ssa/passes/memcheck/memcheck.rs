@@ -20,7 +20,7 @@ pub fn check(context: &mut Context) -> Flow {
                     {
                         return Err(Code::MemoryError {
                             position: ins.source_location(),
-                            var: *var,
+                            var: Variable::from(*var),
                             typed: MemoryErrorType::Move,
                             last_used: sub_path.last_used(),
                         });
@@ -39,7 +39,7 @@ pub fn check(context: &mut Context) -> Flow {
                             MemoryState::FullyMoved(last_used) => {
                                 return Err(Code::MemoryError {
                                     position: ins.source_location(),
-                                    var: *left,
+                                    var: Variable::from(*left),
                                     typed: MemoryErrorType::Move,
                                     last_used: *last_used,
                                 });
@@ -67,7 +67,7 @@ pub fn check(context: &mut Context) -> Flow {
                         if let Some(sub_path) = directory.sub_paths.get(&index) {
                             return Err(Code::MemoryError {
                                 position: ins.source_location(),
-                                var: *left,
+                                var: Variable::from(*left),
                                 typed: MemoryErrorType::Move,
                                 last_used: sub_path.last_used,
                             });
@@ -99,7 +99,7 @@ pub fn check(context: &mut Context) -> Flow {
                             return;
                         }
                         if let Some(sub_path) =
-                            overlay_hashmap![&mut moved_set, previous_moved_set].get(var)
+                            overlay_hashmap![&mut moved_set, previous_moved_set].get(var.into())
                         {
                             error = Some(Code::MemoryError {
                                 position: ins.source_location(),

@@ -11,10 +11,10 @@ pub fn preprocess(context: &mut Context) -> Flow {
     for (idx, block) in context.blocks.iter_mut().enumerate() {
         if let Some(ins) = block.ins.last() {
             if !ins.typed.is_jmp() {
-                block.ins.push(Ins::new(0, InsType::Jmp(idx + 1), 0));
+                block.ins.push(Ins::empty_ret(InsType::Jmp(idx + 1), 0));
             }
         } else if idx + 1 != len {
-            block.ins.push(Ins::new(0, InsType::Jmp(idx + 1), 0));
+            block.ins.push(Ins::empty_ret(InsType::Jmp(idx + 1), 0));
         }
     }
     Flow::Continue

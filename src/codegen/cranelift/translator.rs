@@ -3,8 +3,8 @@ use cranelift_codegen::ir::entities::Value;
 use cranelift_codegen::ir::{types, InstBuilder};
 use cranelift_frontend::{FunctionBuilder, Variable};
 
-pub fn to_var(x: usize) -> Variable {
-    Variable::with_u32(x as u32)
+pub fn to_var(x: isa::Variable) -> Variable {
+    Variable::with_u32(x.into())
 }
 
 pub fn const_to_value(builder: &mut FunctionBuilder, c: &isa::Constant) -> Value {

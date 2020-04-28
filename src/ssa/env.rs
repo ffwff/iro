@@ -1,10 +1,11 @@
+use crate::ssa::isa;
 use crate::ssa::isa::InsPosition;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Variable {
-    pub var: usize,
+    pub var: isa::Variable,
     pub is_mut: bool,
 }
 
