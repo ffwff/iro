@@ -846,6 +846,7 @@ impl InsType {
             | InsType::Borrow { .. }
             | InsType::Call { .. }
             | InsType::Return(_)
+            | InsType::Drop(_)
             | InsType::Exit => true,
             InsType::MemberReference { modifier, .. } => {
                 if let ReferenceModifier::Borrow(_) = modifier {

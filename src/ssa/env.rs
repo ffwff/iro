@@ -12,9 +12,11 @@ pub struct Variable {
 #[derive(Debug)]
 pub struct Env {
     /// Table of variable identifiers to variable numbers
-    pub vars: HashMap<Rc<str>, Variable>,
+    vars: HashMap<Rc<str>, Variable>,
     /// Indices of break instructions in this environment
     pub break_idx: Option<Vec<InsPosition>>,
+    /// Stack of variables inserted, from mostly recently inserted
+    var_stack: Vec<isa::Variable>,
 }
 
 impl Env {
@@ -22,6 +24,7 @@ impl Env {
         Env {
             vars: HashMap::new(),
             break_idx: None,
+            var_stack: vec![],
         }
     }
 
@@ -29,6 +32,20 @@ impl Env {
         Env {
             vars: HashMap::new(),
             break_idx: Some(Vec::new()),
+            var_stack: vec![],
         }
+    }
+
+    pub fn get_var(&self, id: &Rc<str>) -> Option<&Variable> {
+        self.vars.get(id)
+    }
+
+    pub fn insert_var(&mut self, id: Rc<str>, var: Variable) {
+        self.vars.insert(id, var);
+        self.var_stack.push(var.var);
+    }
+
+    pub fn var_stack(&self) -> &Vec<isa::Variable> {
+        &self.var_stack
     }
 }

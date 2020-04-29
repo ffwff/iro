@@ -172,7 +172,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
 
     fn get_var(&self, var: &Rc<str>) -> Option<env::Variable> {
         for env in self.envs.iter().rev() {
-            if let Some(var) = env.vars.get(var) {
+            if let Some(var) = env.get_var(var) {
                 return Some(*var);
             }
         }
@@ -345,6 +345,32 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
         let mut sources = self.sources.borrow_mut();
         sources.insert_span(boxed.span())
     }
+
+    fn finish_env(&mut self) -> Option<Env> {
+        if let Some(env) = self.envs.pop() {
+            if env.var_stack().is_empty() {
+                return Some(env);
+            }
+            let block = self.context.blocks.last_mut().unwrap();
+            debug_assert!(block.ins.last().unwrap().typed.is_jmp());
+
+            let postlude = block.ins.pop().unwrap();
+            let mut var_stack = env.var_stack().clone();
+            postlude.each_used_var(|var| {
+                var_stack.remove_item(&var);
+            });
+            for &var in var_stack.iter().rev() {
+                if self.context.variables[usize::from(var)].is_value_type() {
+                    block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
+                }
+            }
+            block.ins.push(postlude);
+
+            Some(env)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
@@ -396,6 +422,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         self.with_block_mut(|block| {
             block.ins.push(Ins::empty_ret(InsType::Exit, 0));
         });
+        self.finish_env().unwrap();
 
         Ok(())
     }
@@ -493,7 +520,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         {
             let mut env = Env::new();
             for (idx, def_argument) in n.args.iter().enumerate() {
-                env.vars.insert(
+                env.insert_var(
                     def_argument.name.clone(),
                     env::Variable {
                         var: Variable::with_u32(idx as u32),
@@ -658,7 +685,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 }
             }
         });
-        let env = self.envs.pop().unwrap();
+        let env = self.finish_env().unwrap();
 
         // Insert jump
         let new_block = self.context.new_block();
@@ -715,7 +742,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 }
             } else {
                 // condition returns
-                self.envs.pop();
+                self.finish_env().unwrap();
                 return Ok(());
             }
             if !n.exprs.is_empty() {
@@ -738,7 +765,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 }
             }
         });
-        self.envs.pop();
+        self.finish_env().unwrap();
 
         if n.exprs.is_empty() && n.elses.is_empty() {
             // Return nil if two branches don't do anything
@@ -773,7 +800,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 }
             }
         });
-        self.envs.pop();
+        self.finish_env().unwrap();
 
         if treturn && treturn == freturn {
             self.has_direct_return = true;
@@ -1031,7 +1058,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                                 _ => unimplemented!(),
                             }
                             let env = self.envs.last_mut().unwrap();
-                            env.vars.insert(
+                            env.insert_var(
                                 id.clone(),
                                 env::Variable {
                                     var: retvar,
@@ -1064,7 +1091,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                     });
                 }
                 let env = self.envs.last_mut().unwrap();
-                env.vars.insert(
+                env.insert_var(
                     id.clone(),
                     env::Variable {
                         var,

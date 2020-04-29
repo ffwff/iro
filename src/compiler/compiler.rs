@@ -35,7 +35,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::mem::eliminate_phi,
     passes::mem::calculate_block_variable_declaration,
     passes::mem::calculate_data_flow,
-    passes::mem::drop_insertion,
+    passes::mem::reference_drop_insertion,
     passes::memcheck::check,
     passes::postlude::fuse_postlude,
 ];

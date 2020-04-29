@@ -139,6 +139,13 @@ impl Type {
         }
     }
 
+    pub fn is_value_type(&self) -> bool {
+        match self {
+            Type::Pointer(_) => false,
+            _ => true,
+        }
+    }
+
     pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
         match self {
             Type::Union(set) => Some(set.clone()),

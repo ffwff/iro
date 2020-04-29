@@ -152,7 +152,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn drop_insertion(context: &mut Context) -> Flow {
+pub fn reference_drop_insertion(context: &mut Context) -> Flow {
     for idx in 0..context.blocks.len() {
         let block = &mut context.blocks[idx];
         let preds = std::mem::replace(&mut block.preds, vec![]);
@@ -172,25 +172,30 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
     for (idx, block) in context.blocks.iter_mut().enumerate() {
         // Variables that die in this block are variables which
         // flow into the block or are declared in this block, and are never exported
-        let mut dead_vars = &block.vars_declared_in_this_block | &block.vars_total_imported;
+        let mut dead_vars_set = &block.vars_declared_in_this_block | &block.vars_total_imported;
         for exported in &block.vars_exported {
-            dead_vars.remove(exported);
+            dead_vars_set.remove(exported);
         }
         dbg_println!(
-            "dead_vars for {}: {:?} {:?}, {:?}",
+            "dead_vars_set for {}: {:?} {:?}, {:?}",
             idx,
             block.vars_declared_in_this_block,
             block.vars_total_imported,
-            dead_vars
+            dead_vars_set
         );
+
+        // We should only attempt NLL for non-value-types, (aka pointers)
+        // anything else should already be dropped when scope ends
+        let mut dead_vars = vec![];
+        for dead_var in dead_vars_set.into_iter() {
+            if !context.variables[usize::from(dead_var)].is_value_type() {
+                dead_vars.push(dead_var);
+            }
+        }
 
         if !dead_vars.is_empty() {
             let old_len = block.ins.len();
             let old_ins = std::mem::replace(&mut block.ins, Vec::with_capacity(old_len));
-
-            // Mapping of a variable which has been lifetime-extended
-            // to a borrowing of that variable
-            let mut lifetime_extension_mapping = btreemap![];
 
             // Calculate the usage for each dead var
             let mut dead_var_usage = btreemap![];
@@ -201,17 +206,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 if let Some(retvar) = ins.retvar() {
                     if let Some(usage) = dead_var_usage.get_mut(&retvar) {
                         *usage += 1;
-                    }
-                    if ins.each_borrowed_var(|var| {
-                        if dead_vars.contains(&var) {
-                            lifetime_extension_mapping.insert(var, retvar);
-                        } else {
-                            unimplemented!()
-                            // dead_vars.remove(&var);
-                            // lifetime_extension_mapping.remove(&retvar);
-                        }
-                    }) {
-                        continue;
                     }
                 }
                 if !ins.each_moved_var(|var| {
@@ -230,19 +224,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 dead_var_usage.remove(&var);
             });
 
-            dbg_println!(
-                "lifetime_extension_mapping: {:?}",
-                lifetime_extension_mapping
-            );
-            // Lifetime-extended variables are manually dropped by maybe_insert_drop
-            for (&var, _) in &lifetime_extension_mapping {
-                dead_var_usage.remove(&var);
-            }
-            let lifetime_extension_mapping_inv = lifetime_extension_mapping
-                .into_iter()
-                .map(|(x, y)| (y, x))
-                .collect::<BTreeMap<Variable, Variable>>();
-
             // Remove all vars with zero count first
             for var in &dead_vars {
                 if let Some(usage) = dead_var_usage.get(var).cloned() {
@@ -256,7 +237,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
             fn maybe_insert_drop(
                 var: Variable,
                 dead_var_usage: &mut BTreeMap<Variable, i32>,
-                lifetime_extension_mapping_inv: &BTreeMap<Variable, Variable>,
                 block: &mut Block,
             ) {
                 if let Some(usage) = dead_var_usage.get_mut(&var) {
@@ -264,9 +244,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                     if *usage == 0 {
                         dead_var_usage.remove(&var);
                         block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
-                        if let Some(to_drop) = lifetime_extension_mapping_inv.get(&var) {
-                            block.ins.push(Ins::empty_ret(InsType::Drop(*to_drop), 0));
-                        }
                     }
                 }
             }
@@ -280,7 +257,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                     maybe_insert_drop(
                         var,
                         &mut dead_var_usage,
-                        &lifetime_extension_mapping_inv,
                         block,
                     );
                 });
@@ -288,7 +264,6 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                     maybe_insert_drop(
                         var,
                         &mut dead_var_usage,
-                        &lifetime_extension_mapping_inv,
                         block,
                     );
                 }
@@ -330,6 +305,12 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
             for mut ins in old_ins {
                 let location = ins.source_location();
                 match ins.typed {
+                    InsType::Drop(dropped) => {
+                        if dropped == var {
+                            block.ins.push(ins);
+                            continue;
+                        }
+                    }
                     InsType::Borrow {
                         var: borrowed_var, ..
                     } => {
