@@ -1,26 +1,24 @@
-# 色の言語
+# イロハ
 
-A *color*ful programming language (a wip)
+iroha is a programming language aiming to be:
 
-## Features
+  * **safe:** iroha implements various safety mechanisms inspired by Rust, including a borrow checker and uniqueness types
+  * **simple to type:** iroha follows the off-side rule, blocks may be delimited by indents and dedents
+  * **fast to build:** the compiler is as best optimized as it can be and uses the faster [cranelift](https://github.com/bytecodealliance/wasmtime/tree/master/cranelift) code generator for its debug backend
+  * **fast to run:** the compiler can also use the slower C backend for performant release builds (planned)
 
- * compiles to native code using cranelift
- * looks like ruby because thats what the cool languages do
+## Building
 
-## Examples
+iroha currently needs the latest version of rustc (tested on `1.43.0-nightly`) to be installed.
 
-```ruby
-extern def putchar(x: I32): I32
-
-def print(s: &Substring): ISize =>
-    mut i := 0is
-    while i < s.len =>
-        putchar(s[i])
-        i += 1
-    i
-
-print("Hello World\n")
 ```
+git clone https://gitlab.com/ffwff/iro
+cargo build
+```
+
+## Documentation
+
+(to be added)
 
 ## License
 
