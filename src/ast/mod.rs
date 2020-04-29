@@ -24,6 +24,7 @@ pub enum Error {
     InvalidArguments,
     InvalidReturnType,
     MutatingImmutable(Rc<str>),
+    CannotDeref,
 }
 
 impl Error {
@@ -46,6 +47,7 @@ impl Error {
                 Error::InvalidArguments => Code::InvalidArguments,
                 Error::InvalidReturnType => Code::InvalidReturnType,
                 Error::MutatingImmutable(x) => Code::MutatingImmutable(x),
+                Error::CannotDeref => Code::CannotDeref,
             },
             span: Some(ast.span()),
         }

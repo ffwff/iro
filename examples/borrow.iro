@@ -1,0 +1,6 @@
+extern def record="record_i32"(i: I32): Nil
+
+i := 10
+x := &i
+y := &mut i
+record(*y)

@@ -32,17 +32,21 @@ pub fn check(context: &mut Context) -> Flow {
                     if let Some(drop_effect) = drops.remove(var) {
                         dbg_println!("dropping {:?}", var);
                         match drop_effect {
-                            DropEffect::UnbindBorrowed(unbound) => {
-                                let mem_state_ref = mem_state.get_mut(&unbound).unwrap();
+                            DropEffect::UnbindBorrowed { borrower, target } => {
+                                let mem_state_ref = mem_state.get_mut(&target).unwrap();
                                 let old = std::mem::replace(mem_state_ref, MemoryState::None);
                                 dbg_println!(" old {:?}", old);
-                                *mem_state_ref = old.unborrow(*var);
+                                *mem_state_ref = old.unborrow(borrower);
                                 dbg_println!("  => {:?}", *mem_state_ref);
+                            }
+                            DropEffect::UnbindBorrowedMut { borrower, target } => {
+                                let mem_state_ref = mem_state.get_mut(&target).unwrap();
+                                *mem_state_ref = MemoryState::None;
                             }
                         }
                     }
                 }
-                InsType::Move(var) | InsType::MarkMoved(var) => {
+                InsType::Copy(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
                     if let Some(sub_path) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
                         .map(|x| x.as_opt())
@@ -55,8 +59,24 @@ pub fn check(context: &mut Context) -> Flow {
                             last_used: sub_path.last_used(),
                         });
                     }
-                    // We should never drop a moved variable
-                    drops.remove(var);
+                    match ins.typed {
+                        InsType::Copy(var) => {
+                            let retvar = ins.retvar().unwrap();
+                            if let Some(old) = drops.get(&var).cloned() {
+                                drops.insert(retvar, old);
+                            }
+                        }
+                        InsType::Move(var) => {
+                            let retvar = ins.retvar().unwrap();
+                            if let Some(old) = drops.remove(&var) {
+                                drops.insert(retvar, old);
+                            }
+                        }
+                        InsType::MarkMoved(var) => {
+                            drops.remove(&var);
+                        }
+                        _ => unreachable!(),
+                    }
                 }
                 InsType::Phi { .. } => (),
                 InsType::MemberReference {
@@ -140,7 +160,7 @@ pub fn check(context: &mut Context) -> Flow {
                                     return Err(Code::MemoryError {
                                         position: ins.source_location(),
                                         var: *var,
-                                        typed: MemoryErrorType::Move,
+                                        typed: MemoryErrorType::Borrow,
                                         last_used: state.last_used(),
                                     });
                                 }
@@ -152,9 +172,29 @@ pub fn check(context: &mut Context) -> Flow {
                                     ]),
                                 );
                             }
-                            drops.insert(retvar, DropEffect::UnbindBorrowed(*var));
+                            drops.insert(retvar, DropEffect::UnbindBorrowed {
+                                borrower: retvar,
+                                target: *var
+                            });
                         }
-                        _ => unimplemented!(),
+                        BorrowModifier::Mutable => {
+                            if let Some(sub_path) = mem_state
+                                .insert(*var, MemoryState::FullyBorrowedMut(ins.source_location()))
+                                .map(|x| x.as_opt())
+                                .flatten()
+                            {
+                                return Err(Code::MemoryError {
+                                    position: ins.source_location(),
+                                    var: Variable::from(*var),
+                                    typed: MemoryErrorType::Borrow,
+                                    last_used: sub_path.last_used(),
+                                });
+                            }
+                            drops.insert(retvar, DropEffect::UnbindBorrowedMut {
+                                borrower: retvar,
+                                target: *var
+                            });
+                        }
                     }
                 }
                 _ => {
@@ -198,6 +238,11 @@ pub fn check(context: &mut Context) -> Flow {
                 for (key, new_state) in new_set {
                     if let Some(old_state) = overlay_move_set.get_or_clone(key) {
                         match (old_state, new_state) {
+                            (MemoryState::None, new_state) => {
+                                overlay_move_set
+                                    .map_mut()
+                                    .insert(key, new_state);
+                            }
                             (
                                 MemoryState::PartiallyMoved(old_dir),
                                 MemoryState::PartiallyMoved(new_dir),
@@ -217,8 +262,10 @@ pub fn check(context: &mut Context) -> Flow {
                                 unreachable!("unhandled state transition {:?} -> {:?}", x, y);
                             }
                         }
-                    } else {
+                    } else if let Some(new_state) = new_state.as_opt() {
                         overlay_move_set.map_mut().insert(key, new_state);
+                    } else {
+                        overlay_move_set.map_mut().remove(&key);
                     }
                 }
             }

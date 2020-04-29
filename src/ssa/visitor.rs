@@ -1077,19 +1077,11 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 let var = self
                     .context
                     .insert_var(self.context.variable(right).clone());
-                if self.is_copyable(self.context.variable(right)) {
-                    self.with_block_mut(|block| {
-                        block
-                            .ins
-                            .push(Ins::new(var, InsType::Copy(right), location));
-                    });
-                } else {
-                    self.with_block_mut(|block| {
-                        block
-                            .ins
-                            .push(Ins::new(var, InsType::Move(right), location));
-                    });
-                }
+                self.with_block_mut(|block| {
+                    block
+                        .ins
+                        .push(Ins::new(var, InsType::Move(right), location));
+                });
                 let env = self.envs.last_mut().unwrap();
                 env.insert_var(
                     id.clone(),
@@ -1618,19 +1610,21 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         n.expr.visit(self)?;
         let location = self.location_for(b);
         let expr = self.last_retvar.take().unwrap();
-        let typed = self
+        if let Some(typed) = self
             .context
             .variable(expr)
             .instance_type()
-            .cloned()
-            .unwrap();
-        let retvar = self.context.insert_var(typed);
-        self.with_block_mut(|block| {
-            block
-                .ins
-                .push(Ins::new(retvar, InsType::Load(expr), location));
-        });
-        self.last_retvar = Some(retvar);
-        Ok(())
+            .cloned() {
+            let retvar = self.context.insert_var(typed);
+            self.with_block_mut(|block| {
+                block
+                    .ins
+                    .push(Ins::new(retvar, InsType::Load(expr), location));
+            });
+            self.last_retvar = Some(retvar);
+            Ok(())
+        } else {
+            Err(Error::CannotDeref.into_compiler_error(b))
+        }
     }
 }

@@ -91,7 +91,7 @@ impl MemoryState {
                 MemoryState::FullyBorrowed(map)
             }
         } else {
-            panic!("called on a non fully-borrowed mem state");
+            panic!("called on a non fully immutably, borrowed mem state");
         }
     }
 }

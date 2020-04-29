@@ -47,6 +47,7 @@ pub enum Code {
         var: isa::Variable,
         typed: MemoryErrorType,
     },
+    CannotDeref,
 }
 
 impl Code {
@@ -109,16 +110,13 @@ impl std::fmt::Display for Code {
             Code::IoError(error) => write!(f, "IO error: {}", error),
             Code::MemoryError { typed, .. } => write!(
                 f,
-                "Trying to {} a variable which has already been {}",
+                "Trying to {} a variable which has already been used",
                 match typed {
                     MemoryErrorType::Move => "move",
                     MemoryErrorType::Borrow => "borrow",
                 },
-                match typed {
-                    MemoryErrorType::Move => "moved",
-                    MemoryErrorType::Borrow => "borrowed",
-                }
             ),
+            Code::CannotDeref => write!(f, "Cannot dereference this value"),
         }
     }
 }
