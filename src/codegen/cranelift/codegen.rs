@@ -930,11 +930,7 @@ where
                     builder.def_var(to_var(retvar), pointer);
                 }
             }
-            isa::InsType::MemberReferenceStore {
-                indices,
-                right,
-                ..
-            } => {
+            isa::InsType::MemberReferenceStore { indices, right, .. } => {
                 let left = ins.memref_store_left().unwrap();
                 let right_var = builder.use_var(to_var(*right));
                 let (member_ptr, typed) =

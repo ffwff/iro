@@ -1,6 +1,7 @@
 use crate::compiler::error::{Code, MemoryErrorType};
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use crate::ssa::passes::memcheck::drop_effect::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
 
@@ -9,14 +10,17 @@ pub fn check(context: &mut Context) -> Flow {
         block: &Block,
         block_idx: usize,
         context: &Context,
-        previous_moved_set: Option<&Paths>,
+        previous_mem_state: Option<&Paths>,
+        drops: &mut Drops,
     ) -> Result<Paths, Code> {
-        let mut moved_set = Paths::new();
+        let mut mem_state = Paths::new();
         for ins in &block.ins {
             match &ins.typed {
-                InsType::Drop(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
-                    if let Some(sub_path) =
-                        moved_set.insert(*var, MemoryState::FullyMoved(ins.source_location()))
+                InsType::Drop(var) => {
+                    if let Some(sub_path) = mem_state
+                        .insert(*var, MemoryState::FullyMoved(ins.source_location()))
+                        .map(|x| x.as_opt())
+                        .flatten()
                     {
                         return Err(Code::MemoryError {
                             position: ins.source_location(),
@@ -25,6 +29,34 @@ pub fn check(context: &mut Context) -> Flow {
                             last_used: sub_path.last_used(),
                         });
                     }
+                    if let Some(drop_effect) = drops.remove(var) {
+                        dbg_println!("dropping {:?}", var);
+                        match drop_effect {
+                            DropEffect::UnbindBorrowed(unbound) => {
+                                let mem_state_ref = mem_state.get_mut(&unbound).unwrap();
+                                let old = std::mem::replace(mem_state_ref, MemoryState::None);
+                                dbg_println!(" old {:?}", old);
+                                *mem_state_ref = old.unborrow(*var);
+                                dbg_println!("  => {:?}", *mem_state_ref);
+                            }
+                        }
+                    }
+                }
+                InsType::Move(var) | InsType::MarkMoved(var) => {
+                    if let Some(sub_path) = mem_state
+                        .insert(*var, MemoryState::FullyMoved(ins.source_location()))
+                        .map(|x| x.as_opt())
+                        .flatten()
+                    {
+                        return Err(Code::MemoryError {
+                            position: ins.source_location(),
+                            var: Variable::from(*var),
+                            typed: MemoryErrorType::Move,
+                            last_used: sub_path.last_used(),
+                        });
+                    }
+                    // We should never drop a moved variable
+                    drops.remove(var);
                 }
                 InsType::Phi { .. } => (),
                 InsType::MemberReference {
@@ -32,16 +64,16 @@ pub fn check(context: &mut Context) -> Flow {
                     indices,
                     modifier,
                 } => {
-                    let mut overlay = overlay_hashmap![&mut moved_set, previous_moved_set];
+                    let mut overlay = overlay_hashmap![&mut mem_state, previous_mem_state];
                     let mut directory = if let Some(memory_state) = overlay.get_or_clone(*left) {
                         match memory_state {
                             MemoryState::PartiallyMoved(dir) => dir,
-                            MemoryState::FullyMoved(last_used) => {
+                            _ => {
                                 return Err(Code::MemoryError {
                                     position: ins.source_location(),
                                     var: Variable::from(*left),
                                     typed: MemoryErrorType::Move,
-                                    last_used: *last_used,
+                                    last_used: memory_state.last_used(),
                                 });
                             }
                         }
@@ -69,7 +101,7 @@ pub fn check(context: &mut Context) -> Flow {
                                 position: ins.source_location(),
                                 var: Variable::from(*left),
                                 typed: MemoryErrorType::Move,
-                                last_used: sub_path.last_used,
+                                last_used: LastUsed::One(sub_path.last_used),
                             });
                         }
                         match modifier {
@@ -92,20 +124,55 @@ pub fn check(context: &mut Context) -> Flow {
                         }
                     }
                 }
+                InsType::Borrow { var, modifier } => {
+                    let retvar = ins.retvar().unwrap();
+                    match modifier {
+                        BorrowModifier::Immutable => {
+                            if let Some(state) =
+                                overlay_hashmap![&mut mem_state, previous_mem_state]
+                                    .get_or_clone(*var)
+                                    .map(|x| x.as_opt_mut())
+                                    .flatten()
+                            {
+                                if let MemoryState::FullyBorrowed(map) = state {
+                                    map.insert(*var, ins.source_location());
+                                } else {
+                                    return Err(Code::MemoryError {
+                                        position: ins.source_location(),
+                                        var: *var,
+                                        typed: MemoryErrorType::Move,
+                                        last_used: state.last_used(),
+                                    });
+                                }
+                            } else {
+                                mem_state.insert(
+                                    *var,
+                                    MemoryState::FullyBorrowed(hashmap![
+                                        retvar => ins.source_location()
+                                    ]),
+                                );
+                            }
+                            drops.insert(retvar, DropEffect::UnbindBorrowed(*var));
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
                 _ => {
                     let mut error: Option<Code> = None;
                     ins.each_used_var(|var| {
                         if error.is_some() {
                             return;
                         }
-                        if let Some(sub_path) =
-                            overlay_hashmap![&mut moved_set, previous_moved_set].get(var.into())
+                        if let Some(state) = overlay_hashmap![&mut mem_state, previous_mem_state]
+                            .get(var.into())
+                            .map(|x| x.as_opt_ref())
+                            .flatten()
                         {
                             error = Some(Code::MemoryError {
                                 position: ins.source_location(),
                                 var,
                                 typed: MemoryErrorType::Move,
-                                last_used: sub_path.last_used(),
+                                last_used: state.last_used(),
                             });
                         }
                     });
@@ -117,8 +184,8 @@ pub fn check(context: &mut Context) -> Flow {
         }
         // The new variable state is the sum of the current variable state and
         // all of the successor's variable state
-        let mut delta_moved_set = Paths::new();
-        let mut overlay_move_set = overlay_hashmap![&mut delta_moved_set, Some(&moved_set)];
+        let mut delta_mem_state = Paths::new();
+        let mut overlay_move_set = overlay_hashmap![&mut delta_mem_state, Some(&mem_state)];
         for &succ in &block.succs {
             if succ > block_idx {
                 let new_set = walk(
@@ -126,6 +193,7 @@ pub fn check(context: &mut Context) -> Flow {
                     succ,
                     context,
                     overlay_move_set.map_imm(),
+                    drops,
                 )?;
                 for (key, new_state) in new_set {
                     if let Some(old_state) = overlay_move_set.get_or_clone(key) {
@@ -143,10 +211,10 @@ pub fn check(context: &mut Context) -> Flow {
                                     .insert(key, MemoryState::FullyMoved(last_used));
                             }
                             (MemoryState::FullyMoved(_), MemoryState::FullyMoved(_)) => (),
-                            (_, _) => {
+                            (x, y) => {
                                 // These states are unreachable since we've already handled it while
                                 // checking the instructions above, hopefully.
-                                unreachable!();
+                                unreachable!("unhandled state transition {:?} -> {:?}", x, y);
                             }
                         }
                     } else {
@@ -155,10 +223,11 @@ pub fn check(context: &mut Context) -> Flow {
                 }
             }
         }
-        moved_set.extend(delta_moved_set.into_iter());
-        Ok(moved_set)
+        mem_state.extend(delta_mem_state.into_iter());
+        Ok(mem_state)
     }
-    match walk(&context.blocks[0], 0, context, None) {
+    let mut drops = Drops::new();
+    match walk(&context.blocks[0], 0, context, None, &mut drops) {
         Ok(_) => Flow::Continue,
         Err(code) => Flow::Err(code),
     }

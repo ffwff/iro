@@ -1,6 +1,7 @@
 use crate::compiler::sources::{SourceSpan, SpanIndex};
 use crate::lexer;
 use crate::ssa::isa;
+use crate::ssa::passes::memcheck::path::LastUsed;
 use lalrpop_util;
 use std::rc::Rc;
 
@@ -42,7 +43,7 @@ pub enum Code {
     IoError(std::io::Error),
     MemoryError {
         position: SpanIndex,
-        last_used: SpanIndex,
+        last_used: LastUsed,
         var: isa::Variable,
         typed: MemoryErrorType,
     },
@@ -51,7 +52,13 @@ pub enum Code {
 impl Code {
     pub fn diagnostics(&self) -> Vec<(SpanIndex, &'static str)> {
         match self {
-            Code::MemoryError { last_used, .. } => vec![(*last_used, "last used here")],
+            Code::MemoryError { last_used, .. } => match last_used {
+                LastUsed::One(index) => vec![(*index, "last used here")],
+                LastUsed::Many(indices) => indices
+                    .iter()
+                    .map(|index| (*index, "last used here"))
+                    .collect(),
+            },
             _ => vec![],
         }
     }

@@ -22,7 +22,7 @@ impl IntrinsicType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Variable(u32);
 
 impl Variable {
@@ -39,9 +39,15 @@ impl Variable {
     }
 }
 
-impl std::fmt::Display for Variable {
+impl std::fmt::Debug for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "v{}", self.0)
+    }
+}
+
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -93,11 +99,9 @@ impl Context {
             blocks: vec![Block::new(
                 args.iter()
                     .enumerate()
-                    .map(|(idx, _)| Ins::new(
-                        Variable::from(idx),
-                        InsType::LoadArg(idx),
-                        std::u32::MAX,
-                    ))
+                    .map(|(idx, _)| {
+                        Ins::new(Variable::from(idx), InsType::LoadArg(idx), std::u32::MAX)
+                    })
                     .collect(),
             )],
             name,
@@ -328,13 +332,11 @@ impl Ins {
                 indices,
                 modifier,
                 right,
-            } => {
-                InsType::MemberReferenceStore {
-                    indices: swap_indices(indices, &mut swap),
-                    modifier,
-                    right: swap(right),
-                }
-            }
+            } => InsType::MemberReferenceStore {
+                indices: swap_indices(indices, &mut swap),
+                modifier,
+                right: swap(right),
+            },
             InsType::Add((x, y)) => InsType::Add((swap(x), swap(y))),
             InsType::Sub((x, y)) => InsType::Sub((swap(x), swap(y))),
             InsType::Mul((x, y)) => InsType::Mul((swap(x), swap(y))),
@@ -424,11 +426,7 @@ impl Ins {
                 callback(*left);
                 each_indices(indices, &mut callback);
             }
-            InsType::MemberReferenceStore {
-                indices,
-                right,
-                ..
-            } => {
+            InsType::MemberReferenceStore { indices, right, .. } => {
                 callback(*self.memref_store_left().unwrap());
                 each_indices(indices, &mut callback);
                 callback(*right);
@@ -454,6 +452,19 @@ impl Ins {
             }
             InsType::OpConst { register, .. } => callback(*register),
             _ => (),
+        }
+    }
+
+    pub fn each_borrowed_var<T>(&self, mut callback: T) -> bool
+    where
+        T: FnMut(Variable),
+    {
+        match &self.typed {
+            InsType::Borrow { var, .. } => {
+                callback(*var);
+                true
+            }
+            _ => false,
         }
     }
 

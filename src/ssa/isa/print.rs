@@ -13,17 +13,6 @@ impl<'a> std::fmt::Display for ConstPrinter<'a> {
     }
 }
 
-struct RegConstPrinter<'a>(pub &'a RegConst, pub &'static str);
-
-impl<'a> RegConstPrinter<'a> {
-    pub fn print(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            RegConst::RegLeft((var, k)) => write!(f, "v{} {} {}", var, self.1, ConstPrinter(k)),
-            RegConst::RegRight((k, var)) => write!(f, "{} {} v{}", ConstPrinter(k), self.1, var),
-        }
-    }
-}
-
 pub struct InsPrinter<'a>(pub &'a Ins);
 
 impl<'a> std::fmt::Display for InsPrinter<'a> {

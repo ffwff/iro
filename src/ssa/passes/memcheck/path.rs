@@ -37,15 +37,61 @@ impl Directory {
 
 #[derive(Debug, Clone)]
 pub enum MemoryState {
+    None,
     PartiallyMoved(Directory),
     FullyMoved(SpanIndex),
+    FullyBorrowed(HashMap<Variable, SpanIndex>),
+    FullyBorrowedMut(SpanIndex),
+}
+
+#[derive(Debug, Clone)]
+pub enum LastUsed {
+    One(SpanIndex),
+    Many(Vec<SpanIndex>),
 }
 
 impl MemoryState {
-    pub fn last_used(&self) -> SpanIndex {
+    pub fn as_opt(self) -> Option<Self> {
         match self {
-            MemoryState::PartiallyMoved(dict) => dict.last_used,
-            MemoryState::FullyMoved(last_used) => *last_used,
+            MemoryState::None => None,
+            _ => Some(self),
+        }
+    }
+
+    pub fn as_opt_ref(&self) -> Option<&Self> {
+        match self {
+            MemoryState::None => None,
+            _ => Some(self),
+        }
+    }
+
+    pub fn as_opt_mut(&mut self) -> Option<&mut Self> {
+        match self {
+            MemoryState::None => None,
+            _ => Some(self),
+        }
+    }
+
+    pub fn last_used(&self) -> LastUsed {
+        match self {
+            MemoryState::None => unreachable!(),
+            MemoryState::PartiallyMoved(dict) => LastUsed::One(dict.last_used),
+            MemoryState::FullyMoved(last_used) => LastUsed::One(*last_used),
+            MemoryState::FullyBorrowed(map) => LastUsed::Many(map.values().cloned().collect()),
+            MemoryState::FullyBorrowedMut(last_used) => LastUsed::One(*last_used),
+        }
+    }
+
+    pub fn unborrow(mut self, borrower: Variable) -> Self {
+        if let MemoryState::FullyBorrowed(mut map) = self {
+            map.remove(&borrower).expect("invalid unborrow");
+            if map.is_empty() {
+                MemoryState::None
+            } else {
+                MemoryState::FullyBorrowed(map)
+            }
+        } else {
+            panic!("called on a non fully-borrowed mem state");
         }
     }
 }

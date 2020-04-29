@@ -188,15 +188,30 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
             let old_len = block.ins.len();
             let old_ins = std::mem::replace(&mut block.ins, Vec::with_capacity(old_len));
 
+            // Mapping of a variable which has been lifetime-extended
+            // to a borrowing of that variable
+            let mut lifetime_extension_mapping = btreemap![];
+
             // Calculate the usage for each dead var
             let mut dead_var_usage = btreemap![];
             for &var in &dead_vars {
                 dead_var_usage.insert(var, 0);
             }
             for ins in &old_ins {
-                if let Some(var) = ins.retvar() {
-                    if let Some(usage) = dead_var_usage.get_mut(&var) {
+                if let Some(retvar) = ins.retvar() {
+                    if let Some(usage) = dead_var_usage.get_mut(&retvar) {
                         *usage += 1;
+                    }
+                    if ins.each_borrowed_var(|var| {
+                        if dead_vars.contains(&var) {
+                            lifetime_extension_mapping.insert(var, retvar);
+                        } else {
+                            unimplemented!()
+                            // dead_vars.remove(&var);
+                            // lifetime_extension_mapping.remove(&retvar);
+                        }
+                    }) {
+                        continue;
                     }
                 }
                 if !ins.each_moved_var(|var| {
@@ -215,6 +230,19 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 dead_var_usage.remove(&var);
             });
 
+            dbg_println!(
+                "lifetime_extension_mapping: {:?}",
+                lifetime_extension_mapping
+            );
+            // Lifetime-extended variables are manually dropped by maybe_insert_drop
+            for (&var, _) in &lifetime_extension_mapping {
+                dead_var_usage.remove(&var);
+            }
+            let lifetime_extension_mapping_inv = lifetime_extension_mapping
+                .into_iter()
+                .map(|(x, y)| (y, x))
+                .collect::<BTreeMap<Variable, Variable>>();
+
             // Remove all vars with zero count first
             for var in &dead_vars {
                 if let Some(usage) = dead_var_usage.get(var).cloned() {
@@ -225,28 +253,44 @@ pub fn drop_insertion(context: &mut Context) -> Flow {
                 }
             }
 
+            fn maybe_insert_drop(
+                var: Variable,
+                dead_var_usage: &mut BTreeMap<Variable, i32>,
+                lifetime_extension_mapping_inv: &BTreeMap<Variable, Variable>,
+                block: &mut Block,
+            ) {
+                if let Some(usage) = dead_var_usage.get_mut(&var) {
+                    *usage -= 1;
+                    if *usage == 0 {
+                        dead_var_usage.remove(&var);
+                        block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
+                        if let Some(to_drop) = lifetime_extension_mapping_inv.get(&var) {
+                            block.ins.push(Ins::empty_ret(InsType::Drop(*to_drop), 0));
+                        }
+                    }
+                }
+            }
+
             // Loop through each instruction, check the variables used in it,
             // once the usage for a dead var reaches zero,
             // insert a drop instruction immediately after
             for ins in &old_ins {
                 block.ins.push(ins.clone());
                 ins.each_used_var(|var| {
-                    if let Some(usage) = dead_var_usage.get_mut(&var) {
-                        *usage -= 1;
-                        if *usage == 0 {
-                            dead_var_usage.remove(&var);
-                            block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
-                        }
-                    }
+                    maybe_insert_drop(
+                        var,
+                        &mut dead_var_usage,
+                        &lifetime_extension_mapping_inv,
+                        block,
+                    );
                 });
                 if let Some(var) = ins.retvar() {
-                    if let Some(usage) = dead_var_usage.get_mut(&var) {
-                        *usage -= 1;
-                        if *usage == 0 {
-                            dead_var_usage.remove(&var);
-                            block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
-                        }
-                    }
+                    maybe_insert_drop(
+                        var,
+                        &mut dead_var_usage,
+                        &lifetime_extension_mapping_inv,
+                        block,
+                    );
                 }
             }
         }
