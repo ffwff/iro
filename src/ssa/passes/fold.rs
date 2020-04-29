@@ -66,7 +66,7 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                         register: left,
                         constant: k.to_const().unwrap(),
                         op: op_const,
-                        reg_left: false,
+                        reg_left: true,
                     };
                 }
                 (Some(k), None) => {
@@ -74,7 +74,7 @@ pub fn fold_constants(context: &mut Context) -> Flow {
                         register: right,
                         constant: k.to_const().unwrap(),
                         op: op_const,
-                        reg_left: true,
+                        reg_left: false,
                     };
                 }
                 (Some(kleft), Some(kright)) => {
