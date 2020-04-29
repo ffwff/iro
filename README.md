@@ -1,6 +1,6 @@
 # イロハ
 
-iroha is a programming language aiming to be:
+*iroha* is a programming language aiming to be:
 
   * **safe:** iroha implements various safety mechanisms inspired by Rust, including a borrow checker and uniqueness types
   * **simple to type:** iroha follows the off-side rule, blocks may be delimited by indents and dedents
