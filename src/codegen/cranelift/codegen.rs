@@ -155,12 +155,9 @@ where
         typed: &isa::Type,
     ) -> Option<Rc<StructData>> {
         match typed {
-            isa::Type::Struct(struct_data) => {
-                Some(self.build_struct_data_for_struct(program, &struct_data))
-            }
-            isa::Type::Slice(slice_data) => {
-                Some(self.build_struct_data_for_slice(program, &slice_data))
-            }
+            isa::Type::Struct(data) => Some(self.build_struct_data_for_struct(program, &data)),
+            isa::Type::Slice(data) => Some(self.build_struct_data_for_slice(program, &data)),
+            isa::Type::Union(data) => Some(self.build_struct_data_for_union(program, &data)),
             maybe_ptr if maybe_ptr.is_fat_pointer() => program
                 .builtins
                 .generic_fat_pointer_struct
@@ -199,6 +196,9 @@ where
         program: &isa::Program,
         typed: &isa::SliceType,
     ) -> Rc<StructData> {
+        if let Some(data) = typed.data.borrow() {
+            return data.clone();
+        }
         let mut data = StructData::new();
         if let Some(field) = self.type_to_struct_field_type(program, &typed.typed) {
             data.append_array(field, typed.len.unwrap());
@@ -208,6 +208,29 @@ where
             unimplemented!()
         }
         let rc = Rc::new(data);
+        typed.data.replace(rc.clone());
+        rc
+    }
+
+    fn build_struct_data_for_union(
+        &self,
+        program: &isa::Program,
+        typed: &isa::UnionType,
+    ) -> Rc<StructData> {
+        if let Some(data) = typed.data.borrow() {
+            return data.clone();
+        }
+        let mut builder = UnionBuilder::new();
+        for field_typed in typed.types() {
+            if let Some(field_typed) = self.type_to_struct_field_type(program, &field_typed) {
+                builder.insert_typed(field_typed);
+            } else if let Some(substruct) = self.get_struct_data(program, &field_typed) {
+                builder.insert_struct(substruct);
+            } else {
+                unimplemented!()
+            }
+        }
+        let rc = Rc::new(builder.into_struct_data());
         typed.data.replace(rc.clone());
         rc
     }
@@ -478,6 +501,7 @@ where
         builder: &mut FunctionBuilder,
         ins_context: &InsContext,
     ) {
+        dbg_println!("codegen: {}", ins.print());
         let context = ins_context.context;
         match &ins.typed {
             isa::InsType::MarkMoved(_) => (),
@@ -510,11 +534,36 @@ where
                 builder.def_var(to_var(retvar), tmp);
             }
             isa::InsType::Store { source, dest } => {
-                let src_var = builder.use_var(to_var(*source));
-                let dest_var = builder.use_var(to_var(*dest));
-                builder
-                    .ins()
-                    .store(MemFlags::trusted(), src_var, dest_var, 0);
+                let dest_typed = context.variable(*dest);
+                let source_typed = context.variable(*source);
+                if let Some(union_type) = dest_typed.as_union() {
+                    let struct_data =
+                        self.build_struct_data_for_union(&ins_context.program, &union_type);
+                    if let Some(idx) = union_type.index(&source_typed) {
+                        // FIXME: check discriminant type
+                        let field = &struct_data.fields()[idx + 1];
+                        if self.ir_to_cranelift_type(&source_typed).is_some() {
+                            let src_var = builder.use_var(to_var(*source));
+                            let dest_var = builder.use_var(to_var(*dest));
+                            builder.ins().store(
+                                MemFlags::trusted(),
+                                src_var,
+                                dest_var,
+                                field.offset as i32,
+                            );
+                        } else {
+                            unimplemented!()
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    let src_var = builder.use_var(to_var(*source));
+                    let dest_var = builder.use_var(to_var(*dest));
+                    builder
+                        .ins()
+                        .store(MemFlags::trusted(), src_var, dest_var, 0);
+                }
             }
             isa::InsType::Borrow { var, .. } => {
                 let tmp = builder.use_var(to_var(*var));
@@ -522,7 +571,12 @@ where
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
             isa::InsType::LoadArg(arg) => {
-                if let Some((slot, struct_ins)) = ins_context.stack_loads_ins.get(arg) {
+                let arg = if ins_context.struct_return.is_some() {
+                    *arg + 1
+                } else {
+                    *arg
+                };
+                if let Some((slot, struct_ins)) = ins_context.stack_loads_ins.get(&arg) {
                     for (offset, value) in struct_ins {
                         builder.ins().stack_store(*value, *slot, *offset);
                     }
@@ -531,7 +585,7 @@ where
                     builder.declare_var(to_var(retvar), self.pointer_type());
                     builder.def_var(to_var(retvar), pointer);
                 } else {
-                    let tmp = builder.block_params(bblock)[*arg];
+                    let tmp = builder.block_params(bblock)[arg];
                     builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                 }
             }
@@ -823,7 +877,7 @@ where
                 op,
                 reg_left,
             } => {
-                if !*reg_left && constant.as_int().is_some() {
+                if *reg_left && constant.as_int().is_some() {
                     let var = builder.use_var(to_var(*register));
                     let int = constant.as_int().unwrap();
                     let tmp = match op {
@@ -952,13 +1006,13 @@ where
                 }
             }
             isa::InsType::Cast { var, typed } => {
-                let tmp = match (context.variable(*var), typed) {
+                match (context.variable(*var), typed) {
                     (left, right) if left.is_int_repr() && right.is_int_repr() => {
                         let left_typed = self.ir_to_cranelift_type(left).unwrap();
                         let right_typed = self.ir_to_cranelift_type(right).unwrap();
                         let (left_size, right_size) = (left_typed.bits(), right_typed.bits());
                         let var = builder.use_var(to_var(*var));
-                        if left_size < right_size {
+                        let tmp = if left_size < right_size {
                             builder
                                 .ins()
                                 .sextend(self.ir_to_cranelift_type(&right).unwrap(), var)
@@ -968,11 +1022,35 @@ where
                                 .ireduce(self.ir_to_cranelift_type(&right).unwrap(), var)
                         } else {
                             var
+                        };
+                        builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                    }
+                    (left, right) if left.is_union() => {
+                        let retvar = ins.retvar().unwrap();
+                        let left_var = builder.use_var(to_var(*var));
+                        let union_type = left.as_union().unwrap();
+                        let struct_data =
+                            self.build_struct_data_for_union(&ins_context.program, &union_type);
+                        if let Some(idx) = union_type.index(&right) {
+                            // FIXME: check discriminant type
+                            let field = &struct_data.fields()[idx + 1];
+                            if let Some(prim) = self.ir_to_cranelift_type(&right) {
+                                let tmp = builder.ins().load(
+                                    prim,
+                                    MemFlags::trusted(),
+                                    left_var,
+                                    field.offset as i32,
+                                );
+                                builder.def_var(to_var(retvar), tmp);
+                            } else {
+                                unimplemented!()
+                            }
+                        } else {
+                            unreachable!()
                         }
                     }
                     _ => unreachable!(),
-                };
-                builder.def_var(to_var(ins.retvar().unwrap()), tmp);
+                }
             }
             _ => unimplemented!("{}", ins.print()),
         }

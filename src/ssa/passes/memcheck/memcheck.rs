@@ -17,7 +17,7 @@ pub fn check(context: &mut Context) -> Flow {
         for ins in &block.ins {
             match &ins.typed {
                 InsType::Drop(var) => {
-                    if let Some(sub_path) = mem_state
+                    if let Some(state) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
                         .map(|x| x.as_opt())
                         .flatten()
@@ -26,7 +26,7 @@ pub fn check(context: &mut Context) -> Flow {
                             position: ins.source_location(),
                             var: Variable::from(*var),
                             typed: MemoryErrorType::Move,
-                            last_used: sub_path.last_used(),
+                            last_used: state.last_used(),
                         });
                     }
                     if let Some(drop_effect) = drops.remove(var) {
@@ -47,7 +47,7 @@ pub fn check(context: &mut Context) -> Flow {
                     }
                 }
                 InsType::Copy(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
-                    if let Some(sub_path) = mem_state
+                    if let Some(state) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
                         .map(|x| x.as_opt())
                         .flatten()
@@ -56,7 +56,7 @@ pub fn check(context: &mut Context) -> Flow {
                             position: ins.source_location(),
                             var: Variable::from(*var),
                             typed: MemoryErrorType::Move,
-                            last_used: sub_path.last_used(),
+                            last_used: state.last_used(),
                         });
                     }
                     match ins.typed {
@@ -172,13 +172,16 @@ pub fn check(context: &mut Context) -> Flow {
                                     ]),
                                 );
                             }
-                            drops.insert(retvar, DropEffect::UnbindBorrowed {
-                                borrower: retvar,
-                                target: *var
-                            });
+                            drops.insert(
+                                retvar,
+                                DropEffect::UnbindBorrowed {
+                                    borrower: retvar,
+                                    target: *var,
+                                },
+                            );
                         }
                         BorrowModifier::Mutable => {
-                            if let Some(sub_path) = mem_state
+                            if let Some(state) = mem_state
                                 .insert(*var, MemoryState::FullyBorrowedMut(ins.source_location()))
                                 .map(|x| x.as_opt())
                                 .flatten()
@@ -187,13 +190,16 @@ pub fn check(context: &mut Context) -> Flow {
                                     position: ins.source_location(),
                                     var: Variable::from(*var),
                                     typed: MemoryErrorType::Borrow,
-                                    last_used: sub_path.last_used(),
+                                    last_used: state.last_used(),
                                 });
                             }
-                            drops.insert(retvar, DropEffect::UnbindBorrowedMut {
-                                borrower: retvar,
-                                target: *var
-                            });
+                            drops.insert(
+                                retvar,
+                                DropEffect::UnbindBorrowedMut {
+                                    borrower: retvar,
+                                    target: *var,
+                                },
+                            );
                         }
                     }
                 }
@@ -239,9 +245,7 @@ pub fn check(context: &mut Context) -> Flow {
                     if let Some(old_state) = overlay_move_set.get_or_clone(key) {
                         match (old_state, new_state) {
                             (MemoryState::None, new_state) => {
-                                overlay_move_set
-                                    .map_mut()
-                                    .insert(key, new_state);
+                                overlay_move_set.map_mut().insert(key, new_state);
                             }
                             (
                                 MemoryState::PartiallyMoved(old_dir),

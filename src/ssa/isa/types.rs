@@ -23,19 +23,22 @@ pub enum Type {
     Pointer(Rc<PointerType>),
     Struct(UniqueRc<StructType>),
     Slice(Rc<SliceType>),
-    Union(Rc<BTreeSet<Type>>),
+    Union(Rc<UnionType>),
     NeverUsed,
 }
 
 impl Type {
+    #[inline]
     pub fn pointer(self, tag: BorrowModifier) -> Self {
         Type::Pointer(Rc::new(PointerType::new(self, tag)))
     }
 
+    #[inline]
     pub fn slice(self, len: u32) -> Self {
         Type::Slice(Rc::new(SliceType::new(self, Some(len))))
     }
 
+    #[inline]
     pub fn dyn_slice(self) -> Self {
         Type::Slice(Rc::new(SliceType::new(self, None)))
     }
@@ -45,24 +48,14 @@ impl Type {
             (left, right) if left == right => left.clone(),
             (Type::NoReturn, right) => right.clone(),
             (left, Type::NoReturn) => left.clone(),
-            (Type::Union(set_left), Type::Union(set_right)) => Type::Union(Rc::new({
-                let lset: &BTreeSet<Type> = set_left.borrow();
-                let rset: &BTreeSet<Type> = set_right.borrow();
-                lset & rset
-            })),
-            (Type::Union(set), right) => Type::Union(Rc::new({
-                let bbset: &BTreeSet<Type> = set.borrow();
-                let mut bset = bbset.clone();
-                bset.insert(right.clone());
-                bset
-            })),
-            (left, Type::Union(set)) => Type::Union(Rc::new({
-                let bbset: &BTreeSet<Type> = set.borrow();
-                let mut bset = bbset.clone();
-                bset.insert(left.clone());
-                bset
-            })),
-            (left, right) => Type::Union(Rc::new(btreeset! { left.clone(), right.clone() })),
+            (Type::Union(set_left), Type::Union(set_right)) => {
+                Type::Union(Rc::new(set_left.unify(set_right)))
+            }
+            (Type::Union(set), right) => Type::Union(Rc::new(set.unify_single(right.clone()))),
+            (left, Type::Union(set)) => Type::Union(Rc::new(set.unify_single(left.clone()))),
+            (left, right) => {
+                Type::Union(Rc::new(UnionType::from_types(left.clone(), right.clone())))
+            }
         }
     }
 
@@ -90,17 +83,19 @@ impl Type {
         }
     }
 
+    #[inline]
     pub fn is_nil(&self) -> bool {
         match self {
             Type::Nil => true,
             Type::Union(set) => {
-                let bbset: &BTreeSet<Type> = set.borrow();
-                bbset.contains(&Type::Nil)
+                let union_type: &UnionType = set.borrow();
+                union_type.types.contains(&Type::Nil)
             }
             _ => false,
         }
     }
 
+    #[inline]
     pub fn is_int(&self) -> bool {
         match self {
             Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => true,
@@ -108,6 +103,7 @@ impl Type {
         }
     }
 
+    #[inline]
     pub fn is_int_repr(&self) -> bool {
         match self {
             Type::Pointer(_) if !self.is_fat_pointer() => true,
@@ -115,6 +111,7 @@ impl Type {
         }
     }
 
+    #[inline]
     pub fn is_fat_pointer(&self) -> bool {
         match self {
             Type::Pointer(ptr_typed) => match &ptr_typed.typed {
@@ -125,20 +122,33 @@ impl Type {
         }
     }
 
+    #[inline]
     pub fn is_primitive(&self) -> bool {
         match self {
-            Type::Nil => true,
-            Type::Bool => true,
-            Type::I8 => true,
-            Type::I16 => true,
-            Type::I32 => true,
-            Type::I64 => true,
-            Type::ISize => true,
-            Type::F64 => true,
+            Type::Nil
+            | Type::Bool
+            | Type::I8
+            | Type::I16
+            | Type::I32
+            | Type::I64
+            | Type::ISize
+            | Type::F64 => true,
             _ => false,
         }
     }
 
+    #[inline]
+    pub fn is_memory_type(&self) -> bool {
+        match self {
+            Type::Pointer(_) => self.is_fat_pointer(),
+            Type::Struct(_) => true,
+            Type::Slice(_) => true,
+            Type::Union(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_value_type(&self) -> bool {
         match self {
             Type::Pointer(_) => false,
@@ -146,13 +156,33 @@ impl Type {
         }
     }
 
-    pub fn as_union(&self) -> Option<Rc<BTreeSet<Type>>> {
+    #[inline]
+    pub fn is_union(&self) -> bool {
+        match self {
+            Type::Union(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_copyable(&self) -> bool {
+        match self {
+            Type::Struct(_) => false,
+            Type::Union(_) => false,
+            Type::Slice(x) => x.typed.is_copyable(),
+            _ => true,
+        }
+    }
+
+    #[inline]
+    pub fn as_union(&self) -> Option<Rc<UnionType>> {
         match self {
             Type::Union(set) => Some(set.clone()),
             _ => None,
         }
     }
 
+    #[inline]
     pub fn as_struct(&self) -> Option<UniqueRc<StructType>> {
         match self {
             Type::Struct(struct_typed) => Some(struct_typed.clone()),
@@ -160,6 +190,7 @@ impl Type {
         }
     }
 
+    #[inline]
     pub fn as_slice(&self) -> Option<Rc<SliceType>> {
         match self {
             Type::Slice(slice) => Some(slice.clone()),
@@ -167,6 +198,7 @@ impl Type {
         }
     }
 
+    #[inline]
     pub fn instance_type(&self) -> Option<&Type> {
         match self {
             Type::Pointer(ptr_typed) => {
@@ -200,15 +232,8 @@ impl std::fmt::Display for Type {
             Type::Pointer(ptr_typed) => write!(f, "&{}", ptr_typed.typed),
             Type::F64 => write!(f, "F64"),
             Type::Struct(struct_typed) => write!(f, "{}", struct_typed),
-            Type::Slice(slice_rc) => {
-                let slice: &SliceType = slice_rc.borrow();
-                if let Some(length) = slice.len.clone() {
-                    write!(f, "[{}; {}]", slice.typed, length)
-                } else {
-                    write!(f, "[{}]", slice.typed)
-                }
-            }
-            Type::Union(_) => write!(f, "(union)"),
+            Type::Slice(slice) => write!(f, "{}", slice),
+            Type::Union(union) => write!(f, "{}", union),
             Type::NeverUsed => write!(f, "(never used)"),
         }
     }
@@ -303,6 +328,16 @@ impl Ord for SliceType {
     }
 }
 
+impl std::fmt::Display for SliceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(length) = self.len {
+            write!(f, "[{}; {}]", self.typed, length)
+        } else {
+            write!(f, "[{}]", self.typed)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct PointerType {
     pub typed: Type,
@@ -312,5 +347,84 @@ pub struct PointerType {
 impl PointerType {
     pub fn new(typed: Type, tag: BorrowModifier) -> Self {
         Self { typed, tag }
+    }
+}
+
+#[derive(Derivative, Debug, Clone)]
+#[derivative(PartialOrd, PartialEq, Eq, Hash)]
+pub struct UnionType {
+    /// A list of types in the union, it MUST be sorted
+    types: Vec<Type>,
+    #[derivative(PartialOrd = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
+    pub data: OptCell<Rc<StructData>>,
+}
+
+impl UnionType {
+    pub fn types(&self) -> &Vec<Type> {
+        &self.types
+    }
+
+    pub fn index(&self, typed: &Type) -> Option<usize> {
+        if let Ok(idx) = self.types.binary_search(typed) {
+            Some(idx)
+        } else {
+            None
+        }
+    }
+
+    pub fn from_types(left: Type, right: Type) -> Self {
+        UnionType {
+            types: if left < right {
+                vec![left, right]
+            } else {
+                vec![right, left]
+            },
+            data: OptCell::none(),
+        }
+    }
+
+    pub fn unify(&self, other: &UnionType) -> Self {
+        let mut cloned = self.clone();
+        cloned
+            .types
+            .extend(other.types.iter().map(|typed| typed.clone()));
+        cloned.types.sort_unstable();
+        cloned.types.dedup();
+        cloned
+    }
+
+    pub fn unify_single(&self, typed: Type) -> Self {
+        let mut cloned = self.clone();
+        if let Err(idx) = cloned.types.binary_search(&typed) {
+            cloned.types.insert(idx, typed);
+        }
+        cloned
+    }
+}
+
+impl Ord for UnionType {
+    fn cmp(&self, other: &UnionType) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl std::fmt::Display for UnionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "({})",
+            self.types
+                .iter()
+                .map(|typed| {
+                    use std::fmt::Write;
+                    let mut x = String::new();
+                    write!(&mut x, "{}", typed).unwrap();
+                    x
+                })
+                .collect::<Vec<String>>()
+                .join(" | ")
+        )
     }
 }

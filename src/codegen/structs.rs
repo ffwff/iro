@@ -1,5 +1,6 @@
 use crate::utils::optcell::OptCell;
 use std::cell::Ref;
+use std::cmp::max;
 use std::rc::Rc;
 
 fn align(value: u32, to: u32) -> u32 {
@@ -65,29 +66,16 @@ impl StructData {
     }
 
     pub fn append_typed(&mut self, typed: StructFieldType) {
-        let size_of = typed.size_of();
-        self.size_of = align(self.size_of, size_of);
-        self.fields.push(StructField {
-            offset: self.size_of,
-            multiplier: 1,
-            typed,
-        });
-        self.size_of += size_of;
+        self.append_array(typed, 1);
     }
 
     pub fn append_struct(&mut self, data: Rc<StructData>) {
-        let size_of = data.size_of();
-        self.size_of = align(self.size_of, data.align_of());
-        self.fields.push(StructField {
-            offset: self.size_of,
-            multiplier: 1,
-            typed: StructFieldType::Struct(data),
-        });
-        self.size_of += size_of;
+        self.append_struct_array(data, 1);
     }
 
     pub fn append_array(&mut self, typed: StructFieldType, len: u32) {
         let size_of = typed.size_of();
+        self.align_of = max(self.align_of, size_of);
         self.size_of = align(self.size_of, size_of);
         self.fields.push(StructField {
             offset: self.size_of,
@@ -99,6 +87,7 @@ impl StructData {
 
     pub fn append_struct_array(&mut self, data: Rc<StructData>, len: u32) {
         let size_of = data.size_of();
+        self.align_of = max(self.align_of, size_of);
         self.size_of = align(self.size_of, data.align_of());
         self.fields.push(StructField {
             offset: self.size_of,
@@ -172,5 +161,66 @@ impl<'a> StructBuilder<'a> {
 
     pub fn into_vec(self) -> Vec<u8> {
         self.bytes
+    }
+}
+
+pub struct UnionBuilder {
+    fields: Vec<StructField>,
+    size_of: u32,
+    align_of: u32,
+}
+
+impl UnionBuilder {
+    pub fn new() -> Self {
+        Self {
+            fields: vec![],
+            size_of: 0,
+            align_of: 1,
+        }
+    }
+
+    pub fn into_struct_data(mut self) -> StructData {
+        // FIXME: we should determine the optimal integer type
+        // for our discriminant field, but i32 will suffice for now
+        let discriminant_typed = StructFieldType::I32;
+        let start_offset = max(self.align_of, discriminant_typed.size_of());
+        for field in &mut self.fields {
+            field.offset = start_offset;
+        }
+        self.fields.insert(
+            0,
+            StructField {
+                offset: 0,
+                multiplier: 1,
+                typed: discriminant_typed,
+            },
+        );
+        StructData {
+            fields: self.fields,
+            flattened_fields: OptCell::none(),
+            size_of: self.size_of + start_offset,
+            align_of: self.align_of,
+        }
+    }
+
+    pub fn insert_typed(&mut self, typed: StructFieldType) {
+        let size_of = typed.size_of();
+        self.align_of = max(self.align_of, size_of);
+        self.size_of = max(self.size_of, size_of);
+        self.fields.push(StructField {
+            offset: 0,
+            multiplier: 1,
+            typed,
+        });
+    }
+
+    pub fn insert_struct(&mut self, data: Rc<StructData>) {
+        self.align_of = max(self.align_of, data.align_of());
+        self.size_of = max(self.size_of, data.size_of());
+        self.fields.push(StructField {
+            offset: 0,
+            multiplier: 1,
+            typed: StructFieldType::Struct(data),
+        });
     }
 }

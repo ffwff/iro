@@ -44,7 +44,8 @@ where
                         .push(AbiParam::special(types::I64, ArgumentPurpose::StructReturn));
                 } else {
                     sig.returns.push(AbiParam::new(
-                        self.ir_to_cranelift_type(&return_type).unwrap(),
+                        self.ir_to_cranelift_type(&return_type)
+                            .expect("must be a primitive type"),
                     ));
                 }
             }

@@ -5,6 +5,14 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+macro_rules! sorted {
+    ($($x:expr),*) => {{
+        let mut vec = vec![$($x),*];
+        vec.sort();
+        vec
+    }};
+}
+
 #[cfg(test)]
 #[test]
 fn if_expr() {
@@ -110,8 +118,8 @@ fn if_expr_unify() {
         })
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
-    let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::I64]);
+    let set: &Vec<Type> = set_rc.types();
+    assert_eq!(set, &sorted![Type::I32, Type::I64]);
 }
 
 #[test]
@@ -135,8 +143,8 @@ fn if_expr_unify_true_branch() {
         })
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
-    let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::Nil]);
+    let set: &Vec<Type> = set_rc.types();
+    assert_eq!(set, &sorted![Type::I32, Type::Nil]);
 }
 
 #[test]
@@ -162,8 +170,8 @@ fn if_expr_unify_false_branch() {
         })
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
-    let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::Nil]);
+    let set: &Vec<Type> = set_rc.types();
+    assert_eq!(set, &sorted![Type::I32, Type::Nil]);
 }
 
 #[test]
@@ -232,8 +240,8 @@ fn if_expr_true_branch_return() {
         })
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
-    let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
+    let set: &Vec<Type> = set_rc.types();
+    assert_eq!(set, &sorted![Type::I32, Type::Bool]);
 }
 
 #[test]
@@ -258,8 +266,8 @@ fn if_expr_false_branch_return() {
         })
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
-    let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
+    let set: &Vec<Type> = set_rc.types();
+    assert_eq!(set, &sorted![Type::I32, Type::Bool]);
 }
 
 #[test]

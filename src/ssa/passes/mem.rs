@@ -38,11 +38,16 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                 let retvar = ins.retvar();
                 block.ins.push(ins);
                 if let Some(retvar) = retvar {
+                    let copyable = context.variables[usize::from(retvar)].is_copyable();
                     if let Some(new_vars) = replacements.remove(&retvar) {
                         for new_var in new_vars {
                             replacement_body.push(Ins::new(
                                 new_var,
-                                InsType::Move(retvar),
+                                if copyable {
+                                    InsType::Copy(retvar)
+                                } else {
+                                    InsType::Move(retvar)
+                                },
                                 source_location,
                             ));
                             block.vars_phi.insert(new_var);
@@ -254,18 +259,10 @@ pub fn reference_drop_insertion(context: &mut Context) -> Flow {
             for ins in &old_ins {
                 block.ins.push(ins.clone());
                 ins.each_used_var(|var| {
-                    maybe_insert_drop(
-                        var,
-                        &mut dead_var_usage,
-                        block,
-                    );
+                    maybe_insert_drop(var, &mut dead_var_usage, block);
                 });
                 if let Some(var) = ins.retvar() {
-                    maybe_insert_drop(
-                        var,
-                        &mut dead_var_usage,
-                        block,
-                    );
+                    maybe_insert_drop(var, &mut dead_var_usage, block);
                 }
             }
         }
@@ -277,8 +274,9 @@ pub fn reference_drop_insertion(context: &mut Context) -> Flow {
 pub fn register_to_memory(context: &mut Context) -> Flow {
     dbg_println!("before r2m: {}", context.print());
 
+    // Turn primitive variables with borrows into memory registers
     let mut borrowed_vars: BTreeSet<Variable> = BTreeSet::new();
-    for (idx, block) in context.blocks.iter_mut().enumerate() {
+    for block in context.blocks.iter_mut() {
         for ins in &block.ins {
             match &ins.typed {
                 InsType::Borrow { var, .. } => {
@@ -343,7 +341,7 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
                             declared = true;
                         }
 
-                        // Map the following SSA instruction
+                        // Transform the following SSA instruction
                         //   v0 = ...
                         // into
                         //   v? = ...

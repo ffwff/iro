@@ -41,7 +41,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             InsType::LoadArg(arg) => write!(f, "load_arg {}", arg),
             InsType::LoadI32(n) => write!(f, "load.I32 {}", n),
             InsType::LoadI64(n) => write!(f, "load.I64 {}", n),
-            InsType::LoadF64(n) => write!(f, "load.F64 {}", n),
+            InsType::LoadF64(n) => write!(f, "load.F64 {}", f64::from_bits(*n)),
             InsType::LoadBool(n) => write!(f, "load.Bool {}", n),
             InsType::LoadSubstring(n) => write!(f, "load.Substring {:?}", n),
             InsType::LoadSlice(n) => write!(f, "load.slice {:?}", n),
@@ -151,7 +151,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                 if *reg_left {
                     write!(f, "v{} {} {}", register, op_str, ConstPrinter(constant))
                 } else {
-                    write!(f, "{} {} v{}", ConstPrinter(constant), register, op_str)
+                    write!(f, "{} {} v{}", ConstPrinter(constant), op_str, register)
                 }
             }
             InsType::Cast { var, typed } => write!(f, "cast.{} v{}", typed, var),

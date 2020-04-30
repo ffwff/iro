@@ -5,6 +5,14 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
+macro_rules! sorted {
+    ($($x:expr),*) => {{
+        let mut vec = vec![$($x),*];
+        vec.sort();
+        vec
+    }};
+}
+
 #[cfg(test)]
 #[test]
 fn while_loop() {
@@ -270,8 +278,8 @@ fn while_expr_body_return() {
         })
         .expect("f(I32) exists");
     let set_rc = function.rettype.as_union().unwrap();
-    let set: &BTreeSet<Type> = &set_rc;
-    assert_eq!(set, &btreeset![Type::I32, Type::Bool]);
+    let set: &Vec<Type> = set_rc.types();
+    assert_eq!(set, &sorted![Type::I32, Type::Bool]);
 }
 
 #[test]

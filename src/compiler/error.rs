@@ -11,6 +11,7 @@ pub enum MemoryErrorType {
     Borrow,
 }
 
+#[derive(Debug)]
 pub enum Code {
     InvalidToken,
     UnrecognizedEOF {
@@ -137,37 +138,36 @@ impl Error {
 
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.error)
+        write!(f, "{:?}", self.error)
     }
 }
 
 type LalrParseError = lalrpop_util::ParseError<usize, lexer::Tok, Error>;
 impl From<LalrParseError> for Error {
     fn from(error: LalrParseError) -> Error {
-        unimplemented!()
-        /* match error {
+        match error {
             LalrParseError::InvalidToken { location } => Error {
                 error: Code::InvalidToken,
-                span: (location, location),
+                span: Some(SourceSpan::from_tuple((location, location))),
             },
             LalrParseError::UnrecognizedEOF { location, expected } => Error {
                 error: Code::UnrecognizedEOF { expected },
-                span: (location, location),
+                span: Some(SourceSpan::from_tuple((location, location))),
             },
             LalrParseError::UnrecognizedToken {
                 token: (start, token, end),
                 expected,
             } => Error {
                 error: Code::UnrecognizedToken { token, expected },
-                span: (start, end),
+                span: Some(SourceSpan::from_tuple((start, end))),
             },
             LalrParseError::ExtraToken {
                 token: (start, token, end),
             } => Error {
                 error: Code::ExtraToken(token),
-                span: (start, end),
+                span: Some(SourceSpan::from_tuple((start, end))),
             },
             LalrParseError::User { error } => error,
-        }*/
+        }
     }
 }
