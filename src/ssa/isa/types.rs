@@ -4,9 +4,9 @@ use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 extern crate derivative;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -249,7 +249,7 @@ pub struct StructField {
 #[derive(Debug, Clone)]
 pub struct StructType {
     name: Rc<str>,
-    vars: HashMap<Rc<str>, StructField>,
+    vars: FnvHashMap<Rc<str>, StructField>,
     fields: Vec<StructField>,
     pub data: OptCell<Rc<StructData>>,
 }
@@ -258,7 +258,7 @@ impl StructType {
     pub fn new(name: Rc<str>) -> Self {
         StructType {
             name,
-            vars: HashMap::new(),
+            vars: FnvHashMap::default(),
             fields: vec![],
             data: OptCell::none(),
         }
@@ -268,7 +268,7 @@ impl StructType {
         &self.name
     }
 
-    pub fn vars(&self) -> &HashMap<Rc<str>, StructField> {
+    pub fn vars(&self) -> &FnvHashMap<Rc<str>, StructField> {
         &self.vars
     }
 

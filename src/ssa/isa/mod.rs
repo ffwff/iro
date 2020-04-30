@@ -1,9 +1,10 @@
 use crate::utils::uniquerc::UniqueRc;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::convert::TryInto;
 use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 
 mod types;
 pub use types::*;
@@ -289,7 +290,10 @@ impl Ins {
         if let Some(left) = self.memref_store_left_mut() {
             *left = swap(*left);
         }
-        take_mut::take(&mut self.typed, |typed| match typed {
+
+        // A safe optimization to replace self.typed
+        let old_typed = std::mem::replace(&mut self.typed, InsType::Jmp(0));
+        let new_typed = match old_typed {
             InsType::Move(x) => InsType::Move(swap(x)),
             InsType::MarkMoved(x) => InsType::MarkMoved(swap(x)),
             InsType::Drop(x) => InsType::Drop(swap(x)),
@@ -362,7 +366,8 @@ impl Ins {
                 typed,
             },
             other => other,
-        });
+        };
+        self.typed = new_typed;
     }
 
     pub fn rename_var(&mut self, oldvar: Variable, newvar: Variable) {
@@ -899,12 +904,12 @@ impl ToString for FunctionName {
 }
 
 pub struct Builtins {
-    pub structs: HashMap<Rc<str>, UniqueRc<StructType>>,
+    pub structs: FnvHashMap<Rc<str>, UniqueRc<StructType>>,
     pub generic_fat_pointer_struct: Rc<StructType>,
 }
 
 pub struct Program {
-    pub contexts: HashMap<Rc<FunctionName>, Context>,
+    pub contexts: FnvHashMap<Rc<FunctionName>, Context>,
     pub entry: Rc<FunctionName>,
     pub builtins: Builtins,
 }

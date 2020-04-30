@@ -22,6 +22,9 @@ extern crate target_lexicon;
 #[macro_use]
 extern crate derivative;
 extern crate codespan_reporting;
+extern crate fnv;
+#[macro_use]
+extern crate smallvec;
 
 #[macro_use]
 pub mod utils;

@@ -3,6 +3,10 @@ use crate::ssa::isa::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn eliminate_phi(context: &mut Context) -> Flow {
+    if context.blocks.len() < 2 {
+        return Flow::Continue;
+    }
+
     let mut replacements: BTreeMap<Variable, Vec<Variable>> = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &block.ins {
@@ -98,6 +102,10 @@ pub fn calculate_block_variable_declaration(context: &mut Context) -> Flow {
 }
 
 pub fn calculate_data_flow(context: &mut Context) -> Flow {
+    if context.blocks.len() < 2 {
+        return Flow::Continue;
+    }
+
     fn walk(
         block_idx: usize,
         context: &mut Context,

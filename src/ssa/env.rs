@@ -1,7 +1,7 @@
 use crate::ssa::isa;
 use crate::ssa::isa::InsPosition;
-use std::collections::HashMap;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Variable {
@@ -12,7 +12,7 @@ pub struct Variable {
 #[derive(Debug)]
 pub struct Env {
     /// Table of variable identifiers to variable numbers
-    vars: HashMap<Rc<str>, Variable>,
+    vars: FnvHashMap<Rc<str>, Variable>,
     /// Indices of break instructions in this environment
     pub break_idx: Option<Vec<InsPosition>>,
     /// Stack of variables inserted, from mostly recently inserted
@@ -22,7 +22,7 @@ pub struct Env {
 impl Env {
     pub fn new() -> Self {
         Env {
-            vars: HashMap::new(),
+            vars: FnvHashMap::default(),
             break_idx: None,
             var_stack: vec![],
         }
@@ -30,7 +30,7 @@ impl Env {
 
     pub fn new_breakable() -> Self {
         Env {
-            vars: HashMap::new(),
+            vars: FnvHashMap::default(),
             break_idx: Some(Vec::new()),
             var_stack: vec![],
         }

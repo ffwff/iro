@@ -4,6 +4,7 @@ use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::drop_effect::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
+use fnv::FnvHashMap;
 
 pub fn check(context: &mut Context) -> Flow {
     fn walk(
@@ -13,7 +14,7 @@ pub fn check(context: &mut Context) -> Flow {
         previous_mem_state: Option<&Paths>,
         drops: &mut Drops,
     ) -> Result<Paths, Code> {
-        let mut mem_state = Paths::new();
+        let mut mem_state = Paths::default();
         for ins in &block.ins {
             match &ins.typed {
                 InsType::Drop(var) => {
@@ -39,7 +40,10 @@ pub fn check(context: &mut Context) -> Flow {
                                 *mem_state_ref = old.unborrow(borrower);
                                 dbg_println!("  => {:?}", *mem_state_ref);
                             }
-                            DropEffect::UnbindBorrowedMut { borrower: _, target } => {
+                            DropEffect::UnbindBorrowedMut {
+                                borrower: _,
+                                target,
+                            } => {
                                 let mem_state_ref = mem_state.get_mut(&target).unwrap();
                                 *mem_state_ref = MemoryState::None;
                             }
@@ -167,9 +171,11 @@ pub fn check(context: &mut Context) -> Flow {
                             } else {
                                 mem_state.insert(
                                     *var,
-                                    MemoryState::FullyBorrowed(hashmap![
-                                        retvar => ins.source_location()
-                                    ]),
+                                    MemoryState::FullyBorrowed({
+                                        let mut hashmap = FnvHashMap::with_capacity_and_hasher(1, Default::default());
+                                        hashmap.insert(retvar, ins.source_location());
+                                        hashmap
+                                    }),
                                 );
                             }
                             drops.insert(
@@ -230,7 +236,7 @@ pub fn check(context: &mut Context) -> Flow {
         }
         // The new variable state is the sum of the current variable state and
         // all of the successor's variable state
-        let mut delta_mem_state = Paths::new();
+        let mut delta_mem_state = Paths::default();
         let mut overlay_move_set = overlay_hashmap![&mut delta_mem_state, Some(&mem_state)];
         for &succ in &block.succs {
             if succ > block_idx {
@@ -277,7 +283,7 @@ pub fn check(context: &mut Context) -> Flow {
         mem_state.extend(delta_mem_state.into_iter());
         Ok(mem_state)
     }
-    let mut drops = Drops::new();
+    let mut drops = Drops::default();
     match walk(&context.blocks[0], 0, context, None, &mut drops) {
         Ok(_) => Flow::Continue,
         Err(code) => Flow::Err(code),

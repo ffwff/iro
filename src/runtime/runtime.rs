@@ -1,18 +1,18 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::hash::Hash;
+use fnv::FnvHashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Runtime {
-    funcs: HashMap<String, GenericFunction>,
+    funcs: FnvHashMap<String, GenericFunction>,
 }
 
 impl Runtime {
     pub fn new() -> Self {
-        Runtime { funcs: hashmap![] }
+        Runtime { funcs: fnv_hashmap![] }
     }
 
-    pub fn funcs(&self) -> &HashMap<String, GenericFunction> {
+    pub fn funcs(&self) -> &FnvHashMap<String, GenericFunction> {
         &self.funcs
     }
 

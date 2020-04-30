@@ -18,3 +18,21 @@ macro_rules! dbg_println {
         }
     }};
 }
+
+#[macro_use]
+macro_rules! fnv_hashmap {
+    (@single $($x:tt)*) => (());
+    (@count $($rest:expr),*) => (<[()]>::len(&[$(fnv_hashmap!(@single $rest)),*]));
+
+    ($($key:expr => $value:expr,)+) => { fnv_hashmap!($($key => $value),+) };
+    ($($key:expr => $value:expr),*) => {
+        {
+            let _cap = fnv_hashmap!(@count $($key),*);
+            let mut _map = ::fnv::FnvHashMap::with_capacity_and_hasher(_cap, Default::default());
+            $(
+                let _ = _map.insert($key, $value);
+            )*
+            _map
+        }
+    };
+}

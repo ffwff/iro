@@ -6,6 +6,7 @@ use crate::codegen::structs::*;
 use crate::compiler;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
+
 use cranelift::prelude::*;
 use cranelift_codegen::binemit::NullTrapSink;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
@@ -21,8 +22,10 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Backend, DataContext, DataId, FuncOrDataId, Linkage, Module};
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
-use std::collections::{BTreeMap, HashMap};
+
+use std::collections::BTreeMap;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 
 macro_rules! generate_arithmetic {
     ($builder:expr, $ins:expr, $x:expr, $y:expr, $fn:tt) => {{
@@ -44,8 +47,8 @@ struct InsContext<'a> {
 /// Code generator
 pub struct Codegen<B: Backend> {
     pub(super) module: Module<B>,
-    extern_mapping: HashMap<Rc<isa::FunctionName>, String>,
-    string_mapping: HashMap<Rc<str>, DataId>,
+    extern_mapping: FnvHashMap<Rc<isa::FunctionName>, String>,
+    string_mapping: FnvHashMap<Rc<str>, DataId>,
 }
 
 impl<B> Codegen<B>
@@ -55,8 +58,8 @@ where
     pub fn from_builder(builder: B::Builder) -> Self {
         Codegen {
             module: Module::new(builder),
-            extern_mapping: HashMap::new(),
-            string_mapping: HashMap::new(),
+            extern_mapping: fnv_hashmap![],
+            string_mapping: fnv_hashmap![],
         }
     }
 

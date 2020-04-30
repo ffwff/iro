@@ -1,7 +1,7 @@
 use codespan_reporting::files::Files;
-use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use fnv::FnvHashMap;
 
 pub type FileIndex = usize;
 pub type SpanIndex = u32;
@@ -27,10 +27,10 @@ pub struct Sources {
     sources_store: Vec<String>,
     sources_name: Vec<String>,
     sources_lines_to_byte_index: Vec<Vec<usize>>,
-    sources_map: HashMap<PathBuf, FileIndex>,
+    sources_map: FnvHashMap<PathBuf, FileIndex>,
 
     index_to_span: Vec<SourceSpan>,
-    span_to_index: HashMap<SourceSpan, SpanIndex>,
+    span_to_index: FnvHashMap<SourceSpan, SpanIndex>,
 
     has_main_file: bool,
 }
@@ -41,9 +41,9 @@ impl Sources {
             sources_store: vec![],
             sources_name: vec![],
             sources_lines_to_byte_index: vec![],
-            sources_map: hashmap![],
+            sources_map: FnvHashMap::default(),
             index_to_span: vec![],
-            span_to_index: HashMap::new(),
+            span_to_index: FnvHashMap::default(),
             has_main_file: true,
         };
         if path.as_ref().is_relative() {
@@ -62,9 +62,9 @@ impl Sources {
             sources_store: vec![],
             sources_name: vec![],
             sources_lines_to_byte_index: vec![],
-            sources_map: hashmap![],
+            sources_map: FnvHashMap::default(),
             index_to_span: vec![],
-            span_to_index: HashMap::new(),
+            span_to_index: FnvHashMap::default(),
             has_main_file: false,
         }
     }

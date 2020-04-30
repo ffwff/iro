@@ -10,26 +10,26 @@ use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 
 pub struct AstTopLevelInfo {
-    pub defstmts: HashMap<Rc<str>, Vec<NodeBox>>,
-    pub class_stmts: HashMap<Rc<str>, NodeBox>,
+    pub defstmts: FnvHashMap<Rc<str>, Vec<NodeBox>>,
+    pub class_stmts: FnvHashMap<Rc<str>, NodeBox>,
 }
 
 impl AstTopLevelInfo {
     pub fn new() -> Self {
         Self {
-            defstmts: HashMap::new(),
-            class_stmts: HashMap::new(),
+            defstmts: FnvHashMap::default(),
+            class_stmts: FnvHashMap::default(),
         }
     }
 }
 
 pub struct TopLevelInfo {
-    pub func_contexts: HashMap<Rc<FunctionName>, Option<Context>>,
-    pub types: HashMap<Rc<str>, Type>,
+    pub func_contexts: FnvHashMap<Rc<FunctionName>, Option<Context>>,
+    pub types: FnvHashMap<Rc<str>, Type>,
     pub builtins: Builtins,
 }
 
@@ -39,8 +39,8 @@ impl TopLevelInfo {
         generic_fat_pointer_struct.append(Rc::from("address"), Type::ISize);
         generic_fat_pointer_struct.append(Rc::from("len"), Type::ISize);
         TopLevelInfo {
-            func_contexts: HashMap::new(),
-            types: hashmap![
+            func_contexts: fnv_hashmap![],
+            types: fnv_hashmap![
                 Rc::from("Nil") => Type::Nil,
                 Rc::from("I8") => Type::I8,
                 Rc::from("I32") => Type::I32,
@@ -50,7 +50,7 @@ impl TopLevelInfo {
                 Rc::from("Substring") => Type::I8.dyn_slice(),
             ],
             builtins: Builtins {
-                structs: hashmap![],
+                structs: fnv_hashmap![],
                 generic_fat_pointer_struct: Rc::new(generic_fat_pointer_struct),
             },
         }
@@ -580,6 +580,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 return Err(Error::InvalidReturnType.into_compiler_error(b));
             }
         }
+        self.finish_env().unwrap();
         Ok(())
     }
 

@@ -1,10 +1,11 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use bit_set::BitSet;
+use smallvec::SmallVec;
 
 pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow {
     dbg_println!("before tracing: {}", context.print());
-    let mut var_to_ins: Vec<Vec<Ins>> = vec![vec![]; context.variables.len()];
+    let mut var_to_ins: Vec<SmallVec<[Ins; 1]>> = vec![smallvec![]; context.variables.len()];
     let mut roots = vec![];
     for block in &mut context.blocks {
         for ins in &mut block.ins {
@@ -26,7 +27,7 @@ pub fn collect_garbage_vars_with_multiple_assigns(context: &mut Context) -> Flow
         }
     }
     let mut alive: BitSet = BitSet::with_capacity(context.variables.len());
-    fn trace(var: usize, var_to_ins: &Vec<Vec<Ins>>, alive: &mut BitSet) {
+    fn trace(var: usize, var_to_ins: &Vec<SmallVec<[Ins; 1]>>, alive: &mut BitSet) {
         if alive.contains(var) {
             return;
         }

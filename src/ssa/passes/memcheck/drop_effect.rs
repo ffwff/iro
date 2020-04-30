@@ -1,5 +1,5 @@
 use crate::ssa::isa::Variable;
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 
 #[derive(Clone)]
 pub enum DropEffect {
@@ -13,4 +13,4 @@ pub enum DropEffect {
     },
 }
 
-pub type Drops = HashMap<Variable, DropEffect>;
+pub type Drops = FnvHashMap<Variable, DropEffect>;

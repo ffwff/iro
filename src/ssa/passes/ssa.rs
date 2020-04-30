@@ -1,6 +1,7 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use std::collections::BTreeSet;
+use smallvec::SmallVec;
 
 pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
     let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
@@ -81,7 +82,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         }
 
         // Calculate the dominance tree
-        let mut dom_tree: Vec<Vec<usize>> = vec![vec![]; num_blocks];
+        let mut dom_tree: Vec<SmallVec<[usize; 2]>> = vec![smallvec![]; num_blocks];
         for (&idx, &dominator) in &doms {
             if idx == dominator {
                 continue;
@@ -114,10 +115,10 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         dbg_println!("---\ndom_frontier: {:#?}", dom_frontier);
         dbg_println!("---\ndefsites: {:#?}", defsites);
 
-        let mut origin: Vec<Vec<usize>> = vec![vec![]; num_blocks];
+        let mut origin: Vec<SmallVec<[Variable; 4]>> = vec![smallvec![]; num_blocks];
         for (var, defsites) in defsites.iter().enumerate() {
             for defsite in defsites {
-                origin[*defsite].push(var);
+                origin[*defsite].push(Variable::from(var));
             }
         }
 
@@ -143,7 +144,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                             ),
                         );
                         phi_inserted.insert(y);
-                        if !origin[y].contains(&var) {
+                        if !origin[y].contains(&Variable::from(var)) {
                             worklist.push(y);
                         }
                     }
@@ -159,7 +160,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
             version: &mut usize,
             version_stack: &mut Vec<usize>,
             context: &mut Context,
-            dom_tree: &Vec<Vec<usize>>,
+            dom_tree: &Vec<SmallVec<[usize; 2]>>,
         ) {
             dbg_println!("use node {}", node);
             let version_start = version_stack.last().unwrap().clone();

@@ -1,6 +1,6 @@
 use crate::compiler::sources::SpanIndex;
 use crate::ssa::isa::Variable;
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Index {
@@ -13,13 +13,13 @@ pub enum Index {
 #[derive(Debug, Clone)]
 pub struct Directory {
     pub last_used: SpanIndex,
-    pub sub_paths: HashMap<Index, Directory>,
+    pub sub_paths: FnvHashMap<Index, Directory>,
 }
 
 impl Directory {
     pub fn new(last_used: SpanIndex) -> Self {
         Directory {
-            sub_paths: HashMap::new(),
+            sub_paths: FnvHashMap::default(),
             last_used,
         }
     }
@@ -40,7 +40,7 @@ pub enum MemoryState {
     None,
     PartiallyMoved(Directory),
     FullyMoved(SpanIndex),
-    FullyBorrowed(HashMap<Variable, SpanIndex>),
+    FullyBorrowed(FnvHashMap<Variable, SpanIndex>),
     FullyBorrowedMut(SpanIndex),
 }
 
@@ -96,4 +96,4 @@ impl MemoryState {
     }
 }
 
-pub type Paths = HashMap<Variable, MemoryState>;
+pub type Paths = FnvHashMap<Variable, MemoryState>;
