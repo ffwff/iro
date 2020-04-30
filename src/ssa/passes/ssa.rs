@@ -1,25 +1,31 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
-use std::collections::BTreeSet;
 use smallvec::SmallVec;
+use std::collections::BTreeSet;
 
 pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
-    let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
     let num_blocks = context.blocks.len();
-
+    
     if num_blocks > 1 {
-        for (idx, block) in context.blocks.iter_mut().enumerate() {
+        let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
+
+        for (idx, (block, block_vars)) in context
+            .blocks
+            .iter()
+            .zip(context.block_vars.iter_mut())
+            .enumerate()
+        {
             let mut vars_used = BTreeSet::new();
             for ins in &block.ins {
                 if let Some(retvar) = ins.retvar() {
-                    let set: &mut BTreeSet<usize> = &mut defsites[usize::from(retvar)];
+                    let set = &mut defsites[usize::from(retvar)];
                     set.insert(idx);
                 }
                 ins.each_used_var(|used| {
                     vars_used.insert(used);
                 });
             }
-            block.vars_used = vars_used;
+            block_vars.vars_used = vars_used;
         }
 
         // Build the post-order traversal array
@@ -52,7 +58,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
 
         // Calculate the dominators for each block
         // Reference: https://www.doc.ic.ac.uk/~livshits/classes/CO444H/reading/dom14.pdf
-        let mut doms = btreemap![ 0 => 0 ];
+        let mut doms = fnv_hashmap![ 0 => 0 ];
 
         let mut changed = true;
         while changed {
@@ -123,8 +129,8 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         // Calculate block-local variables
         'outer: for idx in 0..context.variables.len() {
             let mut count = 0;
-            for block in &context.blocks {
-                if block.vars_used.contains(&Variable::from(idx)) {
+            for block_vars in &context.block_vars {
+                if block_vars.vars_used.contains(&Variable::from(idx)) {
                     count += 1;
                     if count == 2 {
                         continue 'outer;

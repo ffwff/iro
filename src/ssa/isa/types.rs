@@ -2,11 +2,11 @@ use crate::codegen::structs::StructData;
 use crate::ssa::isa::BorrowModifier;
 use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
+use fnv::FnvHashMap;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::hash::Hash;
 use std::rc::Rc;
-use fnv::FnvHashMap;
 extern crate derivative;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

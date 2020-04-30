@@ -8,10 +8,10 @@ use crate::ssa::isa;
 use crate::ssa::isa::*;
 use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
+use fnv::FnvHashMap;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::Rc;
-use fnv::FnvHashMap;
 
 pub struct AstTopLevelInfo {
     pub defstmts: FnvHashMap<Rc<str>, Vec<NodeBox>>,
@@ -337,15 +337,15 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
     }
 
     fn finish_env(&mut self) -> Option<Env> {
-        if let Some(env) = self.envs.pop() {
-            if env.var_stack().is_empty() {
+        if let Some(mut env) = self.envs.pop() {
+            if env.var_stack.is_empty() {
                 return Some(env);
             }
             let block = self.context.blocks.last_mut().unwrap();
             debug_assert!(block.ins.last().unwrap().typed.is_jmp());
 
             let postlude = block.ins.pop().unwrap();
-            let mut var_stack = env.var_stack().clone();
+            let mut var_stack = std::mem::replace(&mut env.var_stack, vec![]);
             postlude.each_used_var(|var| {
                 var_stack.remove_item(&var);
             });

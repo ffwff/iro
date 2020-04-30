@@ -1,7 +1,7 @@
 use codespan_reporting::files::Files;
+use fnv::FnvHashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use fnv::FnvHashMap;
 
 pub type FileIndex = usize;
 pub type SpanIndex = u32;

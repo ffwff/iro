@@ -1,11 +1,11 @@
 use crate::utils::uniquerc::UniqueRc;
+use fnv::FnvHashMap;
+use smallvec::SmallVec;
 use std::collections::BTreeSet;
 use std::convert::TryInto;
 use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
-use fnv::FnvHashMap;
-use smallvec::SmallVec;
 
 mod types;
 pub use types::*;
@@ -71,9 +71,9 @@ pub struct InsPosition {
     pub ins_idx: usize,
 }
 
-#[derive(Clone)]
 pub struct Context {
     pub blocks: Vec<Block>,
+    pub block_vars: Vec<BlockVars>,
     pub variables: Vec<Type>,
     pub name: Rc<str>,
     pub args: Vec<Type>,
@@ -86,6 +86,7 @@ impl Context {
     pub fn new(name: Rc<str>) -> Self {
         Context {
             blocks: vec![],
+            block_vars: vec![],
             variables: vec![],
             name,
             args: vec![],
@@ -106,6 +107,7 @@ impl Context {
                     })
                     .collect(),
             )],
+            block_vars: vec![],
             name,
             args,
             rettype: Type::NoReturn,
@@ -123,6 +125,7 @@ impl Context {
         Context {
             variables: vec![],
             blocks: vec![],
+            block_vars: vec![],
             name,
             args,
             rettype,
@@ -164,7 +167,7 @@ impl Context {
     }
 }
 
-#[derive(Clone)]
+#[repr(align(128))]
 pub struct Block {
     /// List of instructions in this block
     pub ins: Vec<Ins>,
@@ -174,6 +177,21 @@ pub struct Block {
     pub preds: SmallVec<[usize; 2]>,
     /// Successors of the block in the context graph
     pub succs: SmallVec<[usize; 2]>,
+}
+
+impl Block {
+    pub fn new(ins: Vec<Ins>) -> Self {
+        Block {
+            ins,
+            postlude: None,
+            preds: smallvec![],
+            succs: smallvec![],
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct BlockVars {
     /// Variables declared in this block
     pub vars_declared_in_this_block: BTreeSet<Variable>,
     /// Variables used in this block
@@ -189,13 +207,9 @@ pub struct Block {
     pub vars_exported: BTreeSet<Variable>,
 }
 
-impl Block {
-    pub fn new(ins: Vec<Ins>) -> Self {
-        Block {
-            ins,
-            postlude: None,
-            preds: smallvec![],
-            succs: smallvec![],
+impl BlockVars {
+    pub fn new() -> Self {
+        Self {
             vars_declared_in_this_block: BTreeSet::new(),
             vars_used: BTreeSet::new(),
             vars_phi: BTreeSet::new(),
@@ -927,7 +941,8 @@ mod isa_test {
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn ins_is_32_bytes() {
+    fn correct_size() {
         assert_eq!(std::mem::size_of::<Ins>(), 32);
+        assert_eq!(std::mem::size_of::<Block>(), 128);
     }
 }

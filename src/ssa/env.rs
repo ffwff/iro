@@ -1,7 +1,7 @@
 use crate::ssa::isa;
 use crate::ssa::isa::InsPosition;
-use std::rc::Rc;
 use fnv::FnvHashMap;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Variable {
@@ -16,7 +16,7 @@ pub struct Env {
     /// Indices of break instructions in this environment
     pub break_idx: Option<Vec<InsPosition>>,
     /// Stack of variables inserted, from mostly recently inserted
-    var_stack: Vec<isa::Variable>,
+    pub var_stack: Vec<isa::Variable>,
 }
 
 impl Env {

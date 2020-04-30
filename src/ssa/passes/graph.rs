@@ -1,7 +1,7 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
-use std::collections::BTreeMap;
 use smallvec::SmallVec;
+use std::collections::BTreeMap;
 
 pub fn preprocess(context: &mut Context) -> Flow {
     dbg_println!("start: {}", context.print());
@@ -18,6 +18,7 @@ pub fn preprocess(context: &mut Context) -> Flow {
             block.ins.push(Ins::empty_ret(InsType::Jmp(idx + 1), 0));
         }
     }
+    context.block_vars = vec![BlockVars::new(); context.blocks.len()];
     Flow::Continue
 }
 
@@ -30,8 +31,9 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     let mut idx_map: Vec<usize> = (0..context.blocks.len()).collect();
     // map of old jmp location -> new jmp location (in old block indices)
     let mut jmp_map: BTreeMap<usize, usize> = btreemap![];
-    let old_vec = std::mem::replace(&mut context.blocks, vec![]);
-    for (idx, block) in old_vec.iter().enumerate() {
+    let old_blocks = std::mem::replace(&mut context.blocks, vec![]);
+    let old_block_vars = std::mem::replace(&mut context.block_vars, vec![]);
+    for (idx, block) in old_blocks.iter().enumerate() {
         if let InsType::Jmp(n) = block.postlude.as_ref().unwrap().typed {
             if block.ins.is_empty() {
                 jmp_map.insert(idx, n);
@@ -63,7 +65,11 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     };
 
     // Do the cleanup
-    for (idx, mut block) in old_vec.into_iter().enumerate() {
+    for (idx, (mut block, block_var)) in old_blocks
+        .into_iter()
+        .zip(old_block_vars.into_iter())
+        .enumerate()
+    {
         if !jmp_map.contains_key(&idx) {
             let postlude = block.postlude.as_mut().unwrap();
             match &mut postlude.typed {
@@ -79,6 +85,7 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
                 _ => (),
             }
             context.blocks.push(block);
+            context.block_vars.push(block_var);
         }
     }
 

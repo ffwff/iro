@@ -172,7 +172,10 @@ pub fn check(context: &mut Context) -> Flow {
                                 mem_state.insert(
                                     *var,
                                     MemoryState::FullyBorrowed({
-                                        let mut hashmap = FnvHashMap::with_capacity_and_hasher(1, Default::default());
+                                        let mut hashmap = FnvHashMap::with_capacity_and_hasher(
+                                            1,
+                                            Default::default(),
+                                        );
                                         hashmap.insert(retvar, ins.source_location());
                                         hashmap
                                     }),

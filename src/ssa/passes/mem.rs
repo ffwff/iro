@@ -27,7 +27,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
         }
     }
     while !replacements.is_empty() {
-        for block in &mut context.blocks {
+        for (block, block_vars) in context.blocks.iter_mut().zip(context.block_vars.iter_mut()) {
             let old_len = block.ins.len();
             let old_ins = std::mem::replace(&mut block.ins, Vec::with_capacity(old_len));
 
@@ -54,7 +54,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                                 },
                                 source_location,
                             ));
-                            block.vars_phi.insert(new_var);
+                            block_vars.vars_phi.insert(new_var);
                             block_local_replacements.insert(retvar, new_var);
                         }
                     }
@@ -74,7 +74,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
 }
 
 pub fn calculate_block_variable_declaration(context: &mut Context) -> Flow {
-    for block in &mut context.blocks {
+    for (block, block_vars) in context.blocks.iter_mut().zip(context.block_vars.iter_mut()) {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
         for ins in block.ins.iter() {
@@ -87,16 +87,16 @@ pub fn calculate_block_variable_declaration(context: &mut Context) -> Flow {
         }
         // Phi assignments are not declared in this block
         vars_declared_in_this_block = vars_declared_in_this_block
-            .difference(&block.vars_phi)
+            .difference(&block_vars.vars_phi)
             .cloned()
             .collect();
         let vars_imported = vars_used
             .difference(&vars_declared_in_this_block)
             .cloned()
             .collect();
-        block.vars_imported = vars_imported;
-        block.vars_declared_in_this_block = vars_declared_in_this_block;
-        block.vars_used = vars_used;
+        block_vars.vars_imported = vars_imported;
+        block_vars.vars_declared_in_this_block = vars_declared_in_this_block;
+        block_vars.vars_used = vars_used;
     }
     Flow::Continue
 }
@@ -108,58 +108,53 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
 
     fn walk(
         block_idx: usize,
-        context: &mut Context,
+        blocks: &Vec<Block>,
+        block_vars: &mut Vec<BlockVars>,
         prev_vars_exported: Option<&mut BTreeSet<Variable>>,
     ) {
         let mut vars_exported = btreeset![];
-        let block = {
-            let block = &mut context.blocks[block_idx];
-            let succs = std::mem::replace(&mut block.succs, smallvec![]);
-            for &succ in &succs {
-                if succ > block_idx {
-                    walk(succ, context, Some(&mut vars_exported));
-                }
+        let block = &blocks[block_idx];
+        for &succ in &block.succs {
+            if succ > block_idx {
+                walk(succ, blocks, block_vars, Some(&mut vars_exported));
             }
-            let block = &mut context.blocks[block_idx];
-            block.succs = succs;
-            block
-        };
-        block.vars_exported = vars_exported;
+        }
+        let block_vars = &mut block_vars[block_idx];
+        block_vars.vars_exported = vars_exported;
         // Imported variables are used in this block but are not declared in this block
         if let Some(prev_vars_exported) = prev_vars_exported {
-            prev_vars_exported.extend(block.vars_imported.clone());
+            prev_vars_exported.extend(block_vars.vars_imported.iter().cloned());
         }
     }
-    walk(0, context, None);
+    walk(0, &context.blocks, &mut context.block_vars, None);
 
     // Fix up step
     let mut worklist = (0..context.blocks.len()).collect::<Vec<usize>>();
     while let Some(node) = worklist.pop() {
         let block = &mut context.blocks[node];
-        let mut new_vars_imported: BTreeSet<Variable> = &block.vars_exported | &block.vars_used;
+        let block_vars = &mut context.block_vars[node];
+        let mut new_vars_imported: BTreeSet<Variable> =
+            &block_vars.vars_exported | &block_vars.vars_used;
         new_vars_imported = new_vars_imported
-            .difference(&block.vars_declared_in_this_block)
+            .difference(&block_vars.vars_declared_in_this_block)
             .cloned()
             .collect();
         dbg_println!("new_vars_imported: {:?}", new_vars_imported);
 
         // Borrow preds temporarily so as to not borrow multiple blocks in context.blocks
-        let preds = std::mem::replace(&mut block.preds, smallvec![]);
-        if block.vars_imported != new_vars_imported {
-            for &pred in &preds {
+        if block_vars.vars_imported != new_vars_imported {
+            for &pred in &block.preds {
                 worklist.push(pred);
             }
-            block.vars_imported = new_vars_imported.clone();
+            block_vars.vars_imported = new_vars_imported.clone();
         }
 
-        for &pred in &preds {
-            let block = &mut context.blocks[pred];
-            block.vars_exported.extend(new_vars_imported.iter());
+        for &pred in &block.preds {
+            let pred_block_vars = &mut context.block_vars[pred];
+            pred_block_vars
+                .vars_exported
+                .extend(new_vars_imported.iter());
         }
-
-        // Give preds back to the current block
-        let block = &mut context.blocks[node];
-        block.preds = preds;
     }
 
     Flow::Continue
@@ -168,32 +163,35 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
 pub fn reference_drop_insertion(context: &mut Context) -> Flow {
     for idx in 0..context.blocks.len() {
         let block = &mut context.blocks[idx];
-        let preds = std::mem::replace(&mut block.preds, smallvec![]);
         let mut vars_total_imported = btreeset![];
 
-        for &pred in &preds {
-            let block = &mut context.blocks[pred];
-            vars_total_imported.extend(block.vars_exported.iter().cloned());
+        for &pred in &block.preds {
+            let pred_block_vars = &mut context.block_vars[pred];
+            vars_total_imported.extend(pred_block_vars.vars_exported.iter().cloned());
         }
 
-        // Give preds back to the current block
-        let block = &mut context.blocks[idx];
-        block.preds = preds;
-        block.vars_total_imported = vars_total_imported;
+        let block_vars = &mut context.block_vars[idx];
+        block_vars.vars_total_imported = vars_total_imported;
     }
 
-    for (idx, block) in context.blocks.iter_mut().enumerate() {
+    for (idx, (block, block_vars)) in context
+        .blocks
+        .iter_mut()
+        .zip(context.block_vars.iter())
+        .enumerate()
+    {
         // Variables that die in this block are variables which
         // flow into the block or are declared in this block, and are never exported
-        let mut dead_vars_set = &block.vars_declared_in_this_block | &block.vars_total_imported;
-        for exported in &block.vars_exported {
+        let mut dead_vars_set =
+            &block_vars.vars_declared_in_this_block | &block_vars.vars_total_imported;
+        for exported in &block_vars.vars_exported {
             dead_vars_set.remove(exported);
         }
         dbg_println!(
             "dead_vars_set for {}: {:?} {:?}, {:?}",
             idx,
-            block.vars_declared_in_this_block,
-            block.vars_total_imported,
+            block_vars.vars_declared_in_this_block,
+            block_vars.vars_total_imported,
             dead_vars_set
         );
 

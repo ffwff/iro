@@ -1,6 +1,6 @@
+use fnv::FnvHashMap;
 use std::borrow::Borrow;
 use std::hash::Hash;
-use fnv::FnvHashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Runtime {
@@ -9,7 +9,9 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> Self {
-        Runtime { funcs: fnv_hashmap![] }
+        Runtime {
+            funcs: fnv_hashmap![],
+        }
     }
 
     pub fn funcs(&self) -> &FnvHashMap<String, GenericFunction> {

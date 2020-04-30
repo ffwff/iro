@@ -23,9 +23,9 @@ use cranelift_module::{Backend, DataContext, DataId, FuncOrDataId, Linkage, Modu
 use cranelift_object::{ObjectBackend, ObjectBuilder};
 use cranelift_simplejit::{SimpleJITBackend, SimpleJITBuilder};
 
+use fnv::FnvHashMap;
 use std::collections::BTreeMap;
 use std::rc::Rc;
-use fnv::FnvHashMap;
 
 macro_rules! generate_arithmetic {
     ($builder:expr, $ins:expr, $x:expr, $y:expr, $fn:tt) => {{

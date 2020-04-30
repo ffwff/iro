@@ -191,23 +191,29 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
         if self.1.blocks.is_empty() {
             write!(f, "\tpass\n")?;
         } else {
-            for (idx, block) in self.1.blocks.iter().enumerate() {
+            for (idx, (block, block_vars)) in self
+                .1
+                .blocks
+                .iter()
+                .zip(self.1.block_vars.iter())
+                .enumerate()
+            {
                 write!(f, "b{}:\n", idx)?;
                 write!(f, "- preds: {:?}\n", block.preds)?;
                 write!(f, "- succs: {:?}\n", block.succs)?;
                 write!(
                     f,
                     "- vars_declared_in_this_block: {:?}\n",
-                    block.vars_declared_in_this_block
+                    block_vars.vars_declared_in_this_block
                 )?;
-                write!(f, "- vars_used: {:?}\n", block.vars_used)?;
-                write!(f, "- vars_imported: {:?}\n", block.vars_imported)?;
+                write!(f, "- vars_used: {:?}\n", block_vars.vars_used)?;
+                write!(f, "- vars_imported: {:?}\n", block_vars.vars_imported)?;
                 write!(
                     f,
                     "- vars_total_imported: {:?}\n",
-                    block.vars_total_imported
+                    block_vars.vars_total_imported
                 )?;
-                write!(f, "- vars_exported: {:?}\n", block.vars_exported)?;
+                write!(f, "- vars_exported: {:?}\n", block_vars.vars_exported)?;
                 for ins in &block.ins {
                     write!(f, "\t{}\n", InsPrinter(ins))?;
                 }
