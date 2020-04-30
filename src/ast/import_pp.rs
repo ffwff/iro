@@ -29,12 +29,12 @@ impl Visitor for ImportPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_import(&mut self, _n: &ImportStatement, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         Ok(())
     }
 
-    fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_class(&mut self, _n: &ClassStatement, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         Ok(())
     }
@@ -134,12 +134,12 @@ impl Visitor for ImportPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult {
+    fn visit_typeid(&mut self, _n: &TypeId, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         Ok(())
     }
 
-    fn visit_break(&mut self, n: &BreakExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_break(&mut self, _n: &BreakExpr, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         Ok(())
     }

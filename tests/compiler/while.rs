@@ -1,7 +1,6 @@
 use crate::utils;
 use iro::runtime::Runtime;
 use iro::ssa::isa::{FunctionName, Type};
-use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 

@@ -4,7 +4,7 @@ use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
 extern crate derivative;
@@ -167,6 +167,7 @@ impl Type {
     #[inline]
     pub fn is_copyable(&self) -> bool {
         match self {
+            Type::Pointer(x) => x.tag == BorrowModifier::Immutable,
             Type::Struct(_) => false,
             Type::Union(_) => false,
             Type::Slice(x) => x.typed.is_copyable(),

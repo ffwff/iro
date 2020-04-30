@@ -39,7 +39,7 @@ pub fn check(context: &mut Context) -> Flow {
                                 *mem_state_ref = old.unborrow(borrower);
                                 dbg_println!("  => {:?}", *mem_state_ref);
                             }
-                            DropEffect::UnbindBorrowedMut { borrower, target } => {
+                            DropEffect::UnbindBorrowedMut { borrower: _, target } => {
                                 let mem_state_ref = mem_state.get_mut(&target).unwrap();
                                 *mem_state_ref = MemoryState::None;
                             }

@@ -1,5 +1,4 @@
 use crate::ssa::isa::Variable;
-use crate::ssa::passes::memcheck::path::MemoryState;
 use std::collections::HashMap;
 
 #[derive(Clone)]

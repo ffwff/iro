@@ -24,22 +24,22 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_import(&mut self, _n: &ImportStatement, _b: &NodeBox) -> VisitorResult {
         Ok(())
     }
 
-    fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_class(&mut self, _n: &ClassStatement, _b: &NodeBox) -> VisitorResult {
         Ok(())
     }
 
-    fn visit_class_init(&mut self, n: &ClassInitExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_class_init(&mut self, n: &ClassInitExpr, _b: &NodeBox) -> VisitorResult {
         for (_, boxed) in &n.inits {
             boxed.visit(self)?;
         }
         Ok(())
     }
 
-    fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_defstmt(&mut self, n: &DefStatement, _b: &NodeBox) -> VisitorResult {
         let last_idx = n.exprs.len().wrapping_sub(1);
         for (idx, expr) in n.exprs.iter().enumerate() {
             if idx != last_idx {
@@ -50,12 +50,12 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_return(&mut self, n: &ReturnExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_return(&mut self, n: &ReturnExpr, _b: &NodeBox) -> VisitorResult {
         n.expr.visit(self)?;
         Ok(())
     }
 
-    fn visit_whileexpr(&mut self, n: &WhileExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_whileexpr(&mut self, n: &WhileExpr, _b: &NodeBox) -> VisitorResult {
         n.cond.visit(self)?;
         let last_idx = n.exprs.len().wrapping_sub(1);
         for (idx, expr) in n.exprs.iter().enumerate() {
@@ -67,7 +67,7 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_ifexpr(&mut self, n: &IfExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_ifexpr(&mut self, n: &IfExpr, _b: &NodeBox) -> VisitorResult {
         n.cond.visit(self)?;
         let last_idx = n.exprs.len().wrapping_sub(1);
         for (idx, expr) in n.exprs.iter().enumerate() {
@@ -86,31 +86,31 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_callexpr(&mut self, n: &CallExpr, _b: &NodeBox) -> VisitorResult {
         for expr in &n.args {
             expr.visit(self)?;
         }
         Ok(())
     }
 
-    fn visit_letexpr(&mut self, n: &LetExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_letexpr(&mut self, n: &LetExpr, _b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         n.right.visit(self)?;
         Ok(())
     }
 
-    fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_binexpr(&mut self, n: &BinExpr, _b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         n.right.visit(self)?;
         Ok(())
     }
 
-    fn visit_asexpr(&mut self, n: &AsExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_asexpr(&mut self, n: &AsExpr, _b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         Ok(())
     }
 
-    fn visit_member_expr(&mut self, n: &MemberExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_member_expr(&mut self, n: &MemberExpr, _b: &NodeBox) -> VisitorResult {
         n.left.visit(self)?;
         for arm in &n.right {
             if let MemberExprArm::Index(boxed) = arm {
@@ -120,7 +120,7 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult {
+    fn visit_value(&mut self, n: &Value, _b: &NodeBox) -> VisitorResult {
         match &n {
             Value::Slice(vec) => {
                 for expr in vec {
@@ -132,20 +132,20 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult {
+    fn visit_typeid(&mut self, _n: &TypeId, _b: &NodeBox) -> VisitorResult {
         Ok(())
     }
 
-    fn visit_break(&mut self, n: &BreakExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_break(&mut self, _n: &BreakExpr, _b: &NodeBox) -> VisitorResult {
         Ok(())
     }
 
-    fn visit_borrow(&mut self, n: &BorrowExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_borrow(&mut self, n: &BorrowExpr, _b: &NodeBox) -> VisitorResult {
         n.expr.visit(self)?;
         Ok(())
     }
 
-    fn visit_deref(&mut self, n: &DerefExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_deref(&mut self, n: &DerefExpr, _b: &NodeBox) -> VisitorResult {
         n.expr.visit(self)?;
         Ok(())
     }

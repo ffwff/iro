@@ -106,7 +106,7 @@ fn build(opts: Options) {
     let input_name = opts
         .arg(1)
         .unwrap_or_else(|| fatal!(opts, "No input specified"));
-    let (sources, bytes) = match opts.to_compiler().parse_to_object(input_name) {
+    let (_sources, bytes) = match opts.to_compiler().parse_to_object(input_name) {
         (sources, Ok(x)) => (sources, x),
         (sources, Err(error)) => compiler_error(opts, sources, error),
     };

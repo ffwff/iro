@@ -913,7 +913,7 @@ where
                         ),
                     };
                     let typed = const_to_type(constant);
-                    let tmp = match typed {
+                    match typed {
                         maybe_int if maybe_int.is_int() => match op {
                             isa::OpConst::Add => builder.ins().iadd(left, right),
                             isa::OpConst::Sub => builder.ins().isub(left, right),

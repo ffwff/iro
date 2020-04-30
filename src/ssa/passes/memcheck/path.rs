@@ -82,7 +82,7 @@ impl MemoryState {
         }
     }
 
-    pub fn unborrow(mut self, borrower: Variable) -> Self {
+    pub fn unborrow(self, borrower: Variable) -> Self {
         if let MemoryState::FullyBorrowed(mut map) = self {
             map.remove(&borrower).expect("invalid unborrow");
             if map.is_empty() {

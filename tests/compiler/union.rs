@@ -1,5 +1,4 @@
 use crate::utils;
-use iro::runtime::pointer::FatPointer;
 use iro::runtime::Runtime;
 use std::sync::atomic::{AtomicBool, Ordering};
 
