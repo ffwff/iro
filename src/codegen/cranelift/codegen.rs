@@ -1072,6 +1072,10 @@ impl CraneliftBackend {
             OptLevel::SpeedAndSize => flag_builder.set("opt_level", "speed_and_size"),
         }
         .unwrap();
+        #[cfg(not(debug_assertions))]
+        flag_builder
+            .set("enable_verifier", "false")
+            .expect("Missing enable_verifier setting");
         let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
             panic!("host machine is not supported: {}", msg);
         });

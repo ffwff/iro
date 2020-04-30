@@ -1,6 +1,7 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use std::collections::BTreeMap;
+use smallvec::SmallVec;
 
 pub fn preprocess(context: &mut Context) -> Flow {
     dbg_println!("start: {}", context.print());
@@ -92,8 +93,8 @@ pub fn build_graph(context: &mut Context) -> Flow {
     }
 
     // Build the successor/predecessor set corresponding to each block
-    let mut predecessors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
-    let mut successors_map: Vec<Vec<usize>> = vec![vec![]; num_blocks];
+    let mut predecessors_map: Vec<SmallVec<[usize; 2]>> = vec![smallvec![]; num_blocks];
+    let mut successors_map: Vec<SmallVec<[usize; 2]>> = vec![smallvec![]; num_blocks];
     let mut insert_node = |succ: usize, pred: usize| {
         predecessors_map[succ].push(pred);
         successors_map[pred].push(succ);

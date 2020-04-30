@@ -114,7 +114,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
         let mut vars_exported = btreeset![];
         let block = {
             let block = &mut context.blocks[block_idx];
-            let succs = std::mem::replace(&mut block.succs, vec![]);
+            let succs = std::mem::replace(&mut block.succs, smallvec![]);
             for &succ in &succs {
                 if succ > block_idx {
                     walk(succ, context, Some(&mut vars_exported));
@@ -144,7 +144,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
         dbg_println!("new_vars_imported: {:?}", new_vars_imported);
 
         // Borrow preds temporarily so as to not borrow multiple blocks in context.blocks
-        let preds = std::mem::replace(&mut block.preds, vec![]);
+        let preds = std::mem::replace(&mut block.preds, smallvec![]);
         if block.vars_imported != new_vars_imported {
             for &pred in &preds {
                 worklist.push(pred);
@@ -168,7 +168,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
 pub fn reference_drop_insertion(context: &mut Context) -> Flow {
     for idx in 0..context.blocks.len() {
         let block = &mut context.blocks[idx];
-        let preds = std::mem::replace(&mut block.preds, vec![]);
+        let preds = std::mem::replace(&mut block.preds, smallvec![]);
         let mut vars_total_imported = btreeset![];
 
         for &pred in &preds {

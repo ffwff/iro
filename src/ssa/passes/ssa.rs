@@ -9,12 +9,17 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
 
     if num_blocks > 1 {
         for (idx, block) in context.blocks.iter_mut().enumerate() {
+            let mut vars_used = BTreeSet::new();
             for ins in &block.ins {
                 if let Some(retvar) = ins.retvar() {
                     let set: &mut BTreeSet<usize> = &mut defsites[usize::from(retvar)];
                     set.insert(idx);
                 }
+                ins.each_used_var(|used| {
+                    vars_used.insert(used);
+                });
             }
+            block.vars_used = vars_used;
         }
 
         // Build the post-order traversal array
@@ -115,6 +120,22 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         dbg_println!("---\ndom_frontier: {:#?}", dom_frontier);
         dbg_println!("---\ndefsites: {:#?}", defsites);
 
+        // Calculate block-local variables
+        'outer: for idx in 0..context.variables.len() {
+            let mut count = 0;
+            for block in &context.blocks {
+                if block.vars_used.contains(&Variable::from(idx)) {
+                    count += 1;
+                    if count == 2 {
+                        continue 'outer;
+                    }
+                }
+            }
+            debug_assert!(count <= 1);
+            // We will not insert phi's for block-local variables
+            defsites[idx].clear();
+        }
+
         let mut origin: Vec<SmallVec<[Variable; 4]>> = vec![smallvec![]; num_blocks];
         for (var, defsites) in defsites.iter().enumerate() {
             for defsite in defsites {
@@ -188,7 +209,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                         }
                     }
                 }
-                std::mem::replace(&mut block.succs, vec![])
+                std::mem::replace(&mut block.succs, smallvec![])
             };
             {
                 let typed = context.variable(var).clone();

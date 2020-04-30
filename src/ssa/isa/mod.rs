@@ -5,6 +5,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
 use fnv::FnvHashMap;
+use smallvec::SmallVec;
 
 mod types;
 pub use types::*;
@@ -170,9 +171,9 @@ pub struct Block {
     /// Temporary variable to store the postlude of this block
     pub postlude: Option<Ins>,
     /// Predecessors of the block in the context graph
-    pub preds: Vec<usize>,
+    pub preds: SmallVec<[usize; 2]>,
     /// Successors of the block in the context graph
-    pub succs: Vec<usize>,
+    pub succs: SmallVec<[usize; 2]>,
     /// Variables declared in this block
     pub vars_declared_in_this_block: BTreeSet<Variable>,
     /// Variables used in this block
@@ -193,8 +194,8 @@ impl Block {
         Block {
             ins,
             postlude: None,
-            preds: vec![],
-            succs: vec![],
+            preds: smallvec![],
+            succs: smallvec![],
             vars_declared_in_this_block: BTreeSet::new(),
             vars_used: BTreeSet::new(),
             vars_phi: BTreeSet::new(),
