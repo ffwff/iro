@@ -32,7 +32,7 @@ fn nested_class() {
     .unwrap_err();
     match err.error {
         error::Code::MemoryError { typed, .. } => assert_eq!(typed, error::MemoryErrorType::Move),
-        _ => panic!("error isn't memory error"),
+        other => panic!("error isn't memory error: {}", other),
     }
 }
 
@@ -61,7 +61,7 @@ fn class() {
     .unwrap_err();
     match err.error {
         error::Code::MemoryError { typed, .. } => assert_eq!(typed, error::MemoryErrorType::Move),
-        _ => panic!("error isn't memory error"),
+        other => panic!("error isn't memory error: {}", other),
     }
 }
 

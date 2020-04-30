@@ -29,7 +29,7 @@ fn borrow_after_borrow_mut() {
     }
     let mut runtime = Runtime::new();
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
-    utils::parse_and_run(
+    let err = utils::parse_and_run(
         "\
     extern def record=\"record_i32\"(i: I32): Nil
 
@@ -40,5 +40,9 @@ fn borrow_after_borrow_mut() {
     ",
         runtime,
     )
-    .expect_err("able to parse_and_run");
+    .expect_err("error out on parse_and_run");
+    match err.error {
+        error::Code::MemoryError { typed, .. } => assert_eq!(typed, error::MemoryErrorType::Borrow),
+        other => panic!("error isn't memory error: {}", other),
+    }
 }

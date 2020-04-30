@@ -26,11 +26,10 @@ class Person =>
     name: &Substring
     age: I32
 
-person := (
-    Person =>
-        name: "Abc"
-        age: 20
-)
+person := Person {
+    name: "Abc",
+    age: 20,
+}
 
 print(person.name)
 print("\n")
