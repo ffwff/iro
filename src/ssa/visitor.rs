@@ -786,7 +786,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             return Ok(());
         }
 
-        let retvar_type = {
+        let retvar_type = if n.generate_retvar.get() {
             match (iftrue_retvar, iffalse_retvar) {
                 (Some(first), Some(last)) => Some(
                     self.context
@@ -797,6 +797,8 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 (None, Some(last)) => Some(self.context.variable(last).unify(&Type::Nil)),
                 (None, None) => None,
             }
+        } else {
+            None
         };
         let retvar = retvar_type.map(|typed| self.context.insert_var(typed));
 
@@ -814,7 +816,9 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 if typed.is_nil() {
                     block.ins.push(Ins::new(retvar, InsType::LoadNil, location));
                 } else if typed.is_memory_type() {
-                    block.ins.push(Ins::new(retvar, InsType::LoadStruct, location));
+                    block
+                        .ins
+                        .push(Ins::new(retvar, InsType::LoadStruct, location));
                 }
             }
             if !self.has_direct_return {
@@ -899,7 +903,6 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             }
         }
 
-        // Load return var
         self.last_retvar = retvar;
         Ok(())
     }

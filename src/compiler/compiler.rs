@@ -1,3 +1,4 @@
+use crate::ast::desugar_pp::DesugarPostprocessVisitor;
 use crate::codegen::backend;
 use crate::codegen::settings::Settings;
 use crate::compiler;
@@ -43,6 +44,7 @@ const SSA_PASSES: &'static [fn(&mut ssa::isa::Context) -> Flow] = &[
 pub fn parse_file_to_ssa(sources: &mut Sources) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(sources.main_file().unwrap(), 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
+    DesugarPostprocessVisitor::postprocess(&ast)?;
     let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(sources))?;
     process_ssa(sources, &mut program)?;
     Ok(program)
@@ -52,6 +54,7 @@ pub fn parse_source_to_ssa(source: &str) -> Result<ssa::isa::Program, compiler::
     let mut sources = Sources::new();
     let tokenizer = lexer::Lexer::new(source, 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
+    DesugarPostprocessVisitor::postprocess(&ast)?;
     let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(&mut sources))?;
     process_ssa(&mut sources, &mut program)?;
     Ok(program)

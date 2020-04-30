@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use crate::ssa::isa::{IntrinsicType, BorrowModifier};
 use crate::ast::*;
 use crate::lexer;
@@ -82,7 +82,10 @@ BlockGeneric<T>: Vec<T> = {
 // While expression
 WhileExpr: NodeBox = {
     <start:@L> "while" <cond:StandaloneExpr> <exprs:Block> <end:@L> => {
-        NodeBox::new(WhileExpr { cond, exprs }, (start, end))
+        NodeBox::new(WhileExpr {
+            cond,
+            exprs,
+        }, (start, end))
     }
 };
 
@@ -98,18 +101,30 @@ IfExpr: NodeBox = {
             let mut elsif_expr = NodeBox::new(IfExpr {
                 cond: last_elsif.0,
                 exprs: last_elsif.1,
-                elses: elses.unwrap_or_else(|| vec![])
+                elses: elses.unwrap_or_else(|| vec![]),
+                generate_retvar: Cell::new(true),
             }, span);
             while let Some(it_elsif) = elsif.pop() {
                 elsif_expr = NodeBox::new(IfExpr {
                     cond: it_elsif.0,
                     exprs: it_elsif.1,
                     elses: vec![ elsif_expr ],
+                    generate_retvar: Cell::new(true),
                 }, span);
             }
-            return NodeBox::new(IfExpr { cond, exprs, elses: vec![ elsif_expr ] }, span);
+            return NodeBox::new(IfExpr {
+                cond,
+                exprs,
+                elses: vec![ elsif_expr ], 
+                generate_retvar: Cell::new(true),
+            }, span);
         }
-        NodeBox::new(IfExpr { cond, exprs, elses: elses.unwrap_or_else(|| vec![]) }, span)
+        NodeBox::new(IfExpr {
+            cond,
+            exprs,
+            elses: elses.unwrap_or_else(|| vec![]),
+            generate_retvar: Cell::new(true),
+        }, span)
     }
 };
 

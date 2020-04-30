@@ -7,7 +7,8 @@ use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
-pub mod postprocess;
+pub mod desugar_pp;
+pub mod import_pp;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -284,6 +285,7 @@ pub struct IfExpr {
     pub cond: NodeBox,
     pub exprs: Vec<NodeBox>,
     pub elses: Vec<NodeBox>,
+    pub generate_retvar: Cell<bool>,
 }
 
 impl Node for IfExpr {

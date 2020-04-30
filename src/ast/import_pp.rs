@@ -1,15 +1,15 @@
 use crate::ast::*;
 
-pub struct PostprocessVisitor {
+pub struct ImportPostprocessVisitor {
     file: usize,
 }
 
-impl PostprocessVisitor {
+impl ImportPostprocessVisitor {
     pub fn postprocess(ast: &Program, file: usize) {
         if file == 0 {
             return;
         }
-        let mut visitor = PostprocessVisitor { file };
+        let mut visitor = ImportPostprocessVisitor { file };
         visitor.visit_program(&ast).unwrap();
     }
 
@@ -21,7 +21,7 @@ impl PostprocessVisitor {
     }
 }
 
-impl Visitor for PostprocessVisitor {
+impl Visitor for ImportPostprocessVisitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult {
         for node in &n.exprs {
             node.visit(self)?;
