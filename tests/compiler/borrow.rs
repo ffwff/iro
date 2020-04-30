@@ -41,5 +41,5 @@ fn borrow_after_borrow_mut() {
     ",
         runtime,
     )
-    .expect("able to parse_and_run");
+    .expect_err("able to parse_and_run");
 }
