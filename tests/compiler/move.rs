@@ -18,13 +18,11 @@ fn nested_class() {
     class Thing =>
         other: Other
     
-    thing := (
-        Thing =>
-            other: (
-                Other =>
-                    a_int: 10
-            )
-    )
+    thing := Thing {
+        other: Other {
+            a_int: 10,
+        },
+    }
     j := thing.other
     noop(j.a_int)
     noop(thing.other.a_int)
@@ -52,10 +50,9 @@ fn class() {
     extern def noop(n: Other): Nil
     extern def noop_i32(n: I32): Nil
 
-    x := (
-        Other =>
-            a_int: 10
-    )
+    x := Other {
+        a_int: 10,
+    }
     noop(x)
     noop_i32(x.a_int)
     ",

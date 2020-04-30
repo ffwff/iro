@@ -8,7 +8,7 @@ use crate::compiler;
 grammar;
 
 pub Top : Program = {
-    NL* <Expr*> EOF? => Program{ exprs: <> },
+    NL? <Expr*> EOF? => Program{ exprs: <> },
 };
 
 #[inline]
@@ -46,13 +46,11 @@ StandaloneEmbeddableExpr = {
     <StandaloneExpr>,
     <WhileExpr>,
     <IfExpr>,
-    <ClassInitExpr>,
 };
 StandaloneEmbeddableExprWithDedent = {
     <StandaloneExpr>,
     NL <WhileExpr> Dedent,
     NL <IfExpr> Dedent,
-    NL <ClassInitExpr> Dedent,
 };
 
 // Block
@@ -138,13 +136,13 @@ IfExprElse: Vec<NodeBox> = "else" <exprs:Block> => <>;
 // Class Expression
 ClassInitExpr: NodeBox = {
     <start:@L> 
-        <id:CapitalIdentifier> <inits:ClassInitBlock>
+        <id:CapitalIdentifier> "{" NL?
+            <inits: (<ClassInitInner> "," NL?)*>
+        Dedent? "}"
     <end:@L> => {
         NodeBox::new(ClassInitExpr { id: Rc::from(id), inits, }, (start, end))
     }
 };
-
-ClassInitBlock: Vec<(Rc<str>, NodeBox)> = BlockGeneric<ClassInitInner>;
 
 ClassInitInner: (Rc<str>, NodeBox) = {
     <name:Identifier> ":" <value:StandaloneExpr> => {
@@ -391,6 +389,7 @@ MemberExprArm: MemberExprArm = {
 
 // Literals / terms
 Term: NodeBox = {
+    <ClassInitExpr> => <>,
     <start:@L> <lit:Literal> <end:@L> => NodeBox::new(lit, (start, end)),
     "(" <StandaloneEmbeddableExprWithDedent> ")" => <>,
 };
@@ -489,6 +488,8 @@ extern {
         ">=" => lexer::Tok::Gte,
         "(" => lexer::Tok::LeftParen,
         ")" => lexer::Tok::RightParen,
+        "{" => lexer::Tok::LeftCurly,
+        "}" => lexer::Tok::RightCurly,
         "," => lexer::Tok::Comma,
         "." => lexer::Tok::Dot,
         ":" => lexer::Tok::Colon,

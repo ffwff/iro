@@ -28,11 +28,10 @@ fn class_init() {
         name: &Substring
         age: I32
 
-    person := (
-        Person =>
-            name: \"ABC\"
-            age: 20
-    )
+    person := Person {
+        name: \"ABC\",
+        age: 20,
+    }
     record(person.name, person.age)
     ",
         runtime,
@@ -69,15 +68,13 @@ fn nested_class_init() {
         name: Name
         age: I32
 
-    person := (
-        Person =>
-            name: (
-                Name => 
-                    first: \"Abc\"
-                    last: \"Def\"
-            )
-            age: 20
-    )
+    person := Person {
+        name: Name {
+            first: \"Abc\",
+            last: \"Def\",
+        },
+        age: 20,
+    }
     record(person.name.first, person.name.last, person.age)
     ",
         runtime,
@@ -105,11 +102,10 @@ fn nested_slice_class_init() {
         a_int: I32
         a_slice: [I32; 2]
     
-    thing := (
-        Thing =>
-            a_int: 1337
-            a_slice: [100, 200]
-    )
+    thing := Thing {
+        a_int: 1337,
+        a_slice: [100, 200],
+    }
     record(thing.a_int, thing.a_slice)
     ",
         runtime,
@@ -146,15 +142,13 @@ fn nested_class_init_with_forward_decl() {
         first: &Substring
         last: &Substring
 
-    person := (
-        Person =>
-            name: (
-                Name => 
-                    first: \"Abc\"
-                    last: \"Def\"
-            )
-            age: 20
-    )
+    person := Person {
+        name: Name {
+            first: \"Abc\",
+            last: \"Def\",
+        },
+        age: 20,
+    }
     record(person.name.first, person.name.last, person.age)
     ",
         runtime,
