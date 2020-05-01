@@ -23,6 +23,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
         match &self.0.typed {
             InsType::LoadNil => write!(f, "nil"),
             InsType::Alloca => write!(f, "alloca"),
+            InsType::AllocHeap => write!(f, "alloc_heap"),
             InsType::Drop(arg) => write!(f, "drop v{}", arg),
             InsType::Move(var) => write!(f, "move v{}", var),
             InsType::MarkMoved(var) => write!(f, "mark_moved v{}", var),
@@ -33,6 +34,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                 match modifier {
                     BorrowModifier::Immutable => "imm",
                     BorrowModifier::Mutable => "mut",
+                    BorrowModifier::Unique => "uni",
                 },
                 var
             ),
@@ -59,6 +61,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
                     ReferenceModifier::Borrow(modifier) => match modifier {
                         BorrowModifier::Immutable => "borrow.imm",
                         BorrowModifier::Mutable => "borrow.mut",
+                        _ => unreachable!(),
                     },
                 },
                 left,

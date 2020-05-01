@@ -388,7 +388,7 @@ DerefExpr: NodeBox = {
 
 BorrowExpr: NodeBox = {
     <start:@L> 
-        "&" <borrow_mod:TypeBorrowModifier?> <expr:MemberExprOrTerm>
+        "&" <borrow_mod:BorrowModifier?> <expr:MemberExprOrTerm>
     <end:@L> => {
         NodeBox::new(BorrowExpr {
             expr,
@@ -401,7 +401,7 @@ BorrowExpr: NodeBox = {
 #[inline]
 MemberExprOrTerm: NodeBox = {
     <MemberExpr> => <>,
-    <Term> => <>,
+    <Unary> => <>,
 };
 
 // Member expressions
@@ -414,6 +414,17 @@ MemberExpr: NodeBox = {
 MemberExprArm: MemberExprArm = {
     "." <id:Identifier> => MemberExprArm::Identifier(Rc::from(id)),
     "[" <expr:StandaloneExpr> "]" => MemberExprArm::Index(expr),
+};
+
+// Unary
+Unary: NodeBox = {
+    <start:@L> "uni" <expr:Term> <end:@L> => {
+        NodeBox::new(UnaryExpr {
+            op: UnaryOp::Uni,
+            expr,
+        }, (start, end))
+    },
+    <Term> => <>,
 };
 
 // Terms
@@ -460,7 +471,7 @@ Type: TypeId = {
 };
 
 TypePointer: TypeIdData = {
-    "&" <borrow_mod:TypeBorrowModifier?> <first:Type> => {
+    "&" <borrow_mod:PointerBorrowModifier?> <first:Type> => {
         TypeIdData::Pointer {
             typed: Box::new(first),
             borrow_mod: borrow_mod.unwrap_or(BorrowModifier::Immutable),
@@ -469,7 +480,12 @@ TypePointer: TypeIdData = {
     TypeSlice,
 };
 
-TypeBorrowModifier: BorrowModifier = {
+PointerBorrowModifier: BorrowModifier = {
+    "mut" => BorrowModifier::Mutable,
+    "uni" => BorrowModifier::Unique,
+};
+
+BorrowModifier: BorrowModifier = {
     "mut" => BorrowModifier::Mutable,
 };
 
@@ -511,6 +527,7 @@ extern {
         "or" => lexer::Tok::Or,
         "as" => lexer::Tok::As,
         "mut" => lexer::Tok::Mut,
+        "uni" => lexer::Tok::Uni,
         "true" => lexer::Tok::True,
         "false" => lexer::Tok::False,
         "uninitialized" => lexer::Tok::Uninitialized,

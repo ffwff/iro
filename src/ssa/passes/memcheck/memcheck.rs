@@ -210,6 +210,7 @@ pub fn check(context: &mut Context) -> Flow {
                                 },
                             );
                         }
+                        _ => unreachable!(),
                     }
                 }
                 _ => {

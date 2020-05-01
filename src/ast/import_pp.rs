@@ -155,4 +155,10 @@ impl Visitor for ImportPostprocessVisitor {
         n.expr.visit(self)?;
         Ok(())
     }
+
+    fn visit_unary(&mut self, n: &UnaryExpr, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
+        n.expr.visit(self)?;
+        Ok(())
+    }
 }

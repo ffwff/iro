@@ -704,6 +704,7 @@ pub enum ReferenceModifier {
 pub enum BorrowModifier {
     Immutable,
     Mutable,
+    Unique,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -725,6 +726,7 @@ pub enum OpConst {
 pub enum InsType {
     LoadNil,
     Alloca,
+    AllocHeap,
     Drop(Variable),
     MarkMoved(Variable),
     Move(Variable),

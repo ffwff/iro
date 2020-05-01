@@ -341,6 +341,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
             if env.var_stack.is_empty() {
                 return Some(env);
             }
+
             let block = self.context.blocks.last_mut().unwrap();
             debug_assert!(block.ins.last().unwrap().typed.is_jmp());
 
@@ -406,7 +407,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
 
         self.context.new_block();
         self.envs.push(Env::new());
-        for node in &outerstmts {
+        for node in outerstmts {
             node.visit(self)?;
         }
         self.with_block_mut(|block| {
@@ -1644,5 +1645,32 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         } else {
             Err(Error::CannotDeref.into_compiler_error(b))
         }
+    }
+
+    fn visit_unary(&mut self, n: &UnaryExpr, b: &NodeBox) -> VisitorResult {
+        n.expr.visit(self)?;
+        let retvar = self.last_retvar.take().unwrap();
+        match n.op {
+            UnaryOp::Uni => {
+                let new_retvar = self
+                    .context
+                    .insert_var(self.context.variable(retvar).clone().pointer(BorrowModifier::Unique));
+                let location = self.location_for(b);
+                self.with_block_mut(|block| {
+                    block
+                        .ins
+                        .extend_from_slice(&[
+                            Ins::new(new_retvar, InsType::AllocHeap, location),
+                            Ins::empty_ret(InsType::Store {
+                                source: retvar,
+                                dest: new_retvar,
+                            }, location),
+                            Ins::new(new_retvar, InsType::MarkMoved(retvar), location),
+                        ]);
+                });
+                self.last_retvar = Some(new_retvar);
+            }
+        }
+        Ok(())
     }
 }

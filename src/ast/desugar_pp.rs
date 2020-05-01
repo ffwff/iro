@@ -149,4 +149,9 @@ impl Visitor for DesugarPostprocessVisitor {
         n.expr.visit(self)?;
         Ok(())
     }
+
+    fn visit_unary(&mut self, n: &UnaryExpr, _b: &NodeBox) -> VisitorResult {
+        n.expr.visit(self)?;
+        Ok(())
+    }
 }

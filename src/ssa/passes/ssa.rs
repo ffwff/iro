@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
     let num_blocks = context.blocks.len();
-    
+
     if num_blocks > 1 {
         let mut defsites: Vec<BTreeSet<usize>> = vec![btreeset![]; context.variables.len()];
 

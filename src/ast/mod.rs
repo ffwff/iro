@@ -82,6 +82,7 @@ pub trait Visitor {
     visit_func!(visit_break, BreakExpr);
     visit_func!(visit_borrow, BorrowExpr);
     visit_func!(visit_deref, DerefExpr);
+    visit_func!(visit_unary, UnaryExpr);
 }
 
 pub trait Node: Downcast {
@@ -484,4 +485,20 @@ pub struct DerefExpr {
 impl Node for DerefExpr {
     debuggable!();
     visitable!(visit_deref);
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOp {
+    Uni,
+}
+
+#[derive(Debug)]
+pub struct UnaryExpr {
+    pub op: UnaryOp,
+    pub expr: NodeBox,
+}
+
+impl Node for UnaryExpr {
+    debuggable!();
+    visitable!(visit_unary);
 }
