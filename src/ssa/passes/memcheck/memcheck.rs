@@ -50,7 +50,13 @@ pub fn check(context: &mut Context) -> Flow {
                         }
                     }
                 }
-                InsType::Copy(var) | InsType::Move(var) | InsType::MarkMoved(var) => {
+                InsType::Copy(var) => {
+                    let retvar = ins.retvar().unwrap();
+                    if let Some(old) = drops.get(&var).cloned() {
+                        drops.insert(retvar, old);
+                    }
+                },
+                InsType::Move(var) | InsType::MarkMoved(var) => {
                     if let Some(state) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
                         .map(|x| x.as_opt())
@@ -64,12 +70,6 @@ pub fn check(context: &mut Context) -> Flow {
                         });
                     }
                     match ins.typed {
-                        InsType::Copy(var) => {
-                            let retvar = ins.retvar().unwrap();
-                            if let Some(old) = drops.get(&var).cloned() {
-                                drops.insert(retvar, old);
-                            }
-                        }
                         InsType::Move(var) => {
                             let retvar = ins.retvar().unwrap();
                             if let Some(old) = drops.remove(&var) {
