@@ -1,4 +1,5 @@
 use crate::utils;
+use iro::compiler::error;
 use iro::runtime::Runtime;
 
 #[cfg(test)]
