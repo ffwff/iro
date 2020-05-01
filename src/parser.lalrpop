@@ -35,22 +35,24 @@ Expr = {
     <StandaloneExpr> StatementEndOrEOF,
     <DefStatement>,
     <ClassStatement>,
+    <EmbeddableExpr>,
+    <IEExpr>,
+};
+
+StandaloneExpr = ReturnOrBreakExpr;
+EmbeddableExpr = {
     <WhileExpr>,
     <IfExpr>,
 };
-StandaloneExpr = {
-    <BreakExpr>,
-    <ReturnExpr>
-};
+
 StandaloneEmbeddableExpr = {
     <StandaloneExpr>,
-    <WhileExpr>,
-    <IfExpr>,
+    <EmbeddableExpr>,
+    <IEExpr>,
 };
 StandaloneEmbeddableExprWithDedent = {
     <StandaloneExpr>,
-    NL <WhileExpr> Dedent,
-    NL <IfExpr> Dedent,
+    NL <EmbeddableExpr> Dedent,
 };
 
 // Block
@@ -132,30 +134,6 @@ IfExprElsif: (NodeBox, Vec<NodeBox>) = {
     },
 };
 IfExprElse: Vec<NodeBox> = "else" <exprs:Block> => <>;
-
-// Class Expression
-ClassInitExpr: NodeBox = {
-    <start:@L> 
-        <id:CapitalIdentifier> "{" NL?
-            <inits: (<ClassInitInner> "," NL?)*>
-        Dedent? "}"
-    <end:@L> => {
-        NodeBox::new(ClassInitExpr { id: Rc::from(id), inits, }, (start, end))
-    }
-};
-
-ClassInitInner: (Rc<str>, NodeBox) = {
-    <name:Identifier> ":" <value:StandaloneExpr> => {
-        (Rc::from(name), value)
-    },
-};
-
-// Break expression
-BreakExpr: NodeBox = {
-    <start:@L> "break" <end:@L> => {
-        NodeBox::new(BreakExpr {}, (start, end))
-    }
-};
 
 // Attributes
 AttributeList: Vec<AttributeValue> = {
@@ -262,16 +240,57 @@ ExternDefStatement: NodeBox = {
 ExternSymbol: String = "=" <String>;
 
 // Return expression
-ReturnExpr: NodeBox = {
-    <start:@L> "return" <expr:StandaloneExpr> <end:@L>  => {
+ReturnOrBreakExpr: NodeBox = {
+    <start:@L> "return" <expr:StandaloneExpr> <end:@L> => {
         NodeBox::new(ReturnExpr { expr }, (start, end))
+    },
+    <start:@L> "break" <end:@L> => {
+        NodeBox::new(BreakExpr {}, (start, end))
     },
     LetExpr,
 };
 
+// Assignment left hand side
+LHSAssign: NodeBox = {
+    <MemberExpr>,
+    <start:@L>
+        <id:Identifier>
+    <end:@L> => NodeBox::new(Value::Identifier(Rc::from(id)), (start, end)),
+};
+
+// inline embeddable let expression
+IEExpr: NodeBox = {
+    <IELetExpr> => <>,
+    <IEAsgExpr> => <>,
+    <IEReturnExpr> => <>,
+};
+
+IELetExpr: NodeBox = {
+    <start:@L> <maybe_mut:"mut"?> <left:LHSAssign> ":" <typed:Type?> "=" <right:EmbeddableExpr> <end:@L> => {
+        NodeBox::new(LetExpr{
+            left,
+            right,
+            typed,
+            is_mut: maybe_mut.is_some()
+        }, (start, end))
+    },
+};
+
+IEAsgExpr: NodeBox = {
+    <start:@L> <left:LHSAssign> <op:AsgOp> <right:EmbeddableExpr> <end:@L> => {
+        NodeBox::new(BinExpr{ left, right, op }, (start, end))
+    },
+};
+
+IEReturnExpr: NodeBox = {
+    <start:@L> "return" <expr:EmbeddableExpr> <end:@L> => {
+        NodeBox::new(ReturnExpr { expr }, (start, end))
+    },
+};
+
 // Let expression
 LetExpr: NodeBox = {
-    <start:@L> <maybe_mut:"mut"?> <left:Term> ":" <typed:Type?> "=" <right:StandaloneExpr> <end:@L> => {
+    <start:@L> <maybe_mut:"mut"?> <left:LHSAssign> ":" <typed:Type?> "=" <right:StandaloneExpr> <end:@L> => {
         NodeBox::new(LetExpr{ left, right, typed, is_mut: maybe_mut.is_some() }, (start, end))
     },
     BinExpr,
@@ -286,7 +305,12 @@ BinOpTier<Op,NextTier>: NodeBox = {
 };
 
 BinExpr = AsgExpr;
-AsgExpr = BinOpTier<AsgOp, AndExpr>;
+AsgExpr = {
+    <start:@L>
+        <left:LHSAssign> <op:AsgOp> <right:AndExpr>
+    <end:@L> => NodeBox::new(BinExpr{ left, right, op }, (start, end)),
+    AndExpr
+};
 AndExpr = BinOpTier<AndOp, OrzExpr>;
 OrzExpr = BinOpTier<OrzOp, CmpExpr>;
 CmpExpr = BinOpTier<CmpOp, AddExpr>;
@@ -344,7 +368,7 @@ AsExpr: NodeBox = {
 // Call expression
 CallExpr: NodeBox = {
     <start:@L> 
-        <callee:MemberExpr> "(" <args:Comma<StandaloneExpr>> ")"
+        <callee:DerefExpr> "(" <args:Comma<StandaloneExpr>> ")"
     <end:@L> => {
         NodeBox::new(CallExpr::new(callee, args), (start, end))
     },
@@ -364,14 +388,20 @@ DerefExpr: NodeBox = {
 
 BorrowExpr: NodeBox = {
     <start:@L> 
-        "&" <borrow_mod:TypeBorrowModifier?> <expr:MemberExpr>
+        "&" <borrow_mod:TypeBorrowModifier?> <expr:MemberExprOrTerm>
     <end:@L> => {
         NodeBox::new(BorrowExpr {
             expr,
             borrow_mod: borrow_mod.unwrap_or(BorrowModifier::Immutable),
         }, (start, end))
     },
-    MemberExpr,
+    MemberExprOrTerm,
+};
+
+#[inline]
+MemberExprOrTerm: NodeBox = {
+    <MemberExpr> => <>,
+    <Term> => <>,
 };
 
 // Member expressions
@@ -379,7 +409,6 @@ MemberExpr: NodeBox = {
     <start:@L> <left:Term> <right: MemberExprArm+> <end:@L> => {
         NodeBox::new(MemberExpr { left, right }, (start, end))
     },
-    Term,
 };
 
 MemberExprArm: MemberExprArm = {
@@ -387,13 +416,31 @@ MemberExprArm: MemberExprArm = {
     "[" <expr:StandaloneExpr> "]" => MemberExprArm::Index(expr),
 };
 
-// Literals / terms
+// Terms
 Term: NodeBox = {
     <ClassInitExpr> => <>,
     <start:@L> <lit:Literal> <end:@L> => NodeBox::new(lit, (start, end)),
     "(" <StandaloneEmbeddableExprWithDedent> ")" => <>,
 };
 
+// Class Expression
+ClassInitExpr: NodeBox = {
+    <start:@L> 
+        <id:CapitalIdentifier> "{" NL?
+            <inits: (<ClassInitInner> "," NL?)*>
+        Dedent? "}"
+    <end:@L> => {
+        NodeBox::new(ClassInitExpr { id: Rc::from(id), inits, }, (start, end))
+    }
+};
+
+ClassInitInner: (Rc<str>, NodeBox) = {
+    <name:Identifier> ":" <value:StandaloneExpr> => {
+        (Rc::from(name), value)
+    },
+};
+
+// Literal
 Literal: Value = {
     <I32> => Value::I32(<>),
     <I64> => Value::I64(<>),
@@ -443,7 +490,6 @@ TypeIdentifier: TypeIdData = {
 TypeSpecifier: TypeId = {
     ":" <Type> => <>,
 };
-
 
 // Hook external lexer:
 extern {

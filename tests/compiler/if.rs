@@ -76,10 +76,8 @@ fn if_expr_nil() {
     let program = utils::parse_to_ssa(
         "
     def f(x) =>
-        return (
-            if x > 10 =>
-                pass
-        )
+        return if x > 10 =>
+            pass
     f(10)
     ",
     )
@@ -99,12 +97,10 @@ fn if_expr_unify() {
     let program = utils::parse_to_ssa(
         "
     def f(x) =>
-        return (
-            if x > 10 =>
-                0i32
-            else =>
-                0i64
-        )
+        return if x > 10 =>
+            0i32
+        else =>
+            0i64
     f(10)
     ",
     )
@@ -126,10 +122,8 @@ fn if_expr_unify_true_branch() {
     let program = utils::parse_to_ssa(
         "
     def f(x) =>
-        return (
-            if x > 10 =>
-                0
-        )
+        return if x > 10 =>
+            0
     f(10)
     ",
     )
@@ -151,12 +145,10 @@ fn if_expr_unify_false_branch() {
     let program = utils::parse_to_ssa(
         "
     def f(x) =>
-        return (
-            if x > 10 =>
-                pass
-            else =>
-                0
-        )
+        return if x > 10 =>
+            pass
+        else =>
+            0
     f(10)
     ",
     )
