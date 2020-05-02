@@ -169,7 +169,7 @@ impl Error {
 #[inline(always)]
 fn is_identifier_start(ch: char) -> bool {
     // Cache common identifier start characters
-    if likely(('A'..='Z').contains(&ch) || ('a'..='z').contains(&ch)) {
+    if likely(('A'..='Z').contains(&ch) || ('a'..='z').contains(&ch) || ch == '$' || ch == '_') {
         true
     } else {
         UnicodeXID::is_xid_start(ch)
@@ -179,7 +179,13 @@ fn is_identifier_start(ch: char) -> bool {
 #[inline(always)]
 fn is_identifier_continue(ch: char) -> bool {
     // Cache common identifier continuation characters
-    if likely(('A'..='Z').contains(&ch) || ('a'..='z').contains(&ch) || ('0'..='9').contains(&ch)) {
+    if likely(
+        ('A'..='Z').contains(&ch)
+            || ('a'..='z').contains(&ch)
+            || ('0'..='9').contains(&ch)
+            || ch == '$'
+            || ch == '_',
+    ) {
         true
     } else {
         UnicodeXID::is_xid_continue(ch)

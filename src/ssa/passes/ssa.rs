@@ -273,7 +273,8 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         for block in &mut context.blocks {
             for ins in &mut block.ins {
                 if let InsType::Phi { vars, .. } = &mut ins.typed {
-                    let mut old_vars = std::mem::replace(vars, vec![].into_boxed_slice()).into_vec();
+                    let mut old_vars =
+                        std::mem::replace(vars, vec![].into_boxed_slice()).into_vec();
                     old_vars.sort_unstable();
                     old_vars.dedup();
                     *vars = old_vars.into_boxed_slice();

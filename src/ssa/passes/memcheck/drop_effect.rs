@@ -4,7 +4,6 @@ use fnv::FnvHashMap;
 #[derive(Clone)]
 pub enum DropEffect {
     UnbindBorrowed {
-        borrower: Variable,
         target: Variable,
     },
     UnbindBorrowedMut {

@@ -9,9 +9,7 @@ impl DesugarPostprocessVisitor {
     }
 
     fn ungenerate_retvar(b: &NodeBox) {
-        if let Some(stmt) = b.borrow().downcast_ref::<IfExpr>() {
-            stmt.generate_retvar.set(false);
-        }
+        b.generate_retvar.set(false);
     }
 }
 
@@ -67,18 +65,18 @@ impl Visitor for DesugarPostprocessVisitor {
         Ok(())
     }
 
-    fn visit_ifexpr(&mut self, n: &IfExpr, _b: &NodeBox) -> VisitorResult {
+    fn visit_ifexpr(&mut self, n: &IfExpr, b: &NodeBox) -> VisitorResult {
         n.cond.visit(self)?;
         let last_idx = n.exprs.len().wrapping_sub(1);
         for (idx, expr) in n.exprs.iter().enumerate() {
-            if idx != last_idx && !n.generate_retvar.get() {
+            if idx != last_idx && !b.generate_retvar.get() {
                 Self::ungenerate_retvar(expr);
             }
             expr.visit(self)?;
         }
         let last_idx = n.elses.len().wrapping_sub(1);
         for (idx, expr) in n.elses.iter().enumerate() {
-            if idx != last_idx && !n.generate_retvar.get() {
+            if idx != last_idx && !b.generate_retvar.get() {
                 Self::ungenerate_retvar(expr);
             }
             expr.visit(self)?;

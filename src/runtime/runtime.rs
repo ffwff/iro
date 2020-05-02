@@ -2,6 +2,10 @@ use fnv::FnvHashMap;
 use std::borrow::Borrow;
 use std::hash::Hash;
 
+pub const LIBC_MAIN_NAME: &'static str = "main";
+pub const MAIN_NAME: &'static str = "main()";
+pub const MALLOC_NAME: &'static str = "__iro_malloc__(I32,I32)";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Runtime {
     funcs: FnvHashMap<String, GenericFunction>,

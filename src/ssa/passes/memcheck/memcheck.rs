@@ -4,7 +4,6 @@ use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::drop_effect::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
-use fnv::FnvHashMap;
 
 pub fn check(context: &mut Context) -> Flow {
     fn walk(
@@ -33,11 +32,11 @@ pub fn check(context: &mut Context) -> Flow {
                     if let Some(drop_effect) = drops.remove(var) {
                         dbg_println!("dropping {:?}", var);
                         match drop_effect {
-                            DropEffect::UnbindBorrowed { borrower, target } => {
+                            DropEffect::UnbindBorrowed { target } => {
                                 let mem_state_ref = mem_state.get_mut(&target).unwrap();
                                 let old = std::mem::replace(mem_state_ref, MemoryState::None);
-                                dbg_println!(" old {:?}", old);
-                                *mem_state_ref = old.unborrow(borrower);
+                                dbg_println!(" old for target {:?} {:?}", target, old);
+                                *mem_state_ref = old.unborrow(*var);
                                 dbg_println!("  => {:?}", *mem_state_ref);
                             }
                             DropEffect::UnbindBorrowedMut {
@@ -52,10 +51,19 @@ pub fn check(context: &mut Context) -> Flow {
                 }
                 InsType::Copy(var) => {
                     let retvar = ins.retvar().unwrap();
+                    dbg_println!("copy: {:?} -> {:?}", var, retvar);
                     if let Some(old) = drops.get(&var).cloned() {
+                        let mut overlay = overlay_hashmap![&mut mem_state, previous_mem_state];
+                        dbg_println!("overlay: {:?}", overlay.map_mut());
+                        dbg_println!("overlay: {:?}", overlay.map_imm());
+                        if let DropEffect::UnbindBorrowed { target, .. } = old {
+                            let state = overlay.get_or_clone(target).unwrap();
+                            let old = std::mem::replace(state, MemoryState::None);
+                            *state = old.borrow(retvar, ins.source_location()).unwrap();
+                        }
                         drops.insert(retvar, old);
                     }
-                },
+                }
                 InsType::Move(var) | InsType::MarkMoved(var) => {
                     if let Some(state) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
@@ -158,8 +166,9 @@ pub fn check(context: &mut Context) -> Flow {
                                     .map(|x| x.as_opt_mut())
                                     .flatten()
                             {
-                                if let MemoryState::FullyBorrowed(map) = state {
-                                    map.insert(*var, ins.source_location());
+                                let old = std::mem::replace(state, MemoryState::None);
+                                if let Some(new) = old.borrow(retvar, ins.source_location()) {
+                                    *state = new;
                                 } else {
                                     return Err(Code::MemoryError {
                                         position: ins.source_location(),
@@ -171,23 +180,12 @@ pub fn check(context: &mut Context) -> Flow {
                             } else {
                                 mem_state.insert(
                                     *var,
-                                    MemoryState::FullyBorrowed({
-                                        let mut hashmap = FnvHashMap::with_capacity_and_hasher(
-                                            1,
-                                            Default::default(),
-                                        );
-                                        hashmap.insert(retvar, ins.source_location());
-                                        hashmap
-                                    }),
+                                    MemoryState::None
+                                        .borrow(retvar, ins.source_location())
+                                        .unwrap(),
                                 );
                             }
-                            drops.insert(
-                                retvar,
-                                DropEffect::UnbindBorrowed {
-                                    borrower: retvar,
-                                    target: *var,
-                                },
-                            );
+                            drops.insert(retvar, DropEffect::UnbindBorrowed { target: *var });
                         }
                         BorrowModifier::Mutable => {
                             if let Some(state) = mem_state

@@ -82,7 +82,27 @@ impl MemoryState {
         }
     }
 
+    pub fn borrow(self, borrower: Variable, span: SpanIndex) -> Option<Self> {
+        if let MemoryState::FullyBorrowed(mut map) = self {
+            map.insert(borrower, span);
+            if map.is_empty() {
+                Some(MemoryState::None)
+            } else {
+                Some(MemoryState::FullyBorrowed(map))
+            }
+        } else {
+            if let MemoryState::None = self {
+                Some(MemoryState::FullyBorrowed(fnv_hashmap![
+                    borrower => span,
+                ]))
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn unborrow(self, borrower: Variable) -> Self {
+        dbg_println!("unborrow from {:?}", borrower);
         if let MemoryState::FullyBorrowed(mut map) = self {
             map.remove(&borrower).expect("invalid unborrow");
             if map.is_empty() {

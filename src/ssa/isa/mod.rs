@@ -914,7 +914,7 @@ impl ToString for FunctionName {
                 string
             })
             .collect::<Vec<String>>()
-            .join(", ");
+            .join(",");
         string += ")";
         string
     }

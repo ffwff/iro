@@ -4,6 +4,7 @@ use crate::codegen::cranelift::translator::*;
 use crate::codegen::settings::*;
 use crate::codegen::structs::*;
 use crate::compiler;
+use crate::runtime;
 use crate::runtime::Runtime;
 use crate::ssa::isa;
 
@@ -98,6 +99,7 @@ where
             }
             let mut fctx = self.module.make_context();
             self.visit_context(&context, &program, &mut builder_context, &mut fctx);
+            dbg_println!("decl {:?}", func_name.to_string());
             let id = self
                 .module
                 .declare_function(&func_name.to_string(), Linkage::Local, &fctx.func.signature)
@@ -263,7 +265,7 @@ where
         let sig = self.module.make_signature();
         let callee = self
             .module
-            .declare_function("main()", Linkage::Import, &sig)
+            .declare_function(runtime::MAIN_NAME, Linkage::Import, &sig)
             .unwrap();
         let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
         builder.ins().call(local_callee, &[]);
@@ -278,11 +280,30 @@ where
 
         let id = self
             .module
-            .declare_function(&"main".to_string(), Linkage::Export, &fctx.func.signature)
+            .declare_function(
+                runtime::LIBC_MAIN_NAME,
+                Linkage::Export,
+                &fctx.func.signature,
+            )
             .unwrap();
         self.module
             .define_function(id, &mut fctx, &mut NullTrapSink {})
             .unwrap();
+    }
+
+    fn call_malloc(&mut self, builder: &mut FunctionBuilder, size: Value, align: Value) -> Value {
+        let callee = {
+            let mut sig = self.module.make_signature();
+            sig.params.push(AbiParam::new(types::I32));
+            sig.params.push(AbiParam::new(types::I32));
+            sig.returns.push(AbiParam::new(self.pointer_type()));
+            self.module
+                .declare_function(runtime::MALLOC_NAME, Linkage::Import, &sig)
+                .unwrap()
+        };
+        let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
+        let call = builder.ins().call(local_callee, &[size, align]);
+        *builder.inst_results(call).first().clone().unwrap()
     }
 
     fn visit_context(
@@ -517,6 +538,27 @@ where
                 builder.declare_var(to_var(ins.retvar().unwrap()), typed);
                 builder.def_var(to_var(ins.retvar().unwrap()), tmp);
             }
+            isa::InsType::AllocHeap => {
+                let retvar = ins.retvar().unwrap();
+                let typed = context.variable(retvar);
+                if let Some(prim) = self.ir_to_cranelift_type(typed) {
+                    let size_value = builder.ins().iconst(types::I32, prim.bytes() as i64);
+                    let tmp = self.call_malloc(builder, size_value, size_value);
+                    builder.declare_var(to_var(retvar), self.pointer_type());
+                    builder.def_var(to_var(retvar), tmp);
+                } else {
+                    let struct_data = self.get_struct_data(&ins_context.program, typed).unwrap();
+                    let size_value = builder
+                        .ins()
+                        .iconst(types::I32, struct_data.size_of() as i64);
+                    let align_value = builder
+                        .ins()
+                        .iconst(types::I32, struct_data.align_of() as i64);
+                    let tmp = self.call_malloc(builder, size_value, align_value);
+                    builder.declare_var(to_var(retvar), self.pointer_type());
+                    builder.def_var(to_var(retvar), tmp);
+                }
+            }
             isa::InsType::Alloca => {
                 let retvar = ins.retvar().unwrap();
                 let typed = self.ir_to_cranelift_type(context.variable(retvar)).unwrap();
@@ -746,7 +788,7 @@ where
                         },
                     );
                 }
-                dbg_println!("call {:#?}", rettype);
+                dbg_println!("call {:?}", name.to_string());
 
                 let callee = if let Some(mapping) = self.extern_mapping.get(name) {
                     if let Some(FuncOrDataId::Func(func_id)) = self.module.get_name(&mapping) {
@@ -1106,7 +1148,7 @@ impl backend::JitBackend for CraneliftBackend {
         }
         let mut module: Module<SimpleJITBackend> =
             Codegen::from_builder(builder).process(program, false);
-        if let Some(main) = module.get_name("main()") {
+        if let Some(main) = module.get_name(runtime::MAIN_NAME) {
             if let FuncOrDataId::Func(func_id) = main {
                 let function = module.get_finalized_function(func_id);
                 let main_fn = std::mem::transmute::<_, extern "C" fn()>(function);

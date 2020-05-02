@@ -110,6 +110,7 @@ impl std::fmt::Debug for dyn Node {
 pub struct NodeBox {
     data: Rc<dyn Node>,
     span: Cell<SourceSpan>,
+    pub generate_retvar: Cell<bool>,
 }
 
 impl NodeBox {
@@ -120,6 +121,7 @@ impl NodeBox {
         NodeBox {
             data: Rc::new(node),
             span: Cell::new(SourceSpan::from_tuple((span.0, span.1 + 1))),
+            generate_retvar: Cell::new(true),
         }
     }
 
@@ -286,7 +288,6 @@ pub struct IfExpr {
     pub cond: NodeBox,
     pub exprs: Vec<NodeBox>,
     pub elses: Vec<NodeBox>,
-    pub generate_retvar: Cell<bool>,
 }
 
 impl Node for IfExpr {
@@ -330,13 +331,34 @@ pub struct DefArgument {
 }
 
 #[derive(Debug)]
+pub struct FuncAttributes {
+    pub intrinsic: RefCell<IntrinsicType>,
+    pub always_generate: Cell<bool>,
+}
+
+impl FuncAttributes {
+    pub fn default() -> Self {
+        Self {
+            intrinsic: RefCell::new(IntrinsicType::None),
+            always_generate: Cell::new(false),
+        }
+    }
+
+    pub fn with_intrinsic(typed: IntrinsicType) -> Self {
+        let mut returned = Self::default();
+        returned.intrinsic = RefCell::new(typed);
+        returned
+    }
+}
+
+#[derive(Debug)]
 pub struct DefStatement {
     pub id: Rc<str>,
     pub args: Vec<DefArgument>,
     pub exprs: Vec<NodeBox>,
     pub return_type: Option<TypeId>,
     pub attrs: Option<Vec<AttributeValue>>,
-    pub intrinsic: RefCell<IntrinsicType>,
+    pub func_attrs: FuncAttributes,
 }
 
 pub enum ArgCompatibility {
