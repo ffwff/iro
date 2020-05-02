@@ -177,22 +177,17 @@ pub struct ContextPrinter<'a>(pub Option<&'a Rc<FunctionName>>, pub &'a Context)
 impl<'a> std::fmt::Display for ContextPrinter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(name) = &self.0 {
-            write!(
-                f,
-                "function {} -> {} =>\n",
-                name.to_string(),
-                self.1.rettype
-            )?;
+            writeln!(f, "function {} -> {} =>", name.to_string(), self.1.rettype)?;
         } else {
-            write!(f, "-> {} =>\n", self.1.rettype)?;
+            writeln!(f, "-> {} =>", self.1.rettype)?;
         }
         for (idx, typed) in self.1.variables.iter().enumerate() {
             if typed != &Type::NeverUsed {
-                write!(f, "\tv{}: {}\n", idx, typed)?;
+                write!(f, "\tv{}: {}", idx, typed)?;
             }
         }
         if self.1.blocks.is_empty() {
-            write!(f, "\tpass\n")?;
+            write!(f, "\tpass")?;
         } else {
             for (idx, (block, block_vars)) in self
                 .1
@@ -201,27 +196,27 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
                 .zip(self.1.block_vars.iter())
                 .enumerate()
             {
-                write!(f, "b{}:\n", idx)?;
-                write!(f, "- preds: {:?}\n", block.preds)?;
-                write!(f, "- succs: {:?}\n", block.succs)?;
-                write!(
+                writeln!(f, "b{}:", idx)?;
+                writeln!(f, "- preds: {:?}", block.preds)?;
+                writeln!(f, "- succs: {:?}", block.succs)?;
+                writeln!(
                     f,
-                    "- vars_declared_in_this_block: {:?}\n",
+                    "- vars_declared_in_this_block: {:?}",
                     block_vars.vars_declared_in_this_block
                 )?;
-                write!(f, "- vars_used: {:?}\n", block_vars.vars_used)?;
-                write!(f, "- vars_imported: {:?}\n", block_vars.vars_imported)?;
-                write!(
+                writeln!(f, "- vars_used: {:?}", block_vars.vars_used)?;
+                writeln!(f, "- vars_imported: {:?}", block_vars.vars_imported)?;
+                writeln!(
                     f,
-                    "- vars_total_imported: {:?}\n",
+                    "- vars_total_imported: {:?}",
                     block_vars.vars_total_imported
                 )?;
-                write!(f, "- vars_exported: {:?}\n", block_vars.vars_exported)?;
+                writeln!(f, "- vars_exported: {:?}", block_vars.vars_exported)?;
                 for ins in &block.ins {
-                    write!(f, "\t{}\n", InsPrinter(ins))?;
+                    writeln!(f, "\t{}", InsPrinter(ins))?;
                 }
                 if let Some(postlude) = block.postlude.as_ref() {
-                    write!(f, "\t{}\n", InsPrinter(postlude))?;
+                    writeln!(f, "\t{}", InsPrinter(postlude))?;
                 }
             }
         }
@@ -233,9 +228,9 @@ pub struct StructPrinter<'a>(pub &'a StructType);
 
 impl<'a> std::fmt::Display for StructPrinter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "struct {} =>\n", self.0.name())?;
+        writeln!(f, "struct {} =>", self.0.name())?;
         for (idx, field) in self.0.fields().iter().enumerate() {
-            write!(f, "\t{}: {}\n", idx, field.typed)?;
+            writeln!(f, "\t{}: {}", idx, field.typed)?;
         }
         Ok(())
     }
@@ -245,11 +240,11 @@ pub struct ProgramPrinter<'a>(pub &'a Program);
 
 impl<'a> std::fmt::Display for ProgramPrinter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (_, astruct) in &self.0.builtins.structs {
-            write!(f, "{}\n", StructPrinter(astruct))?;
+        for astruct in self.0.builtins.structs.values() {
+            writeln!(f, "{}", StructPrinter(astruct))?;
         }
         for (name, context) in &self.0.contexts {
-            write!(f, "{}\n", ContextPrinter(Some(name), context))?;
+            writeln!(f, "{}", ContextPrinter(Some(name), context))?;
         }
         Ok(())
     }

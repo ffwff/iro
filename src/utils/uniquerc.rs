@@ -40,11 +40,6 @@ impl<T: ?Sized> PartialEq for UniqueRc<T> {
     fn eq(&self, other: &UniqueRc<T>) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
-
-    #[inline]
-    fn ne(&self, other: &UniqueRc<T>) -> bool {
-        !Rc::ptr_eq(&self.0, &other.0)
-    }
 }
 
 impl<T: ?Sized> Eq for UniqueRc<T> {}

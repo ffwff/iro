@@ -20,12 +20,12 @@ impl<'a, T> OptCell<T> {
 
     #[inline]
     unsafe fn get_unchecked(&self) -> &'a Option<RefCell<T>> {
-        std::mem::transmute::<_, _>(self.data.get())
+        &*self.data.get()
     }
 
     #[inline]
     unsafe fn get_mut_unchecked(&self) -> &'a mut Option<RefCell<T>> {
-        std::mem::transmute::<_, _>(self.data.get())
+        &mut *self.data.get()
     }
 
     #[inline]
@@ -85,8 +85,6 @@ impl<'a, T> OptCell<T> {
                 if let Err(err) = refcell.try_borrow_mut() {
                     return Err(err);
                 }
-                // We must not use RefCell after this
-                std::mem::drop(refcell);
                 let value = unsafe { self.get_mut_unchecked().take() };
                 Ok(Self {
                     data: UnsafeCell::new(value),
@@ -106,8 +104,6 @@ impl<'a, T> OptCell<T> {
                 if refcell.try_borrow_mut().is_err() {
                     return None;
                 }
-                // We must not use RefCell after this
-                std::mem::drop(refcell);
                 let value = unsafe { self.get_mut_unchecked().take() };
                 Some(value.unwrap().into_inner())
             }

@@ -37,11 +37,16 @@ macro_rules! generate_arithmetic {
     }};
 }
 
+struct StackLoadIns {
+    pub slot: StackSlot,
+    pub loads: Vec<(Offset32, Value)>,
+}
+
 struct InsContext<'a> {
     pub context: &'a isa::Context,
     pub program: &'a isa::Program,
     pub bblocks: &'a Vec<Block>,
-    pub stack_loads_ins: &'a BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)>,
+    pub stack_loads_ins: &'a BTreeMap<usize, StackLoadIns>,
     pub struct_return: Option<Value>,
 }
 
@@ -81,7 +86,7 @@ where
 
     pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
         self.build_struct_data_for_struct(&program, &program.builtins.generic_fat_pointer_struct);
-        for (_, astruct) in &program.builtins.structs {
+        for astruct in program.builtins.structs.values() {
             self.build_struct_data_for_struct(&program, astruct);
         }
         let mut builder_context = FunctionBuilderContext::new();
@@ -363,7 +368,7 @@ where
         }
 
         // Generate stack loads for struct arguments
-        let mut stack_loads_ins: BTreeMap<usize, (StackSlot, Vec<(Offset32, Value)>)> = btreemap![];
+        let mut stack_loads_ins: BTreeMap<usize, StackLoadIns> = btreemap![];
         for (idx, (typed, stack_loads)) in context
             .args
             .iter()
@@ -383,7 +388,13 @@ where
                     let tmp = builder.append_block_param(blocks[0], types::I64);
                     loads_for_struct.push((*offset, tmp));
                 }
-                stack_loads_ins.insert(idx, (slot, loads_for_struct));
+                stack_loads_ins.insert(
+                    idx,
+                    StackLoadIns {
+                        slot,
+                        loads: loads_for_struct,
+                    },
+                );
             }
         }
 
@@ -415,7 +426,7 @@ where
     fn visit_member_ref(
         &mut self,
         left: isa::Variable,
-        indices: &Box<[isa::MemberExprIndex]>,
+        indices: &[isa::MemberExprIndex],
         builder: &mut FunctionBuilder,
         ins_context: &InsContext,
     ) -> (Value, isa::Type) {
@@ -640,11 +651,13 @@ where
                 } else {
                     *arg
                 };
-                if let Some((slot, struct_ins)) = ins_context.stack_loads_ins.get(&arg) {
-                    for (offset, value) in struct_ins {
-                        builder.ins().stack_store(*value, *slot, *offset);
+                if let Some(load_ins) = ins_context.stack_loads_ins.get(&arg) {
+                    for (offset, value) in &load_ins.loads {
+                        builder.ins().stack_store(*value, load_ins.slot, *offset);
                     }
-                    let pointer = builder.ins().stack_addr(self.pointer_type(), *slot, 0);
+                    let pointer = builder
+                        .ins()
+                        .stack_addr(self.pointer_type(), load_ins.slot, 0);
                     let retvar = ins.retvar().unwrap();
                     builder.declare_var(to_var(retvar), self.pointer_type());
                     builder.def_var(to_var(retvar), pointer);
@@ -667,7 +680,7 @@ where
             }
             isa::InsType::LoadSubstring(x) => {
                 let data_id = if let Some(data_id) = self.string_mapping.get(x) {
-                    data_id.clone()
+                    *data_id
                 } else {
                     use std::fmt::Write;
 
@@ -762,7 +775,7 @@ where
             isa::InsType::LoadNil => {
                 let rettype = context.variable(ins.retvar().unwrap());
                 if *rettype == isa::Type::Nil {
-                    return;
+                    // purposely left blank
                 } else {
                     unimplemented!()
                 }
@@ -1076,16 +1089,16 @@ where
                         let right_typed = self.ir_to_cranelift_type(right).unwrap();
                         let (left_size, right_size) = (left_typed.bits(), right_typed.bits());
                         let var = builder.use_var(to_var(*var));
-                        let tmp = if left_size < right_size {
-                            builder
+
+                        use std::cmp::Ordering;
+                        let tmp = match left_size.cmp(&right_size) {
+                            Ordering::Less => builder
                                 .ins()
-                                .sextend(self.ir_to_cranelift_type(&right).unwrap(), var)
-                        } else if left_size > right_size {
-                            builder
+                                .sextend(self.ir_to_cranelift_type(&right).unwrap(), var),
+                            Ordering::Greater => builder
                                 .ins()
-                                .ireduce(self.ir_to_cranelift_type(&right).unwrap(), var)
-                        } else {
-                            var
+                                .ireduce(self.ir_to_cranelift_type(&right).unwrap(), var),
+                            _ => var,
                         };
                         builder.def_var(to_var(ins.retvar().unwrap()), tmp);
                     }
@@ -1140,8 +1153,7 @@ impl CraneliftBackend {
         let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
             panic!("host machine is not supported: {}", msg);
         });
-        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
-        isa
+        isa_builder.finish(settings::Flags::new(flag_builder))
     }
 
     pub fn backend() -> backend::Backend {

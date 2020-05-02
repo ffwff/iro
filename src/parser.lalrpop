@@ -61,9 +61,9 @@ Block: Vec<NodeBox> = {
         items.push(last);
         items
     },
-    "=>" <StandaloneExpr> NL => { vec![<>] },
-    "=>" NL "pass" Dedent => { vec![] },
-    "=>" "pass" NL => { vec![] }
+    "=>" <StandaloneExpr> NL => vec![<>],
+    "=>" NL "pass" Dedent => vec![],
+    "=>" "pass" NL => vec![],
 };
 
 #[inline]
@@ -73,9 +73,9 @@ BlockGeneric<T>: Vec<T> = {
         items.push(last);
         items
     },
-    "=>" <T> NL => { vec![<>] },
-    "=>" NL "pass" Dedent => { vec![] },
-    "=>" "pass" NL => { vec![] }
+    "=>" <T> NL => vec![<>],
+    "=>" NL "pass" Dedent => vec![],
+    "=>" "pass" NL => vec![],
 };
 
 // While expression

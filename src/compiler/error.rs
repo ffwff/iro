@@ -2,7 +2,6 @@ use crate::compiler::sources::{SourceSpan, SpanIndex};
 use crate::lexer;
 use crate::ssa::isa;
 use crate::ssa::passes::memcheck::path::LastUsed;
-use lalrpop_util;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

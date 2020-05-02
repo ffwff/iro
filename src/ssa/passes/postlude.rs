@@ -3,7 +3,7 @@ use crate::ssa::isa::*;
 
 pub fn separate_postlude(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
-        if let Some(ins) = block.ins.last().clone() {
+        if let Some(ins) = block.ins.last() {
             if ins.typed.is_jmp() {
                 block.postlude = block.ins.pop();
             } else {

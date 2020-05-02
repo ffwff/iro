@@ -1,3 +1,6 @@
+#![allow(clippy::new_without_default)]
+#![allow(clippy::redundant_closure)]
+
 #[macro_use]
 extern crate maplit;
 extern crate tempfile;
@@ -148,7 +151,7 @@ fn build(opts: Options) {
     }
 }
 
-fn usage(program: &String, commands: &BTreeMap<&str, (&str, CommandFn)>) {
+fn usage(program: &str, commands: &BTreeMap<&str, (&str, CommandFn)>) {
     println!("Usage:\n\t{} [options] <command> [file]\n", program);
     println!("Commands:");
     for (name, (desc, _)) in commands {
@@ -158,6 +161,7 @@ fn usage(program: &String, commands: &BTreeMap<&str, (&str, CommandFn)>) {
     let mut options = [
         ("-obj", "generate an object file instead of executable"),
         ("-O", "optimize for size and speed"),
+        ("-Onone", "don't optimize at all"),
         ("-Ospeed", "optimize for speed"),
     ];
     options.sort_by_key(|k| k.0);
@@ -174,7 +178,7 @@ fn main() {
         "build" => ("Builds the specified program", build as CommandFn),
     ];
     let mut opts = Options {
-        opt_level: OptLevel::None,
+        opt_level: OptLevel::SpeedAndSize,
         output_type: OutputType::Executable,
         args: &args,
         command_idx: 0,
@@ -183,6 +187,10 @@ fn main() {
         match arg.as_str() {
             "-obj" => {
                 opts.output_type = OutputType::Object;
+                continue;
+            }
+            "-Onone" => {
+                opts.opt_level = OptLevel::Speed;
                 continue;
             }
             "-Ospeed" => {
@@ -203,5 +211,5 @@ fn main() {
             break;
         }
     }
-    return usage(program, &commands);
+    usage(program, &commands)
 }

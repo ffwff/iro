@@ -388,9 +388,7 @@ impl UnionType {
 
     pub fn unify(&self, other: &UnionType) -> Self {
         let mut cloned = self.clone();
-        cloned
-            .types
-            .extend(other.types.iter().map(|typed| typed.clone()));
+        cloned.types.extend(other.types.iter().cloned());
         cloned.types.sort_unstable();
         cloned.types.dedup();
         cloned

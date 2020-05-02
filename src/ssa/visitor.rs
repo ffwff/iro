@@ -393,7 +393,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 ast_top_level
                     .class_stmts
                     .insert(class_stmt.id.clone(), expr.clone());
-            } else if let Some(_) = expr.borrow().downcast_ref::<ImportStatement>() {
+            } else if expr.borrow().downcast_ref::<ImportStatement>().is_some() {
                 top_level_stmts.push(expr);
             } else {
                 outerstmts.push(expr);
@@ -406,7 +406,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
 
         {
             let ast_top_level = self.ast_top_level.borrow();
-            for (_, defstmt_vec) in &ast_top_level.defstmts {
+            for defstmt_vec in ast_top_level.defstmts.values() {
                 for boxed in defstmt_vec {
                     let defstmt: &DefStatement =
                         boxed.borrow().downcast_ref::<DefStatement>().unwrap();
@@ -427,7 +427,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
 
         {
             let ast_top_level = self.ast_top_level.borrow();
-            for (_, defstmt_vec) in &ast_top_level.defstmts {
+            for defstmt_vec in ast_top_level.defstmts.values() {
                 for boxed in defstmt_vec {
                     let defstmt: &DefStatement =
                         boxed.borrow().downcast_ref::<DefStatement>().unwrap();
@@ -886,9 +886,9 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             if !self.has_direct_return {
                 block.ins.push(Ins::empty_ret(
                     InsType::IfJmp {
-                        condvar: condvar,
-                        iftrue: iftrue_start.unwrap_or(outer_block.unwrap()),
-                        iffalse: iffalse_start.unwrap_or(outer_block.unwrap()),
+                        condvar,
+                        iftrue: iftrue_start.or(outer_block).unwrap(),
+                        iffalse: iffalse_start.or(outer_block).unwrap(),
                     },
                     location,
                 ));
@@ -1095,7 +1095,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             };
             let retvar = self.context.insert_var(rettype);
             {
-                let name = self.context.call_name(func_name.clone());
+                let name = self.context.call_name(func_name);
                 let block = self.context.block_mut();
                 block.ins.push(Ins::new(
                     retvar,

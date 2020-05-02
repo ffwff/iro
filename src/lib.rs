@@ -4,10 +4,12 @@
 #![feature(move_ref_pattern)]
 #![feature(cell_update)]
 #![feature(core_intrinsics)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::redundant_closure)]
 
 #[macro_use]
 extern crate lalrpop_util;
-lalrpop_mod!(pub parser);
+lalrpop_mod!(#[allow(clippy::all)] pub parser);
 #[macro_use]
 extern crate maplit;
 #[macro_use]

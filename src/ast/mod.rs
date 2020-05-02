@@ -137,6 +137,7 @@ impl NodeBox {
         &self.span
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn borrow(&self) -> &dyn Node {
         self.data.borrow()
     }
@@ -368,7 +369,7 @@ pub enum ArgCompatibility {
 }
 
 impl DefStatement {
-    pub fn compatibility_with_args(&self, arg_types: &Vec<Type>) -> ArgCompatibility {
+    pub fn compatibility_with_args(&self, arg_types: &[Type]) -> ArgCompatibility {
         if self.args.len() != arg_types.len() {
             return ArgCompatibility::None;
         }

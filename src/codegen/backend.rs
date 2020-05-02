@@ -6,6 +6,9 @@ use crate::ssa::isa;
 use std::borrow::Borrow;
 
 pub trait JitBackend {
+    /// # Safety
+    ///
+    /// This function calls into possibly unsafe iroha code.
     unsafe fn run(
         &self,
         program: &isa::Program,

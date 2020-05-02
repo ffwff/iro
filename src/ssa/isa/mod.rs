@@ -134,12 +134,12 @@ impl Context {
         }
     }
 
-    pub fn insert_var<'a>(&'a mut self, typed: Type) -> Variable {
+    pub fn insert_var(&mut self, typed: Type) -> Variable {
         self.variables.push(typed);
         Variable::with_u32((self.variables.len() - 1).try_into().unwrap())
     }
 
-    pub fn variable<'a>(&'a self, idx: Variable) -> &'a Type {
+    pub fn variable(&self, idx: Variable) -> &Type {
         &self.variables[usize::from(idx)]
     }
 
@@ -220,7 +220,7 @@ impl BlockVars {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct Ins {
     auxvar: Variable,
     pub typed: InsType,
@@ -290,14 +290,12 @@ impl Ins {
             T: FnMut(Variable) -> Variable,
         {
             for idx in indices.iter_mut() {
-                match idx {
-                    MemberExprIndex {
-                        var: MemberExprIndexVar::Variable(var),
-                        ..
-                    } => {
-                        *var = swap(*var);
-                    }
-                    _ => (),
+                if let MemberExprIndex {
+                    var: MemberExprIndexVar::Variable(var),
+                    ..
+                } = idx
+                {
+                    *var = swap(*var);
                 }
             }
             indices
@@ -393,19 +391,17 @@ impl Ins {
     where
         T: FnMut(Variable),
     {
-        fn each_indices<T>(indices: &Box<[MemberExprIndex]>, callback: &mut T)
+        fn each_indices<T>(indices: &[MemberExprIndex], callback: &mut T)
         where
             T: FnMut(Variable),
         {
             for idx in indices.iter() {
-                match idx {
-                    MemberExprIndex {
-                        var: MemberExprIndexVar::Variable(var),
-                        ..
-                    } => {
-                        callback(*var);
-                    }
-                    _ => (),
+                if let MemberExprIndex {
+                    var: MemberExprIndexVar::Variable(var),
+                    ..
+                } = idx
+                {
+                    callback(*var);
                 }
             }
         }
@@ -631,6 +627,7 @@ impl Constant {
         }
     }
 
+    #[allow(clippy::float_cmp)]
     pub fn equ(&self, right: Constant) -> Option<Constant> {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x == y)),
@@ -642,6 +639,7 @@ impl Constant {
         }
     }
 
+    #[allow(clippy::float_cmp)]
     pub fn neq(&self, right: Constant) -> Option<Constant> {
         match (*self, right) {
             (Constant::I32(x), Constant::I32(y)) => Some(Constant::Bool(x != y)),
@@ -722,7 +720,7 @@ pub enum OpConst {
     Neq,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum InsType {
     LoadNil,
     Alloca,

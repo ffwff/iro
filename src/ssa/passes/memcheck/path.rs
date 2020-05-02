@@ -51,7 +51,7 @@ pub enum LastUsed {
 }
 
 impl MemoryState {
-    pub fn as_opt(self) -> Option<Self> {
+    pub fn into_opt(self) -> Option<Self> {
         match self {
             MemoryState::None => None,
             _ => Some(self),
@@ -90,14 +90,12 @@ impl MemoryState {
             } else {
                 Some(MemoryState::FullyBorrowed(map))
             }
+        } else if let MemoryState::None = self {
+            Some(MemoryState::FullyBorrowed(fnv_hashmap![
+                borrower => span,
+            ]))
         } else {
-            if let MemoryState::None = self {
-                Some(MemoryState::FullyBorrowed(fnv_hashmap![
-                    borrower => span,
-                ]))
-            } else {
-                None
-            }
+            None
         }
     }
 

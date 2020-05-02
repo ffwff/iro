@@ -19,7 +19,7 @@ pub fn check(context: &mut Context) -> Flow {
                 InsType::Drop(var) => {
                     if let Some(state) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
-                        .map(|x| x.as_opt())
+                        .map(|x| x.into_opt())
                         .flatten()
                     {
                         return Err(Code::MemoryError {
@@ -67,7 +67,7 @@ pub fn check(context: &mut Context) -> Flow {
                 InsType::Move(var) | InsType::MarkMoved(var) => {
                     if let Some(state) = mem_state
                         .insert(*var, MemoryState::FullyMoved(ins.source_location()))
-                        .map(|x| x.as_opt())
+                        .map(|x| x.into_opt())
                         .flatten()
                     {
                         return Err(Code::MemoryError {
@@ -111,12 +111,10 @@ pub fn check(context: &mut Context) -> Flow {
                         }
                     } else if *modifier == ReferenceModifier::Copy {
                         continue;
-                    } else if let MemoryState::PartiallyMoved(dict) = overlay
-                        .map_mut()
-                        .entry(*left)
-                        .or_insert(MemoryState::PartiallyMoved(Directory::new(
-                            ins.source_location(),
-                        )))
+                    } else if let MemoryState::PartiallyMoved(dict) =
+                        overlay.map_mut().entry(*left).or_insert_with(|| {
+                            MemoryState::PartiallyMoved(Directory::new(ins.source_location()))
+                        })
                     {
                         dict
                     } else {
@@ -190,7 +188,7 @@ pub fn check(context: &mut Context) -> Flow {
                         BorrowModifier::Mutable => {
                             if let Some(state) = mem_state
                                 .insert(*var, MemoryState::FullyBorrowedMut(ins.source_location()))
-                                .map(|x| x.as_opt())
+                                .map(|x| x.into_opt())
                                 .flatten()
                             {
                                 return Err(Code::MemoryError {
@@ -218,7 +216,7 @@ pub fn check(context: &mut Context) -> Flow {
                             return;
                         }
                         if let Some(state) = overlay_hashmap![&mut mem_state, previous_mem_state]
-                            .get(var.into())
+                            .get(var)
                             .map(|x| x.as_opt_ref())
                             .flatten()
                         {
@@ -274,7 +272,7 @@ pub fn check(context: &mut Context) -> Flow {
                                 unreachable!("unhandled state transition {:?} -> {:?}", x, y);
                             }
                         }
-                    } else if let Some(new_state) = new_state.as_opt() {
+                    } else if let Some(new_state) = new_state.into_opt() {
                         overlay_move_set.map_mut().insert(key, new_state);
                     } else {
                         overlay_move_set.map_mut().remove(&key);

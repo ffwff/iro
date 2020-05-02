@@ -127,7 +127,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
         dbg_println!("---\ndefsites: {:#?}", defsites);
 
         // Calculate block-local variables
-        'outer: for idx in 0..context.variables.len() {
+        'outer: for (idx, defsite) in defsites.iter_mut().enumerate() {
             let mut count = 0;
             for block_vars in &context.block_vars {
                 if block_vars.vars_used.contains(&Variable::from(idx)) {
@@ -139,7 +139,7 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
             }
             debug_assert!(count <= 1);
             // We will not insert phi's for block-local variables
-            defsites[idx].clear();
+            defsite.clear();
         }
 
         let mut origin: Vec<SmallVec<[Variable; 4]>> = vec![smallvec![]; num_blocks];
@@ -187,10 +187,10 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
             version: &mut usize,
             version_stack: &mut Vec<usize>,
             context: &mut Context,
-            dom_tree: &Vec<SmallVec<[usize; 2]>>,
+            dom_tree: &[SmallVec<[usize; 2]>],
         ) {
             dbg_println!("use node {}", node);
-            let version_start = version_stack.last().unwrap().clone();
+            let version_start = *version_stack.last().unwrap();
             let mut new_variable_len = context.variables.len();
             let tmp_succs = {
                 let block = &mut context.blocks[node];
@@ -233,14 +233,11 @@ pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
                     .position(|&pred| pred == node)
                     .unwrap();
                 for ins in &mut succ_block.ins {
-                    match &mut ins.typed {
-                        InsType::Phi { vars, defines } => {
-                            if *defines == var {
-                                vars[j] = Variable::from(*version_stack.last().unwrap());
-                                dbg_println!("rename phi {} = {:?}", var, vars);
-                            }
+                    if let InsType::Phi { vars, defines } = &mut ins.typed {
+                        if *defines == var {
+                            vars[j] = Variable::from(*version_stack.last().unwrap());
+                            dbg_println!("rename phi {} = {:?}", var, vars);
                         }
-                        _ => (),
                     }
                 }
             }

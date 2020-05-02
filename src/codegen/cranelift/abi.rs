@@ -25,7 +25,7 @@ where
     fn generate_function_signature_x86_64_sysv<F>(
         &self,
         program: &isa::Program,
-        arg_types: &Vec<isa::Type>,
+        arg_types: &[isa::Type],
         return_type: &isa::Type,
         sig: &mut Signature,
         mut load_function: F,
@@ -144,7 +144,7 @@ where
     pub(super) fn generate_function_signature<F>(
         &self,
         program: &isa::Program,
-        arg_types: &Vec<isa::Type>,
+        arg_types: &[isa::Type],
         return_type: &isa::Type,
         sig: &mut Signature,
         load_function: F,

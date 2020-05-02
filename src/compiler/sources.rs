@@ -92,12 +92,9 @@ impl Sources {
             let mut line_contents = vec![];
             let mut row_start = 0;
             for (idx, ch) in source.chars().enumerate() {
-                match ch {
-                    '\n' => {
-                        line_contents.push(row_start);
-                        row_start = idx + 1;
-                    }
-                    _ => (),
+                if ch == '\n' {
+                    line_contents.push(row_start);
+                    row_start = idx + 1;
                 }
             }
             line_contents.push(row_start);

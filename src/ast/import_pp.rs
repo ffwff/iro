@@ -123,13 +123,10 @@ impl Visitor for ImportPostprocessVisitor {
 
     fn visit_value(&mut self, n: &Value, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
-        match &n {
-            Value::Slice(vec) => {
-                for expr in vec {
-                    expr.visit(self)?;
-                }
+        if let Value::Slice(vec) = &n {
+            for expr in vec {
+                expr.visit(self)?;
             }
-            _ => (),
         }
         Ok(())
     }

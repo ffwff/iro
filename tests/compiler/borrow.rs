@@ -1,6 +1,7 @@
 use crate::utils;
 use iro::compiler::error;
 use iro::runtime::Runtime;
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
@@ -52,13 +53,13 @@ fn borrow_after_borrow_mut() {
 #[test]
 fn uni_alloc() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
-    static mut MALLOC_I32: i32 = 0;
-    extern "C" fn fake_malloc(_size: i32, _align: i32) -> isize {
-        unsafe { std::mem::transmute(&mut MALLOC_I32) }
+    static mut MALLOC_I32: UnsafeCell<i32> = UnsafeCell::new(0);
+    extern "C" fn fake_malloc(_size: i32, _align: i32) -> *mut i32 {
+        unsafe { UnsafeCell::get(&MALLOC_I32) }
     }
     extern "C" fn fake_dealloc(address: isize) {
         unsafe {
-            assert_eq!(address, std::mem::transmute(&MALLOC_I32));
+            assert_eq!(address, MALLOC_I32.get() as isize);
         }
         RUN_FLAG.store(true, Ordering::Relaxed);
     }
@@ -68,12 +69,9 @@ fn uni_alloc() {
     let mut runtime = Runtime::new();
     runtime.insert_func(
         "fake_malloc",
-        fake_malloc as extern "C" fn(i32, i32) -> isize,
+        fake_malloc as extern "C" fn(i32, i32) -> *mut i32,
     );
-    runtime.insert_func(
-        "fake_dealloc",
-        fake_dealloc as extern "C" fn(isize),
-    );
+    runtime.insert_func("fake_dealloc", fake_dealloc as extern "C" fn(isize));
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         "\

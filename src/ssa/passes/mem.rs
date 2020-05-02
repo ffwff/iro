@@ -12,18 +12,15 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
     for block in &mut context.blocks {
         for ins in &block.ins {
             let retvar = ins.retvar();
-            match &ins.typed {
-                InsType::Phi { vars, .. } => {
-                    let retvar = retvar.unwrap();
-                    for var in vars.iter() {
-                        if let Some(vec) = replacements.get_mut(var) {
-                            vec.push(retvar);
-                        } else {
-                            replacements.insert(*var, smallvec![retvar]);
-                        }
+            if let InsType::Phi { vars, .. } = &ins.typed {
+                let retvar = retvar.unwrap();
+                for var in vars.iter() {
+                    if let Some(vec) = replacements.get_mut(var) {
+                        vec.push(retvar);
+                    } else {
+                        replacements.insert(*var, smallvec![retvar]);
                     }
                 }
-                _ => (),
             }
         }
     }
@@ -35,9 +32,8 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
             let mut replacement_body = vec![];
             let mut block_local_replacements = btreemap![];
             for ins in old_ins {
-                match &ins.typed {
-                    InsType::Phi { .. } => continue,
-                    _ => (),
+                if let InsType::Phi { .. } = &ins.typed {
+                    continue;
                 }
                 let source_location = ins.source_location();
                 let retvar = ins.retvar();
@@ -109,7 +105,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
 
     fn walk(
         block_idx: usize,
-        blocks: &Vec<Block>,
+        blocks: &[Block],
         block_vars: &mut Vec<BlockVars>,
         prev_vars_exported: Option<&mut BTreeSet<Variable>>,
     ) {
@@ -220,9 +216,10 @@ pub fn reference_drop_insertion(context: &mut Context) -> Flow {
                         *usage += 1;
                     }
                 }
-                if !ins.each_moved_var(|var| {
+                let moved = ins.each_moved_var(|var| {
                     dead_var_usage.remove(&var);
-                }) {
+                });
+                if !moved {
                     ins.each_used_var(|var| {
                         if let Some(usage) = dead_var_usage.get_mut(&var) {
                             *usage += 1;
@@ -285,11 +282,8 @@ pub fn register_to_memory(context: &mut Context) -> Flow {
     let mut borrowed_vars: BTreeSet<Variable> = BTreeSet::new();
     for block in context.blocks.iter_mut() {
         for ins in &block.ins {
-            match &ins.typed {
-                InsType::Borrow { var, .. } => {
-                    borrowed_vars.insert(*var);
-                }
-                _ => (),
+            if let InsType::Borrow { var, .. } = &ins.typed {
+                borrowed_vars.insert(*var);
             }
         }
     }

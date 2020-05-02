@@ -17,10 +17,24 @@ impl<T: Sized> FatPointer<T> {
         self.len
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// # Safety
+    ///
+    /// The caller must provide the correct lifetime for the fat pointer.
+    /// The fat pointer passed from iroha code may also be invalid
+    /// if code written in it is incorrect.
     pub unsafe fn slice<'a>(&self) -> &'a [T] {
         std::slice::from_raw_parts(self.data as *const T, self.len)
     }
 
+    /// # Safety
+    ///
+    /// The caller must provide the correct lifetime for the fat pointer.
+    /// The fat pointer passed from iroha code may also be invalid
+    /// if code written in it is incorrect.
     pub unsafe fn slice_mut<'a>(&self) -> &'a mut [T] {
         std::slice::from_raw_parts_mut(self.data as *mut T, self.len)
     }

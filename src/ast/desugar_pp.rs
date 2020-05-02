@@ -119,13 +119,10 @@ impl Visitor for DesugarPostprocessVisitor {
     }
 
     fn visit_value(&mut self, n: &Value, _b: &NodeBox) -> VisitorResult {
-        match &n {
-            Value::Slice(vec) => {
-                for expr in vec {
-                    expr.visit(self)?;
-                }
+        if let Value::Slice(vec) = &n {
+            for expr in vec {
+                expr.visit(self)?;
             }
-            _ => (),
         }
         Ok(())
     }

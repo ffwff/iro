@@ -21,7 +21,7 @@ where
     }
 
     pub fn map_imm(&self) -> Option<&HashMap<K, V, S>> {
-        self.second.clone()
+        self.second
     }
 
     pub fn contains_key<Q: Sized>(&self, key: Q) -> bool
@@ -60,7 +60,7 @@ where
         if self.first.contains_key(&key) {
             self.first.get_mut(&key)
         } else if let Some(v) = self.second.map(|map| map.get(&key)).flatten() {
-            Some(self.first.entry(key.into()).or_insert(v.clone()))
+            Some(self.first.entry(key.into()).or_insert_with(|| v.clone()))
         } else {
             None
         }

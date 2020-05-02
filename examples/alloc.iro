@@ -1,0 +1,14 @@
+extern def fake_malloc(): ISize
+extern def fake_dealloc(address: ISize): Nil
+extern def record="record_i32"(i: I32): Nil
+
+@[Public]
+def __iro_malloc__(size: I32, align: I32): ISize =>
+    fake_malloc()
+
+@[Public]
+def __iro_dealloc__(address: ISize) =>
+    fake_dealloc(address)
+
+i := uni 10
+record(*i)
