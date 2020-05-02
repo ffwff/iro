@@ -31,8 +31,11 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     let mut idx_map: Vec<usize> = (0..context.blocks.len()).collect();
     // map of old jmp location -> new jmp location (in old block indices)
     let mut jmp_map: BTreeMap<usize, usize> = btreemap![];
-    let old_blocks = std::mem::replace(&mut context.blocks, vec![]);
-    let old_block_vars = std::mem::replace(&mut context.block_vars, vec![]);
+
+    let len = context.blocks.len();
+    let old_blocks = std::mem::replace(&mut context.blocks, Vec::with_capacity(len));
+    let old_block_vars = std::mem::replace(&mut context.block_vars, Vec::with_capacity(len));
+
     for (idx, block) in old_blocks.iter().enumerate() {
         if let InsType::Jmp(n) = block.postlude.as_ref().unwrap().typed {
             if block.ins.is_empty() {

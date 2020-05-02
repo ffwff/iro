@@ -58,7 +58,10 @@ fn uni_alloc() {
         assert_eq!(i, 10);
     }
     let mut runtime = Runtime::new();
-    runtime.insert_func("fake_malloc", fake_malloc as extern "C" fn(i32, i32) -> isize);
+    runtime.insert_func(
+        "fake_malloc",
+        fake_malloc as extern "C" fn(i32, i32) -> isize,
+    );
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         "\

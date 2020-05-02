@@ -1,5 +1,6 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use smallvec::SmallVec;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn eliminate_phi(context: &mut Context) -> Flow {
@@ -7,7 +8,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
         return Flow::Continue;
     }
 
-    let mut replacements: BTreeMap<Variable, Vec<Variable>> = BTreeMap::new();
+    let mut replacements: BTreeMap<Variable, SmallVec<[Variable; 4]>> = BTreeMap::new();
     for block in &mut context.blocks {
         for ins in &block.ins {
             let retvar = ins.retvar();
@@ -18,7 +19,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
                         if let Some(vec) = replacements.get_mut(var) {
                             vec.push(retvar);
                         } else {
-                            replacements.insert(*var, vec![retvar]);
+                            replacements.insert(*var, smallvec![retvar]);
                         }
                     }
                 }
