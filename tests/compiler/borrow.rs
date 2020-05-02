@@ -1,6 +1,7 @@
 use crate::utils;
 use iro::compiler::error;
 use iro::runtime::Runtime;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 #[test]
@@ -50,9 +51,16 @@ fn borrow_after_borrow_mut() {
 
 #[test]
 fn uni_alloc() {
+    static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     static mut MALLOC_I32: i32 = 0;
     extern "C" fn fake_malloc(_size: i32, _align: i32) -> isize {
         unsafe { std::mem::transmute(&mut MALLOC_I32) }
+    }
+    extern "C" fn fake_dealloc(address: isize) {
+        unsafe {
+            assert_eq!(address, std::mem::transmute(&MALLOC_I32));
+        }
+        RUN_FLAG.store(true, Ordering::Relaxed);
     }
     extern "C" fn record_i32(i: i32) {
         assert_eq!(i, 10);
@@ -62,15 +70,24 @@ fn uni_alloc() {
         "fake_malloc",
         fake_malloc as extern "C" fn(i32, i32) -> isize,
     );
+    runtime.insert_func(
+        "fake_dealloc",
+        fake_dealloc as extern "C" fn(isize),
+    );
     runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
     utils::parse_and_run(
         "\
     extern def fake_malloc(): ISize
+    extern def fake_dealloc(address: ISize): Nil
     extern def record=\"record_i32\"(i: I32): Nil
 
     @[Public]
     def __iro_malloc__(size: I32, align: I32): ISize =>
         fake_malloc()
+
+    @[Public]
+    def __iro_dealloc__(address: ISize) =>
+        fake_dealloc(address)
 
     i := uni 10
     record(*i)
@@ -78,4 +95,5 @@ fn uni_alloc() {
         runtime,
     )
     .expect("able to parse_and_run");
+    assert!(RUN_FLAG.load(Ordering::Relaxed));
 }

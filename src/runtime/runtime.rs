@@ -5,6 +5,7 @@ use std::hash::Hash;
 pub const LIBC_MAIN_NAME: &'static str = "main";
 pub const MAIN_NAME: &'static str = "main()";
 pub const MALLOC_NAME: &'static str = "__iro_malloc__(I32,I32)";
+pub const DEALLOC_NAME: &'static str = "__iro_dealloc__(ISize)";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Runtime {

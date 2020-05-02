@@ -306,6 +306,18 @@ where
         *builder.inst_results(call).first().clone().unwrap()
     }
 
+    fn call_dealloc(&mut self, builder: &mut FunctionBuilder, pointer: Value) {
+        let callee = {
+            let mut sig = self.module.make_signature();
+            sig.params.push(AbiParam::new(self.pointer_type()));
+            self.module
+                .declare_function(runtime::DEALLOC_NAME, Linkage::Import, &sig)
+                .unwrap()
+        };
+        let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
+        builder.ins().call(local_callee, &[pointer]);
+    }
+
     fn visit_context(
         &mut self,
         context: &isa::Context,
@@ -529,8 +541,15 @@ where
         let context = ins_context.context;
         match &ins.typed {
             isa::InsType::MarkMoved(_) => (),
-            isa::InsType::Drop(_arg) => {
-                // TODO: implement me
+            isa::InsType::Drop(arg) => {
+                // TODO: call destructors when we add them
+                let typed = ins_context.context.variable(*arg);
+                if let isa::Type::Pointer(ptr) = typed {
+                    if ptr.tag == isa::BorrowModifier::Unique {
+                        let tmp = builder.use_var(to_var(*arg));
+                        self.call_dealloc(builder, tmp);
+                    }
+                }
             }
             isa::InsType::Copy(arg) | isa::InsType::Move(arg) => {
                 let tmp = builder.use_var(to_var(*arg));
