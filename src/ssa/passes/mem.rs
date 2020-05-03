@@ -171,35 +171,29 @@ pub fn reference_drop_insertion(context: &mut Context) -> Flow {
         block_vars.vars_total_imported = vars_total_imported;
     }
 
-    for (idx, (block, block_vars)) in context
+    for (block, block_vars) in context
         .blocks
         .iter_mut()
         .zip(context.block_vars.iter())
-        .enumerate()
     {
         // Variables that die in this block are variables which
         // flow into the block or are declared in this block, and are never exported
-        let mut dead_vars_set =
-            &block_vars.vars_declared_in_this_block | &block_vars.vars_total_imported;
-        for exported in &block_vars.vars_exported {
-            dead_vars_set.remove(exported);
-        }
-        dbg_println!(
-            "dead_vars_set for {}: {:?} {:?}, {:?}",
-            idx,
-            block_vars.vars_declared_in_this_block,
-            block_vars.vars_total_imported,
-            dead_vars_set
-        );
-
-        // We should only attempt NLL for non-value-types, (aka pointers)
-        // anything else should already be dropped when scope ends
-        let mut dead_vars = vec![];
-        for dead_var in dead_vars_set.into_iter() {
-            if !context.variables[usize::from(dead_var)].is_value_type() {
-                dead_vars.push(dead_var);
+        let mut dead_vars = block_vars.vars_declared_in_this_block
+            .union(&block_vars.vars_total_imported)
+            .cloned()
+            .collect::<Vec<_>>();
+        let context_variables = &context.variables;
+        dead_vars.retain(move |var| {
+            if block_vars.vars_exported.contains(&var) {
+                false
+            } else if !context_variables[usize::from(*var)].is_value_type() {
+                // We should only attempt NLL for non-value-types, (aka pointers)
+                // anything else should already be dropped when scope ends
+                true
+            } else {
+                false
             }
-        }
+        });
 
         if !dead_vars.is_empty() {
             let old_len = block.ins.len();

@@ -116,6 +116,7 @@ impl Visitor for PreprocessVisitor {
     }
 
     fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
         n.left.visit(self)?;
         n.right.visit(self)?;
         Ok(())

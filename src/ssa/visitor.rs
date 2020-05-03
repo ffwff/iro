@@ -450,10 +450,10 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                                 .clone(),
                         );
                     }
-                    let id = Rc::new(FunctionName {
+                    let id = FunctionName {
                         name: defstmt.id.clone(),
                         arg_types: arg_types.clone(),
-                    });
+                    };
                     if top_level
                         .func_contexts
                         .get(&id)
@@ -462,6 +462,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                     {
                         continue;
                     }
+                    let id = Rc::new(id);
                     top_level.func_contexts.insert(id.clone(), None);
                     std::mem::drop(top_level);
 
@@ -986,10 +987,11 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 args.push(retvar);
                 arg_types.push(self.context.variable(retvar).clone());
             }
-            let mut func_name = Rc::new(FunctionName {
+            let mut func_name = FunctionName {
                 name: id.clone(),
                 arg_types: arg_types.clone(),
-            });
+            };
+            let mut func_name_rc = None;
 
             let rettype = {
                 let top_level = self.top_level.borrow_mut().unwrap();
@@ -997,7 +999,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                     top_level.func_contexts.get_key_value(&func_name)
                 {
                     if let Some(context) = maybe_context {
-                        func_name = key.clone();
+                        func_name_rc = Some(key.clone());
                         Some(context.rettype.clone())
                     } else {
                         None
@@ -1027,8 +1029,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
 
                                         args[idx] = retvar;
                                         arg_types[idx] = typed.clone();
-                                        Rc::get_mut(&mut func_name).unwrap().arg_types[idx] =
-                                            typed.clone();
+                                        func_name.arg_types[idx] = typed.clone();
                                     }
                                     usable_defstmt = Some(defstmt.clone());
                                     break;
@@ -1040,10 +1041,12 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                             }
                         }
                     }
-                    let func_insert = if top_level.func_contexts.contains_key(&func_name) {
+                    let func_insert = if let Some((func_name_rc_old, _)) = top_level.func_contexts.get_key_value(&func_name) {
+                        func_name_rc = Some(func_name_rc_old.clone());
                         true
                     } else {
-                        top_level.func_contexts.insert(func_name.clone(), None);
+                        func_name_rc = Some(Rc::new(func_name));
+                        top_level.func_contexts.insert(func_name_rc.clone().unwrap(), None);
                         false
                     };
                     (usable_defstmt, func_insert)
@@ -1072,7 +1075,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                             let mut top_level = self.top_level.borrow_mut().unwrap();
                             top_level
                                 .func_contexts
-                                .insert(func_name.clone(), Some(context));
+                                .insert(func_name_rc.clone().unwrap(), Some(context));
                             rettype
                         } else {
                             unimplemented!()
@@ -1088,14 +1091,14 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                         let rettype = context.rettype.clone();
                         top_level
                             .func_contexts
-                            .insert(func_name.clone(), Some(context));
+                            .insert(func_name_rc.clone().unwrap(), Some(context));
                         rettype
                     }
                 }
             };
             let retvar = self.context.insert_var(rettype);
             {
-                let name = self.context.call_name(func_name);
+                let name = self.context.call_name(func_name_rc.clone().unwrap());
                 let block = self.context.block_mut();
                 block.ins.push(Ins::new(
                     retvar,
