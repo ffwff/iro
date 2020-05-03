@@ -1,16 +1,13 @@
 use crate::ast::*;
 
-pub struct ImportPostprocessVisitor {
+pub struct PreprocessVisitor {
     file: usize,
 }
 
-impl ImportPostprocessVisitor {
-    pub fn postprocess(ast: &Program, file: usize) {
-        if file == 0 {
-            return;
-        }
-        let mut visitor = ImportPostprocessVisitor { file };
-        visitor.visit_program(&ast).unwrap();
+impl PreprocessVisitor {
+    pub fn postprocess(ast: &Program, file: usize) -> VisitorResult {
+        let mut visitor = PreprocessVisitor { file };
+        visitor.visit_program(&ast)
     }
 
     fn fill_box(&self, boxed: &NodeBox) {
@@ -19,11 +16,16 @@ impl ImportPostprocessVisitor {
             span
         });
     }
+
+    fn ungenerate_retvar(b: &NodeBox) {
+        b.generate_retvar.set(false);
+    }
 }
 
-impl Visitor for ImportPostprocessVisitor {
+impl Visitor for PreprocessVisitor {
     fn visit_program(&mut self, n: &Program) -> VisitorResult {
         for node in &n.exprs {
+            Self::ungenerate_retvar(node);
             node.visit(self)?;
         }
         Ok(())
@@ -49,7 +51,11 @@ impl Visitor for ImportPostprocessVisitor {
 
     fn visit_defstmt(&mut self, n: &DefStatement, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
-        for expr in &n.exprs {
+        let last_idx = n.exprs.len().wrapping_sub(1);
+        for (idx, expr) in n.exprs.iter().enumerate() {
+            if idx != last_idx {
+                Self::ungenerate_retvar(expr);
+            }
             expr.visit(self)?;
         }
         Ok(())
@@ -64,7 +70,11 @@ impl Visitor for ImportPostprocessVisitor {
     fn visit_whileexpr(&mut self, n: &WhileExpr, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         n.cond.visit(self)?;
-        for expr in &n.exprs {
+        let last_idx = n.exprs.len().wrapping_sub(1);
+        for (idx, expr) in n.exprs.iter().enumerate() {
+            if idx != last_idx {
+                Self::ungenerate_retvar(expr);
+            }
             expr.visit(self)?;
         }
         Ok(())
@@ -73,10 +83,18 @@ impl Visitor for ImportPostprocessVisitor {
     fn visit_ifexpr(&mut self, n: &IfExpr, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         n.cond.visit(self)?;
-        for expr in &n.exprs {
+        let last_idx = n.exprs.len().wrapping_sub(1);
+        for (idx, expr) in n.exprs.iter().enumerate() {
+            if idx != last_idx && !b.generate_retvar.get() {
+                Self::ungenerate_retvar(expr);
+            }
             expr.visit(self)?;
         }
-        for expr in &n.elses {
+        let last_idx = n.elses.len().wrapping_sub(1);
+        for (idx, expr) in n.elses.iter().enumerate() {
+            if idx != last_idx && !b.generate_retvar.get() {
+                Self::ungenerate_retvar(expr);
+            }
             expr.visit(self)?;
         }
         Ok(())
@@ -98,7 +116,6 @@ impl Visitor for ImportPostprocessVisitor {
     }
 
     fn visit_binexpr(&mut self, n: &BinExpr, b: &NodeBox) -> VisitorResult {
-        self.fill_box(b);
         n.left.visit(self)?;
         n.right.visit(self)?;
         Ok(())

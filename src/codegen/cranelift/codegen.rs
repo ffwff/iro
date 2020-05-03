@@ -616,10 +616,16 @@ where
                         self.build_struct_data_for_union(&ins_context.program, &union_type);
                     if let Some(idx) = union_type.index(&source_typed) {
                         // FIXME: check discriminant type
+
+                        let dest_var = builder.use_var(to_var(*dest));
+                        let discriminant = builder.ins().iconst(types::I32, idx as i64);
+                        builder
+                            .ins()
+                            .store(MemFlags::trusted(), discriminant, dest_var, 0);
+
                         let field = &struct_data.fields()[idx + 1];
                         if self.ir_to_cranelift_type(&source_typed).is_some() {
                             let src_var = builder.use_var(to_var(*source));
-                            let dest_var = builder.use_var(to_var(*dest));
                             builder.ins().store(
                                 MemFlags::trusted(),
                                 src_var,
@@ -1110,6 +1116,17 @@ where
                             self.build_struct_data_for_union(&ins_context.program, &union_type);
                         if let Some(idx) = union_type.index(&right) {
                             // FIXME: check discriminant type
+
+                            let discriminant =
+                                builder
+                                    .ins()
+                                    .load(types::I32, MemFlags::trusted(), left_var, 0);
+                            let cmp =
+                                builder
+                                    .ins()
+                                    .icmp_imm(IntCC::Equal, discriminant, idx as i64);
+                            builder.ins().trapz(cmp, TrapCode::UnreachableCodeReached);
+
                             let field = &struct_data.fields()[idx + 1];
                             if let Some(prim) = self.ir_to_cranelift_type(&right) {
                                 let tmp = builder.ins().load(

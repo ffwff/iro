@@ -7,8 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
-pub mod desugar_pp;
-pub mod import_pp;
+pub mod pp_visitor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {

@@ -10,6 +10,7 @@ use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 
 use iro::codegen::cranelift::CraneliftBackend;
 use iro::codegen::settings::*;
+use iro::codegen;
 use iro::compiler;
 use iro::compiler::sources::Sources;
 use iro::runtime;
@@ -39,7 +40,28 @@ enum OutputType {
     Executable,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Backend {
+    Cranelift,
+}
+
+impl Backend {
+    fn from_str(string: &str) -> Option<Self> {
+        match string {
+            "cranelift" => Some(Backend::Cranelift),
+            _ => None,
+        }
+    }
+
+    fn to_backend(&self) -> codegen::backend::Backend {
+        match self {
+            Backend::Cranelift => CraneliftBackend::backend(),
+        }
+    }
+}
+
 struct Options<'a> {
+    pub backend: Backend,
     pub opt_level: OptLevel,
     pub output_type: OutputType,
     pub args: &'a Vec<String>,
@@ -55,7 +77,7 @@ impl<'a> Options<'a> {
 
     pub fn to_compiler(&self) -> compiler::Compiler {
         let settings = self.to_settings();
-        compiler::Compiler::new(CraneliftBackend::backend(), settings)
+        compiler::Compiler::new(self.backend.to_backend(), settings)
     }
 
     pub fn arg(&self, offset: usize) -> Option<&String> {
@@ -159,6 +181,10 @@ fn usage(program: &str, commands: &BTreeMap<&str, (&str, CommandFn)>) {
     }
     println!("\nOptions:");
     let mut options = [
+        (
+            "-backend",
+            "select backend for code generation (cranelift, c)",
+        ),
         ("-obj", "generate an object file instead of executable"),
         ("-O", "optimize for size and speed"),
         ("-Onone", "don't optimize at all"),
@@ -170,6 +196,11 @@ fn usage(program: &str, commands: &BTreeMap<&str, (&str, CommandFn)>) {
     }
 }
 
+enum ArgParseState {
+    None,
+    Backend,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let program = &args[0];
@@ -178,37 +209,49 @@ fn main() {
         "build" => ("Builds the specified program", build as CommandFn),
     ];
     let mut opts = Options {
+        backend: Backend::Cranelift,
         opt_level: OptLevel::SpeedAndSize,
         output_type: OutputType::Executable,
         args: &args,
         command_idx: 0,
     };
+    let mut state = ArgParseState::None;
     for (idx, arg) in args.iter().skip(1).enumerate() {
-        match arg.as_str() {
-            "-obj" => {
-                opts.output_type = OutputType::Object;
-                continue;
+        match state {
+            ArgParseState::None => match arg.as_str() {
+                "-backend" => {
+                    state = ArgParseState::Backend;
+                }
+                "-obj" => {
+                    opts.output_type = OutputType::Object;
+                }
+                "-Onone" => {
+                    opts.opt_level = OptLevel::Speed;
+                }
+                "-Ospeed" => {
+                    opts.opt_level = OptLevel::Speed;
+                }
+                "-O" => {
+                    opts.opt_level = OptLevel::SpeedAndSize;
+                }
+                key => {
+                    if let Some(command) = commands.get(key) {
+                        let func = command.1;
+                        opts.command_idx = idx + 1;
+                        return func(opts);
+                    } else {
+                        break;
+                    }
+                }
+            },
+            ArgParseState::Backend => {
+                if let Some(backend) = Backend::from_str(arg) {
+                    opts.backend = backend;
+                } else {
+                    fatal!(opts, "unknown backend {:?}", arg);
+                }
+                state = ArgParseState::None;
             }
-            "-Onone" => {
-                opts.opt_level = OptLevel::Speed;
-                continue;
-            }
-            "-Ospeed" => {
-                opts.opt_level = OptLevel::Speed;
-                continue;
-            }
-            "-O" => {
-                opts.opt_level = OptLevel::SpeedAndSize;
-                continue;
-            }
-            _ => (),
-        }
-        if let Some(command) = commands.get(arg.as_str()) {
-            let func = command.1;
-            opts.command_idx = idx + 1;
-            return func(opts);
-        } else {
-            break;
         }
     }
     usage(program, &commands)
