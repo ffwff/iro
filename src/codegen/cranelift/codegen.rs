@@ -551,16 +551,9 @@ where
         dbg_println!("codegen: {}", ins.print());
         let context = ins_context.context;
         match &ins.typed {
-            isa::InsType::MarkMoved(_) => (),
-            isa::InsType::Drop(arg) => {
-                // TODO: call destructors when we add them
-                let typed = ins_context.context.variable(*arg);
-                if let isa::Type::Pointer(ptr) = typed {
-                    if ptr.tag == isa::BorrowModifier::Unique {
-                        let tmp = builder.use_var(to_var(*arg));
-                        self.call_dealloc(builder, tmp);
-                    }
-                }
+            isa::InsType::DeallocHeap(arg) => {
+                let tmp = builder.use_var(to_var(*arg));
+                self.call_dealloc(builder, tmp);
             }
             isa::InsType::Copy(arg) | isa::InsType::Move(arg) => {
                 let tmp = builder.use_var(to_var(*arg));

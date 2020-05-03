@@ -25,6 +25,7 @@ impl<'a> std::fmt::Display for InsPrinter<'a> {
             InsType::Alloca => write!(f, "alloca"),
             InsType::AllocHeap => write!(f, "alloc_heap"),
             InsType::Drop(arg) => write!(f, "drop v{}", arg),
+            InsType::DeallocHeap(arg) => write!(f, "dealloc_heap v{}", arg),
             InsType::Move(var) => write!(f, "move v{}", var),
             InsType::MarkMoved(var) => write!(f, "mark_moved v{}", var),
             InsType::Copy(var) => write!(f, "copy v{}", var),

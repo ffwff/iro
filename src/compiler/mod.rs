@@ -43,6 +43,7 @@ const SSA_PASSES: &[fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::mem::reference_drop_insertion,
     passes::memcheck::check,
     passes::postlude::fuse_postlude,
+    passes::postprocess::cleanup_high_level_instructions,
 ];
 
 pub fn parse_file_to_ssa(sources: &mut Sources) -> Result<ssa::isa::Program, compiler::Error> {

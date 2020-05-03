@@ -5,3 +5,4 @@ pub mod mem;
 pub mod memcheck;
 pub mod postlude;
 pub mod ssa;
+pub mod postprocess;

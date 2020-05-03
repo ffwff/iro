@@ -726,6 +726,7 @@ pub enum InsType {
     Alloca,
     AllocHeap,
     Drop(Variable),
+    DeallocHeap(Variable),
     MarkMoved(Variable),
     Move(Variable),
     Copy(Variable),
