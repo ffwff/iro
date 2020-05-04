@@ -171,14 +171,11 @@ pub fn reference_drop_insertion(context: &mut Context) -> Flow {
         block_vars.vars_total_imported = vars_total_imported;
     }
 
-    for (block, block_vars) in context
-        .blocks
-        .iter_mut()
-        .zip(context.block_vars.iter())
-    {
+    for (block, block_vars) in context.blocks.iter_mut().zip(context.block_vars.iter()) {
         // Variables that die in this block are variables which
         // flow into the block or are declared in this block, and are never exported
-        let mut dead_vars = block_vars.vars_declared_in_this_block
+        let mut dead_vars = block_vars
+            .vars_declared_in_this_block
             .union(&block_vars.vars_total_imported)
             .cloned()
             .collect::<Vec<_>>();

@@ -96,6 +96,16 @@ impl Type {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Type::Nil => true,
+            Type::NeverUsed => true,
+            Type::NoReturn => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn is_int(&self) -> bool {
         match self {
             Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::ISize => true,
@@ -244,6 +254,7 @@ impl std::fmt::Display for Type {
 pub struct StructField {
     pub idx: usize,
     pub typed: Type,
+    pub name: Rc<str>,
 }
 
 #[derive(Debug, Clone)]
@@ -278,7 +289,11 @@ impl StructType {
 
     pub fn append(&mut self, key: Rc<str>, typed: Type) {
         let len = self.vars.len();
-        let field = StructField { idx: len, typed };
+        let field = StructField {
+            idx: len,
+            typed,
+            name: key.clone(),
+        };
         self.vars.insert(key, field.clone());
         self.fields.push(field);
     }

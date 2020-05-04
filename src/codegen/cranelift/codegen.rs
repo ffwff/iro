@@ -84,7 +84,7 @@ where
         }
     }
 
-    pub fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
+    fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
         self.build_struct_data_for_struct(&program, &program.builtins.generic_fat_pointer_struct);
         for astruct in program.builtins.structs.values() {
             self.build_struct_data_for_struct(&program, astruct);
@@ -189,9 +189,9 @@ where
         let mut data = StructData::new();
         for field in typed.fields() {
             if let Some(typed) = self.type_to_struct_field_type(program, &field.typed) {
-                data.append_typed(typed);
+                data.append_typed(Some(field.name.clone()), typed);
             } else if let Some(substruct) = self.get_struct_data(program, &field.typed) {
-                data.append_struct(substruct);
+                data.append_struct(Some(field.name.clone()), substruct);
             } else {
                 unimplemented!()
             }
@@ -211,9 +211,9 @@ where
         }
         let mut data = StructData::new();
         if let Some(field) = self.type_to_struct_field_type(program, &typed.typed) {
-            data.append_array(field, typed.len.unwrap());
+            data.append_array(None, field, typed.len.unwrap());
         } else if let Some(substruct) = self.get_struct_data(program, &typed.typed) {
-            data.append_struct_array(substruct, typed.len.unwrap());
+            data.append_struct_array(None, substruct, typed.len.unwrap());
         } else {
             unimplemented!()
         }
@@ -1175,10 +1175,13 @@ impl backend::JitBackend for CraneliftBackend {
     unsafe fn run(
         &self,
         program: &isa::Program,
-        _settings: &Settings,
+        settings: &Settings,
         runtime: &Runtime,
     ) -> Result<(), compiler::Error> {
-        let mut builder = SimpleJITBuilder::new(cranelift_module::default_libcall_names());
+        let mut builder = SimpleJITBuilder::with_isa(
+            Self::generate_isa(settings),
+            cranelift_module::default_libcall_names(),
+        );
         for (name, context) in &program.contexts {
             if let isa::IntrinsicType::Extern(symbol) = &context.intrinsic {
                 builder.symbol(
@@ -1211,7 +1214,7 @@ impl backend::ObjectBackend for CraneliftBackend {
         settings: &Settings,
     ) -> Result<Vec<u8>, compiler::Error> {
         let builder = ObjectBuilder::new(
-            CraneliftBackend::generate_isa(settings),
+            Self::generate_isa(settings),
             "main.o",
             cranelift_module::default_libcall_names(),
         );

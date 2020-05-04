@@ -12,18 +12,21 @@ pub fn cleanup_high_level_instructions(context: &mut Context) -> Flow {
                     match &context.variables[usize::from(x)] {
                         Type::Pointer(data) => {
                             if data.tag == BorrowModifier::Unique {
-                                block.ins.push(Ins::empty_ret(InsType::DeallocHeap(x), ins.source_location()));
+                                block.ins.push(Ins::empty_ret(
+                                    InsType::DeallocHeap(x),
+                                    ins.source_location(),
+                                ));
                             }
-                        },
+                        }
                         Type::Struct(data) => {
                             // TODO
-                        },
+                        }
                         Type::Slice(data) => {
                             // TODO
-                        },
+                        }
                         Type::Union(data) => {
                             // TODO
-                        },
+                        }
                         _ => (),
                     }
                 }

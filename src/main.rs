@@ -8,9 +8,10 @@ extern crate tempfile;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 
+use iro::codegen;
+use iro::codegen::c::CBackend;
 use iro::codegen::cranelift::CraneliftBackend;
 use iro::codegen::settings::*;
-use iro::codegen;
 use iro::compiler;
 use iro::compiler::sources::Sources;
 use iro::runtime;
@@ -42,12 +43,14 @@ enum OutputType {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Backend {
+    C,
     Cranelift,
 }
 
 impl Backend {
     fn from_str(string: &str) -> Option<Self> {
         match string {
+            "c" => Some(Backend::C),
             "cranelift" => Some(Backend::Cranelift),
             _ => None,
         }
@@ -55,6 +58,7 @@ impl Backend {
 
     fn to_backend(&self) -> codegen::backend::Backend {
         match self {
+            Backend::C => CBackend::backend(),
             Backend::Cranelift => CraneliftBackend::backend(),
         }
     }

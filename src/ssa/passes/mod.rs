@@ -4,5 +4,5 @@ pub mod graph;
 pub mod mem;
 pub mod memcheck;
 pub mod postlude;
-pub mod ssa;
 pub mod postprocess;
+pub mod ssa;

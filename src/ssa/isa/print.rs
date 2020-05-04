@@ -184,7 +184,7 @@ impl<'a> std::fmt::Display for ContextPrinter<'a> {
         }
         for (idx, typed) in self.1.variables.iter().enumerate() {
             if typed != &Type::NeverUsed {
-                write!(f, "\tv{}: {}", idx, typed)?;
+                writeln!(f, "\tv{}: {}", idx, typed)?;
             }
         }
         if self.1.blocks.is_empty() {

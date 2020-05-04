@@ -895,7 +895,7 @@ impl InsType {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FunctionName {
     pub name: Rc<str>,
     pub arg_types: Vec<Type>,

@@ -9,6 +9,7 @@ fn align(value: u32, to: u32) -> u32 {
 
 #[derive(Debug, Clone)]
 pub enum StructFieldType {
+    Void,
     I8,
     I16,
     I32,
@@ -20,6 +21,7 @@ pub enum StructFieldType {
 impl StructFieldType {
     pub fn size_of(&self) -> u32 {
         match self {
+            StructFieldType::Void => 1,
             StructFieldType::I8 => 1,
             StructFieldType::I16 => 2,
             StructFieldType::I32 => 4,
@@ -49,6 +51,7 @@ pub struct StructField {
 
 #[derive(Debug, Clone)]
 pub struct StructData {
+    names: Vec<Option<Rc<str>>>,
     fields: Vec<StructField>,
     flattened_fields: OptCell<Vec<StructField>>,
     size_of: u32,
@@ -58,6 +61,7 @@ pub struct StructData {
 impl StructData {
     pub fn new() -> Self {
         Self {
+            names: vec![],
             fields: vec![],
             flattened_fields: OptCell::none(),
             size_of: 0,
@@ -65,15 +69,16 @@ impl StructData {
         }
     }
 
-    pub fn append_typed(&mut self, typed: StructFieldType) {
-        self.append_array(typed, 1);
+    pub fn append_typed(&mut self, name: Option<Rc<str>>, typed: StructFieldType) {
+        self.append_array(name, typed, 1);
     }
 
-    pub fn append_struct(&mut self, data: Rc<StructData>) {
-        self.append_struct_array(data, 1);
+    pub fn append_struct(&mut self, name: Option<Rc<str>>, data: Rc<StructData>) {
+        self.append_struct_array(name, data, 1);
     }
 
-    pub fn append_array(&mut self, typed: StructFieldType, len: u32) {
+    pub fn append_array(&mut self, name: Option<Rc<str>>, typed: StructFieldType, len: u32) {
+        self.names.push(name);
         let size_of = typed.size_of();
         self.align_of = max(self.align_of, size_of);
         self.size_of = align(self.size_of, size_of);
@@ -85,7 +90,8 @@ impl StructData {
         self.size_of += size_of * len;
     }
 
-    pub fn append_struct_array(&mut self, data: Rc<StructData>, len: u32) {
+    pub fn append_struct_array(&mut self, name: Option<Rc<str>>, data: Rc<StructData>, len: u32) {
+        self.names.push(name);
         let size_of = data.size_of();
         self.align_of = max(self.align_of, size_of);
         self.size_of = align(self.size_of, data.align_of());
@@ -123,6 +129,10 @@ impl StructData {
 
     pub fn align_of(&self) -> u32 {
         self.align_of
+    }
+
+    pub fn names(&self) -> &Vec<Option<Rc<str>>> {
+        &self.names
     }
 }
 
@@ -196,6 +206,7 @@ impl UnionBuilder {
             },
         );
         StructData {
+            names: vec![],
             fields: self.fields,
             flattened_fields: OptCell::none(),
             size_of: self.size_of + start_offset,

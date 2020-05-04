@@ -1041,12 +1041,16 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                             }
                         }
                     }
-                    let func_insert = if let Some((func_name_rc_old, _)) = top_level.func_contexts.get_key_value(&func_name) {
+                    let func_insert = if let Some((func_name_rc_old, _)) =
+                        top_level.func_contexts.get_key_value(&func_name)
+                    {
                         func_name_rc = Some(func_name_rc_old.clone());
                         true
                     } else {
                         func_name_rc = Some(Rc::new(func_name));
-                        top_level.func_contexts.insert(func_name_rc.clone().unwrap(), None);
+                        top_level
+                            .func_contexts
+                            .insert(func_name_rc.clone().unwrap(), None);
                         false
                     };
                     (usable_defstmt, func_insert)
