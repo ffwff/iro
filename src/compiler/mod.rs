@@ -22,7 +22,7 @@ pub enum Flow {
     Err(compiler::error::Code),
 }
 
-const SSA_PASSES: &[fn(&mut ssa::isa::Context) -> Flow] = &[
+const SSA_PASSES: &[fn(&mut passes::ContextLocalData, &mut ssa::isa::Context) -> Flow] = &[
     // Stage 0: preprocess and build the SSA graph
     passes::graph::preprocess,
     passes::graph::build_graph,
@@ -34,7 +34,7 @@ const SSA_PASSES: &[fn(&mut ssa::isa::Context) -> Flow] = &[
     passes::postlude::separate_postlude,
     passes::graph::cleanup_jump_blocks,
     passes::postlude::fuse_postlude,
-    passes::graph::build_graph,
+    passes::graph::build_graph, // won't be called if cleanup_jump_blocks doesn't do anything
     // Stage 2: SSA elimination and high-level memory ops insertion
     passes::postlude::separate_postlude,
     passes::mem::eliminate_phi,
@@ -70,8 +70,9 @@ fn process_ssa(
     program: &mut ssa::isa::Program,
 ) -> Result<(), compiler::Error> {
     for context in program.contexts.values_mut() {
+        let mut data = passes::ContextLocalData::new();
         for pass in SSA_PASSES {
-            match pass(context) {
+            match pass(&mut data, context) {
                 Flow::Continue => (),
                 Flow::Break => {
                     break;

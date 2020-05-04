@@ -4,6 +4,7 @@ use crate::codegen::settings::*;
 use crate::codegen::structs::*;
 use crate::compiler;
 use crate::ssa::isa;
+use crate::runtime;
 use fnv::FnvHashMap;
 use std::fmt::Write;
 use std::rc::Rc;
@@ -133,6 +134,7 @@ impl<'a> Codegen<'a> {
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdalign.h>
 #include <assert.h>"
         )?;
         Ok(prelude)
@@ -161,7 +163,7 @@ impl<'a> Codegen<'a> {
             isa::Type::I16 => "int16_t".to_string(),
             isa::Type::I32 => "int32_t".to_string(),
             isa::Type::I64 => "int64_t".to_string(),
-            isa::Type::ISize => "size_t".to_string(),
+            isa::Type::ISize => "intptr_t".to_string(),
             isa::Type::F64 => "double".to_string(),
             isa::Type::Pointer(x) => {
                 if typed.is_fat_pointer() {
@@ -177,7 +179,7 @@ impl<'a> Codegen<'a> {
                                 "\
 struct {{
 \t{}* data;
-\tsize_t len;
+\tintptr_t len;
 }} {}",
                                 inner, s
                             )
@@ -344,22 +346,22 @@ struct {{
         let context = ins_context.context;
         match &ins.typed {
             isa::InsType::DeallocHeap(arg) => {
-                writeln!(f, "\tfree(v{});", arg)?;
+                writeln!(f, "\t{}(v{});", runtime::DEALLOC_NAME_MANGLED, arg)?;
             }
             isa::InsType::Copy(arg) | isa::InsType::Move(arg) => {
                 writeln!(f, "\tv{} = v{};", ins.retvar().unwrap(), arg)?;
             }
             isa::InsType::AllocHeap => {
                 let retvar = ins.retvar().unwrap();
-                writeln!(f, "\tv{} = malloc(sizeof(v{}));", retvar, retvar)?;
+                writeln!(f, "\tv{} = (void*)({}(sizeof(*v{}), alignof(*v{})));", retvar, runtime::MALLOC_NAME_MANGLED, retvar, retvar)?;
             }
             isa::InsType::Alloca | isa::InsType::LoadStruct => (),
             isa::InsType::Load(x) => {
                 let retvar = ins.retvar().unwrap();
-                writeln!(f, "\tv{} = *v{}", retvar, x)?;
+                writeln!(f, "\tv{} = *v{};", retvar, x)?;
             }
             isa::InsType::Store { source, dest } => {
-                writeln!(f, "\t*v{} = v{}", dest, source)?;
+                writeln!(f, "\t*v{} = v{};", dest, source)?;
             }
             isa::InsType::Borrow { var, .. } => {
                 let retvar = ins.retvar().unwrap();
@@ -428,7 +430,11 @@ struct {{
                 writeln!(f, "\treturn;")?;
             }
             isa::InsType::Return(x) => {
-                writeln!(f, "\treturn v{};", x)?;
+                if context.variable(*x).is_empty() {
+                    writeln!(f, "\treturn;")?;
+                } else {
+                    writeln!(f, "\treturn v{};", x)?;
+                }
             }
             isa::InsType::IfJmp {
                 condvar,

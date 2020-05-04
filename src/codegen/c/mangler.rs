@@ -11,6 +11,7 @@ pub fn mangle_string(source: &str, dest: &mut String) {
 
 pub fn mangle_type(typed: &isa::Type, dest: &mut String) {
     match typed {
+        isa::Type::NoReturn => dest.push('R'),
         isa::Type::Nil => dest.push('N'),
         isa::Type::Bool => dest.push('O'),
         isa::Type::I8 => dest.push('B'),
@@ -49,17 +50,16 @@ pub fn mangle_type(typed: &isa::Type, dest: &mut String) {
             }
             dest.push('$');
         }
-        _ => unreachable!(),
+        isa::Type::NeverUsed => unreachable!(),
     }
 }
 
 pub fn mangle(unmangled: &Rc<isa::FunctionName>) -> String {
     let mut name = "_I".to_string();
+    write!(name, "{}", unmangled.name.len()).unwrap();
     mangle_string(&unmangled.name, &mut name);
-    name.push('_');
     for typed in &unmangled.arg_types {
         mangle_type(typed, &mut name);
-        name.push('_');
     }
     name
 }
