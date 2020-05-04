@@ -1,8 +1,9 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use crate::ssa::passes::ContextLocalData;
 use bit_set::BitSet;
 
-pub fn collect_garbage_vars(context: &mut Context) -> Flow {
+pub fn collect_garbage_vars(data: &mut ContextLocalData, context: &mut Context) -> Flow {
     dbg_println!("before tracing: {}", context.print());
     let mut var_to_ins: Vec<Option<&Ins>> = vec![None; context.variables.len()];
     let mut roots = vec![];
@@ -47,6 +48,7 @@ pub fn collect_garbage_vars(context: &mut Context) -> Flow {
     for (idx, var) in context.variables.iter_mut().enumerate() {
         if !alive.contains(idx) {
             *var = Type::NeverUsed;
+            data.unused_vars.push(Variable::from(idx));
         }
     }
     dbg_println!("after tracing: {}", context.print());

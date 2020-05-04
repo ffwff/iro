@@ -4,8 +4,9 @@ use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::drop_effect::*;
 use crate::ssa::passes::memcheck::path::*;
 use crate::utils::overlay::OverlayHashMap;
+use crate::ssa::passes::ContextLocalData;
 
-pub fn check(context: &mut Context) -> Flow {
+pub fn check(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     fn walk(
         block: &Block,
         block_idx: usize,

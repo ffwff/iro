@@ -1,9 +1,10 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use crate::ssa::passes::ContextLocalData;
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
 
-pub fn rename_vars_and_insert_phis(context: &mut Context) -> Flow {
+pub fn rename_vars_and_insert_phis(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     let num_blocks = context.blocks.len();
 
     if num_blocks > 1 {

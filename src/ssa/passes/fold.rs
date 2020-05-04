@@ -1,8 +1,9 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use crate::ssa::passes::ContextLocalData;
 use std::collections::BTreeMap;
 
-pub fn fold_constants(context: &mut Context) -> Flow {
+pub fn fold_constants(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     dbg_println!("before folding: {}", context.print());
 
     let mut var_to_const = BTreeMap::new();

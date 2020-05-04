@@ -1,9 +1,10 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use crate::ssa::passes::ContextLocalData;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub fn eliminate_phi(context: &mut Context) -> Flow {
+pub fn eliminate_phi(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     if context.blocks.len() < 2 {
         return Flow::Continue;
     }
@@ -70,7 +71,7 @@ pub fn eliminate_phi(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn calculate_block_variable_declaration(context: &mut Context) -> Flow {
+pub fn calculate_block_variable_declaration(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     for (block, block_vars) in context.blocks.iter_mut().zip(context.block_vars.iter_mut()) {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();
@@ -98,7 +99,7 @@ pub fn calculate_block_variable_declaration(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn calculate_data_flow(context: &mut Context) -> Flow {
+pub fn calculate_data_flow(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     if context.blocks.len() < 2 {
         return Flow::Continue;
     }
@@ -157,7 +158,7 @@ pub fn calculate_data_flow(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn reference_drop_insertion(context: &mut Context) -> Flow {
+pub fn reference_drop_insertion(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     for idx in 0..context.blocks.len() {
         let block = &mut context.blocks[idx];
         let mut vars_total_imported = btreeset![];
@@ -266,7 +267,7 @@ pub fn reference_drop_insertion(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn register_to_memory(context: &mut Context) -> Flow {
+pub fn register_to_memory(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     dbg_println!("before r2m: {}", context.print());
 
     // Turn primitive variables with borrows into memory registers

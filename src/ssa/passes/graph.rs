@@ -1,9 +1,10 @@
 use crate::compiler::Flow;
 use crate::ssa::isa::*;
+use crate::ssa::passes::ContextLocalData;
 use smallvec::SmallVec;
 use std::collections::BTreeMap;
 
-pub fn preprocess(context: &mut Context) -> Flow {
+pub fn preprocess(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     dbg_println!("start: {}", context.print());
     let len = context.blocks.len();
     if len == 0 {
@@ -22,10 +23,11 @@ pub fn preprocess(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
+pub fn cleanup_jump_blocks(data: &mut ContextLocalData, context: &mut Context) -> Flow {
     if context.blocks.len() < 2 {
         return Flow::Continue;
     }
+    data.invalid_build_graph = true;
 
     // map of new block idx -> old block idx
     let mut idx_map: Vec<usize> = (0..context.blocks.len()).collect();
@@ -95,12 +97,13 @@ pub fn cleanup_jump_blocks(context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn build_graph(context: &mut Context) -> Flow {
-    let num_blocks = context.blocks.len();
-
-    if context.blocks.len() < 2 {
+pub fn build_graph(data: &mut ContextLocalData, context: &mut Context) -> Flow {
+    if context.blocks.len() < 2 || !data.invalid_build_graph {
         return Flow::Continue;
     }
+    data.invalid_build_graph = false;
+
+    let num_blocks = context.blocks.len();
 
     // Build the successor/predecessor set corresponding to each block
     let mut predecessors_map: Vec<SmallVec<[usize; 2]>> = vec![smallvec![]; num_blocks];
