@@ -124,25 +124,42 @@ impl NodeBox {
         }
     }
 
+    #[inline]
     pub fn rc(&self) -> Rc<dyn Node> {
         self.data.clone()
     }
 
+    #[inline]
     pub fn span(&self) -> SourceSpan {
         self.span.clone().into_inner()
     }
 
+    #[inline]
     pub fn span_ref(&self) -> &Cell<SourceSpan> {
         &self.span
     }
 
     #[allow(clippy::should_implement_trait)]
+    #[inline]
     pub fn borrow(&self) -> &dyn Node {
         self.data.borrow()
     }
 
+    #[inline]
     pub fn visit(&self, visitor: &mut dyn Visitor) -> VisitorResult {
         self.borrow().visit(visitor, self)
+    }
+
+    #[inline]
+    pub fn can_import(&self) -> bool {
+        let borrow = self.borrow();
+        if borrow.downcast_ref::<DefStatement>().is_some() {
+            true
+        } else if borrow.downcast_ref::<ClassStatement>().is_some() {
+            true
+        } else {
+            false
+        }
     }
 }
 

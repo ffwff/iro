@@ -82,8 +82,9 @@ impl<'a> Visitor for PreprocessVisitor<'a> {
             working_path.push(&n.path);
             working_path = std::fs::canonicalize(working_path)
                 .map_err(|error| compiler::Error::io_error(error))?;
+            working_path.set_extension("iro");
 
-            let (index, source) = sources
+            let (index, _) = sources
                 .read(&working_path)
                 .map_err(|error| compiler::Error::io_error(error))?;
 
@@ -103,7 +104,8 @@ impl<'a> Visitor for PreprocessVisitor<'a> {
                     err
                 })?;
                 let mut state = self.state.as_ref().unwrap().borrow_mut();
-                state.total_imported_statements.extend(ast.exprs);
+                state.total_imported_statements.extend(ast.exprs.into_iter()
+                    .filter(|ast| ast.can_import()));
             }
         }
         Ok(())
