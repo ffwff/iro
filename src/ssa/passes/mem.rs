@@ -71,7 +71,10 @@ pub fn eliminate_phi(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     Flow::Continue
 }
 
-pub fn calculate_block_variable_declaration(_: &mut ContextLocalData, context: &mut Context) -> Flow {
+pub fn calculate_block_variable_declaration(
+    _: &mut ContextLocalData,
+    context: &mut Context,
+) -> Flow {
     for (block, block_vars) in context.blocks.iter_mut().zip(context.block_vars.iter_mut()) {
         let mut vars_declared_in_this_block = BTreeSet::new();
         let mut vars_used = BTreeSet::new();

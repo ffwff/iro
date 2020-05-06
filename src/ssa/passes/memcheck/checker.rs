@@ -3,8 +3,8 @@ use crate::compiler::Flow;
 use crate::ssa::isa::*;
 use crate::ssa::passes::memcheck::drop_effect::*;
 use crate::ssa::passes::memcheck::path::*;
-use crate::utils::overlay::OverlayHashMap;
 use crate::ssa::passes::ContextLocalData;
+use crate::utils::overlay::OverlayHashMap;
 
 pub fn check(_: &mut ContextLocalData, context: &mut Context) -> Flow {
     fn walk(

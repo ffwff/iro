@@ -28,11 +28,9 @@ pub struct Sources {
     sources_name: Vec<String>,
     sources_lines_to_byte_index: Vec<Vec<usize>>,
     sources_map: FnvHashMap<PathBuf, FileIndex>,
-
     index_to_span: Vec<SourceSpan>,
     span_to_index: FnvHashMap<SourceSpan, SpanIndex>,
-
-    has_main_file: bool,
+    main_file_path: Option<PathBuf>,
 }
 
 impl Sources {
@@ -44,14 +42,16 @@ impl Sources {
             sources_map: FnvHashMap::default(),
             index_to_span: vec![],
             span_to_index: FnvHashMap::default(),
-            has_main_file: true,
+            main_file_path: None,
         };
         if path.as_ref().is_relative() {
             let mut current_dir = std::env::current_dir()?;
             current_dir.push(path.as_ref());
             current_dir = std::fs::canonicalize(current_dir)?;
+            sources.main_file_path = Some(current_dir.clone());
             sources.read(&current_dir)?;
         } else {
+            sources.main_file_path = Some(path.as_ref().to_path_buf());
             sources.read(path)?;
         }
         Ok(sources)
@@ -65,16 +65,24 @@ impl Sources {
             sources_map: FnvHashMap::default(),
             index_to_span: vec![],
             span_to_index: FnvHashMap::default(),
-            has_main_file: false,
+            main_file_path: None,
         }
     }
 
+    pub fn main_file_path(&self) -> &Option<PathBuf> {
+        &self.main_file_path
+    }
+
     pub fn main_file(&self) -> Option<&String> {
-        if self.has_main_file {
+        if self.main_file_path.is_some() {
             self.sources_store.first()
         } else {
             None
         }
+    }
+
+    pub fn file(&self, idx: FileIndex) -> Option<&String> {
+        self.sources_store.get(idx)
     }
 
     pub fn read<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<(FileIndex, &String)> {

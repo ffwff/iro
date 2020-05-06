@@ -1,13 +1,45 @@
 use crate::ast::*;
+use crate::compiler::sources;
+use bit_set::BitSet;
+use std::path::PathBuf;
 
-pub struct PreprocessVisitor {
-    file: usize,
+pub struct PreprocessState {
+    pub imported: BitSet<u32>,
+    pub total_imported_statements: Vec<NodeBox>,
 }
 
-impl PreprocessVisitor {
-    pub fn postprocess(ast: &Program, file: usize) -> VisitorResult {
-        let mut visitor = PreprocessVisitor { file };
-        visitor.visit_program(&ast)
+impl PreprocessState {
+    pub fn new() -> Self {
+        Self {
+            imported: BitSet::new(),
+            total_imported_statements: vec![],
+        }
+    }
+}
+
+pub struct PreprocessVisitor<'a> {
+    file: sources::FileIndex,
+    // Working directory of the current file, must be absolute
+    working_path: Option<PathBuf>,
+    state: Option<&'a RefCell<PreprocessState>>,
+    sources: &'a mut sources::Sources,
+}
+
+impl<'a> PreprocessVisitor<'a> {
+    pub fn postprocess(
+        program: &mut Program,
+        file: sources::FileIndex,
+        working_path: Option<PathBuf>,
+        state: Option<&'a RefCell<PreprocessState>>,
+        sources: &'a mut sources::Sources,
+    ) -> VisitorResult {
+        let mut visitor = Self {
+            file,
+            working_path,
+            state,
+            sources,
+        };
+        visitor.visit_program(program)
     }
 
     fn fill_box(&self, boxed: &NodeBox) {
@@ -22,17 +54,58 @@ impl PreprocessVisitor {
     }
 }
 
-impl Visitor for PreprocessVisitor {
-    fn visit_program(&mut self, n: &Program) -> VisitorResult {
+impl<'a> Visitor for PreprocessVisitor<'a> {
+    fn visit_program(&mut self, n: &mut Program) -> VisitorResult {
         for node in &n.exprs {
             Self::ungenerate_retvar(node);
             node.visit(self)?;
         }
+        if self.file == 0 {
+            if let Some(state_cell) = self.state.take() {
+                let mut state = state_cell.borrow_mut();
+                n.exprs.extend(std::mem::replace(
+                    &mut state.total_imported_statements,
+                    vec![],
+                ));
+            }
+        }
         Ok(())
     }
 
-    fn visit_import(&mut self, _n: &ImportStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
+        if let Some(mut state) = self.state.as_ref().map(|x| x.borrow_mut()) {
+            let sources = &mut self.sources;
+
+            let mut working_path = self.working_path.clone().unwrap();
+            working_path.pop();
+            working_path.push(&n.path);
+            working_path = std::fs::canonicalize(working_path)
+                .map_err(|error| compiler::Error::io_error(error))?;
+
+            let (index, source) = sources
+                .read(&working_path)
+                .map_err(|error| compiler::Error::io_error(error))?;
+
+            if state.imported.insert(index) {
+                std::mem::drop(state);
+                let ast = compiler::parse_file_to_ast(
+                    index,
+                    working_path,
+                    sources,
+                    self.state.clone().unwrap(),
+                )
+                .map_err(|err| {
+                    err.span.map(|mut span| {
+                        span.file = index;
+                        span
+                    });
+                    err
+                })?;
+                let mut state = self.state.as_ref().unwrap().borrow_mut();
+                state.total_imported_statements.extend(ast.exprs);
+            }
+        }
         Ok(())
     }
 

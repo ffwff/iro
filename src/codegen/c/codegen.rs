@@ -3,8 +3,8 @@ use crate::codegen::c::mangler;
 use crate::codegen::settings::*;
 use crate::codegen::structs::*;
 use crate::compiler;
-use crate::ssa::isa;
 use crate::runtime;
+use crate::ssa::isa;
 use fnv::FnvHashMap;
 use std::fmt::Write;
 use std::rc::Rc;
@@ -353,7 +353,14 @@ struct {{
             }
             isa::InsType::AllocHeap => {
                 let retvar = ins.retvar().unwrap();
-                writeln!(f, "\tv{} = (void*)({}(sizeof(*v{}), alignof(*v{})));", retvar, runtime::MALLOC_NAME_MANGLED, retvar, retvar)?;
+                writeln!(
+                    f,
+                    "\tv{} = (void*)({}(sizeof(*v{}), alignof(*v{})));",
+                    retvar,
+                    runtime::MALLOC_NAME_MANGLED,
+                    retvar,
+                    retvar
+                )?;
             }
             isa::InsType::Alloca | isa::InsType::LoadStruct => (),
             isa::InsType::Load(x) => {

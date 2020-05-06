@@ -63,7 +63,7 @@ macro_rules! visit_func {
 }
 
 pub trait Visitor {
-    fn visit_program(&mut self, n: &Program) -> VisitorResult;
+    fn visit_program(&mut self, n: &mut Program) -> VisitorResult;
     visit_func!(visit_import, ImportStatement);
     visit_func!(visit_class, ClassStatement);
     visit_func!(visit_class_init, ClassInitExpr);

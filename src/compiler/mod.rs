@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::ast::pp_visitor::PreprocessVisitor;
+use crate::ast::pp_visitor::*;
 use crate::codegen::backend;
 use crate::codegen::settings::Settings;
 use crate::compiler;
@@ -10,7 +10,7 @@ use crate::runtime;
 use crate::ssa;
 use crate::ssa::passes;
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub mod error;
 pub use error::Error;
@@ -47,25 +47,31 @@ const SSA_PASSES: &[fn(&mut passes::ContextLocalData, &mut ssa::isa::Context) ->
     passes::postprocess::cleanup_high_level_instructions,
 ];
 
-pub fn parse_file_to_ssa(sources: &mut Sources) -> Result<ssa::isa::Program, compiler::Error> {
-    let tokenizer = lexer::Lexer::new(sources.main_file().unwrap(), 0);
-    let ast = parser::TopParser::new().parse(tokenizer)?;
-    process_program(sources, ast)
+pub fn parse_file_to_ast(
+    file: usize,
+    working_path: PathBuf,
+    sources: &mut Sources,
+    state: &RefCell<PreprocessState>,
+) -> Result<ast::Program, compiler::Error> {
+    let tokenizer = lexer::Lexer::new(sources.file(file).unwrap(), file);
+    let mut ast = parser::TopParser::new().parse(tokenizer)?;
+    PreprocessVisitor::postprocess(&mut ast, file, Some(working_path), Some(state), sources)?;
+    Ok(ast)
 }
 
 pub fn parse_source_to_ssa(source: &str) -> Result<ssa::isa::Program, compiler::Error> {
     let mut sources = Sources::new();
     let tokenizer = lexer::Lexer::new(source, 0);
-    let ast = parser::TopParser::new().parse(tokenizer)?;
+    let mut ast = parser::TopParser::new().parse(tokenizer)?;
+    PreprocessVisitor::postprocess(&mut ast, 0, None, None, &mut sources)?;
     process_program(&mut sources, ast)
 }
 
 fn process_program(
     sources: &mut Sources,
-    ast: ast::Program,
+    mut ast: ast::Program,
 ) -> Result<ssa::isa::Program, compiler::Error> {
-    PreprocessVisitor::postprocess(&ast, 0)?;
-    let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(sources))?;
+    let mut program = ssa::visitor::SSAVisitor::generate(&mut ast, &RefCell::new(sources))?;
     for context in program.contexts.values_mut() {
         let mut data = passes::ContextLocalData::new();
         for pass in SSA_PASSES {
@@ -125,7 +131,22 @@ impl Compiler {
             Ok(sources) => sources,
             Err(error) => return (None, Err(compiler::Error::io_error(error))),
         };
-        let program = try_sources!(parse_file_to_ssa(&mut sources), sources);
+        let program = try_sources!(
+            {
+                let state = RefCell::new(PreprocessState::new());
+                let ast = try_sources!(
+                    parse_file_to_ast(
+                        0,
+                        sources.main_file_path().clone().unwrap(),
+                        &mut sources,
+                        &state
+                    ),
+                    sources
+                );
+                process_program(&mut sources, ast)
+            },
+            sources
+        );
         with_sources!(
             if let Some(backend) = self.backend.as_jit_backend() {
                 backend.run(&program, &self.settings, runtime)
@@ -147,7 +168,22 @@ impl Compiler {
             Ok(sources) => sources,
             Err(error) => return (None, Err(compiler::Error::io_error(error))),
         };
-        let program = try_sources!(parse_file_to_ssa(&mut sources), sources);
+        let program = try_sources!(
+            {
+                let state = RefCell::new(PreprocessState::new());
+                let ast = try_sources!(
+                    parse_file_to_ast(
+                        0,
+                        sources.main_file_path().clone().unwrap(),
+                        &mut sources,
+                        &state
+                    ),
+                    sources
+                );
+                process_program(&mut sources, ast)
+            },
+            sources
+        );
         with_sources!(
             if let Some(backend) = self.backend.as_object_backend() {
                 backend.generate_object(&program, &self.settings)

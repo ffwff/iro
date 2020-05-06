@@ -91,7 +91,7 @@ macro_rules! propagate_cf_state {
 
 impl<'a, 'b> SSAVisitor<'a, 'b> {
     pub fn generate(
-        program: &ast::Program,
+        program: &mut ast::Program,
         sources: &'a RefCell<&'b mut Sources>,
     ) -> Result<isa::Program, compiler::Error> {
         let top_level = OptCell::some(TopLevelInfo::new());
@@ -375,7 +375,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
 }
 
 impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
-    fn visit_program(&mut self, n: &ast::Program) -> VisitorResult {
+    fn visit_program(&mut self, n: &mut ast::Program) -> VisitorResult {
         let mut top_level_stmts = vec![];
         let mut outerstmts = vec![];
         for expr in &n.exprs {
@@ -480,7 +480,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
     }
 
     fn visit_import(&mut self, _n: &ImportStatement, _b: &NodeBox) -> VisitorResult {
-        unimplemented!()
+        Ok(())
     }
 
     fn visit_class(&mut self, n: &ClassStatement, b: &NodeBox) -> VisitorResult {
