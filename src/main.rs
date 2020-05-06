@@ -70,12 +70,14 @@ struct Options<'a> {
     pub output_type: OutputType,
     pub args: &'a Vec<String>,
     pub command_idx: usize,
+    pub prelude: Option<&'a str>,
 }
 
 impl<'a> Options<'a> {
     pub fn to_settings(&self) -> Settings {
         Settings {
             opt_level: self.opt_level,
+            prelude: self.prelude.map(|x| PathBuf::from(x)),
         }
     }
 
@@ -193,6 +195,7 @@ fn usage(program: &str, commands: &BTreeMap<&str, (&str, CommandFn)>) {
         ("-O", "optimize for size and speed"),
         ("-Onone", "don't optimize at all"),
         ("-Ospeed", "optimize for speed"),
+        ("-prelude", "insert a prelude file")
     ];
     options.sort_by_key(|k| k.0);
     for (name, desc) in &options {
@@ -203,6 +206,7 @@ fn usage(program: &str, commands: &BTreeMap<&str, (&str, CommandFn)>) {
 enum ArgParseState {
     None,
     Backend,
+    Prelude,
 }
 
 fn main() {
@@ -218,6 +222,7 @@ fn main() {
         output_type: OutputType::Executable,
         args: &args,
         command_idx: 0,
+        prelude: None,
     };
     let mut state = ArgParseState::None;
     for (idx, arg) in args.iter().skip(1).enumerate() {
@@ -225,6 +230,9 @@ fn main() {
             ArgParseState::None => match arg.as_str() {
                 "-backend" => {
                     state = ArgParseState::Backend;
+                }
+                "-prelude" => {
+                    state = ArgParseState::Prelude;
                 }
                 "-obj" => {
                     opts.output_type = OutputType::Object;
@@ -254,6 +262,10 @@ fn main() {
                 } else {
                     fatal!(opts, "unknown backend {:?}", arg);
                 }
+                state = ArgParseState::None;
+            }
+            ArgParseState::Prelude => {
+                opts.prelude = Some(arg.as_str());
                 state = ArgParseState::None;
             }
         }

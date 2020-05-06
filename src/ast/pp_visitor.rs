@@ -4,15 +4,17 @@ use bit_set::BitSet;
 use std::path::PathBuf;
 
 pub struct PreprocessState {
-    pub imported: BitSet<u32>,
-    pub total_imported_statements: Vec<NodeBox>,
+    imported: BitSet<u32>,
+    total_imported_statements: Vec<NodeBox>,
+    prelude: Option<PathBuf>,
 }
 
 impl PreprocessState {
-    pub fn new() -> Self {
+    pub fn new(prelude: Option<PathBuf>) -> Self {
         Self {
             imported: BitSet::new(),
             total_imported_statements: vec![],
+            prelude,
         }
     }
 }
@@ -52,37 +54,10 @@ impl<'a> PreprocessVisitor<'a> {
     fn ungenerate_retvar(b: &NodeBox) {
         b.generate_retvar.set(false);
     }
-}
 
-impl<'a> Visitor for PreprocessVisitor<'a> {
-    fn visit_program(&mut self, n: &mut Program) -> VisitorResult {
-        for node in &n.exprs {
-            Self::ungenerate_retvar(node);
-            node.visit(self)?;
-        }
-        if self.file == 0 {
-            if let Some(state_cell) = self.state.take() {
-                let mut state = state_cell.borrow_mut();
-                n.exprs.extend(std::mem::replace(
-                    &mut state.total_imported_statements,
-                    vec![],
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult {
-        self.fill_box(b);
+    fn import(&mut self, working_path: PathBuf) -> VisitorResult {
         if let Some(mut state) = self.state.as_ref().map(|x| x.borrow_mut()) {
             let sources = &mut self.sources;
-
-            let mut working_path = self.working_path.clone().unwrap();
-            working_path.pop();
-            working_path.push(&n.path);
-            working_path = std::fs::canonicalize(working_path)
-                .map_err(|error| compiler::Error::io_error(error))?;
-            working_path.set_extension("iro");
 
             let (index, _) = sources
                 .read(&working_path)
@@ -108,6 +83,50 @@ impl<'a> Visitor for PreprocessVisitor<'a> {
                     .filter(|ast| ast.can_import()));
             }
         }
+        Ok(())
+    }
+}
+
+impl<'a> Visitor for PreprocessVisitor<'a> {
+    fn visit_program(&mut self, n: &mut Program) -> VisitorResult {
+        for node in &n.exprs {
+            Self::ungenerate_retvar(node);
+            node.visit(self)?;
+        }
+        if self.file == 0 {
+            if let Some(state_cell) = self.state {
+                {
+                    let state = state_cell.borrow();
+                    if let Some(prelude) = &state.prelude {
+                        let mut working_path = std::env::current_dir()
+                            .map_err(|error| compiler::Error::io_error(error))?;
+                        working_path.push(prelude);
+                        working_path = std::fs::canonicalize(working_path)
+                            .map_err(|error| compiler::Error::io_error(error))?;
+                        std::mem::drop(state);
+                        self.import(working_path)?;
+                    }
+                }
+
+                let mut state = state_cell.borrow_mut();
+                n.exprs.extend(std::mem::replace(
+                    &mut state.total_imported_statements,
+                    vec![],
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn visit_import(&mut self, n: &ImportStatement, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
+        let mut working_path = self.working_path.clone().unwrap();
+        working_path.pop();
+        working_path.push(&n.path);
+        working_path.set_extension("iro");
+        working_path = std::fs::canonicalize(working_path)
+            .map_err(|error| compiler::Error::io_error(error))?;
+        self.import(working_path)?;
         Ok(())
     }
 

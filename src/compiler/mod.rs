@@ -133,7 +133,7 @@ impl Compiler {
         };
         let program = try_sources!(
             {
-                let state = RefCell::new(PreprocessState::new());
+                let state = RefCell::new(PreprocessState::new(self.settings.prelude.clone()));
                 let ast = try_sources!(
                     parse_file_to_ast(
                         0,
@@ -170,7 +170,7 @@ impl Compiler {
         };
         let program = try_sources!(
             {
-                let state = RefCell::new(PreprocessState::new());
+                let state = RefCell::new(PreprocessState::new(self.settings.prelude.clone()));
                 let ast = try_sources!(
                     parse_file_to_ast(
                         0,
