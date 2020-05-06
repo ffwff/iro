@@ -9,7 +9,7 @@ use unicode_xid::UnicodeXID;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tok {
     EOF,
-    Import,
+    Use,
     Def,
     Extern,
     Return,
@@ -77,7 +77,7 @@ impl std::fmt::Display for Tok {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Tok::EOF => write!(f, "end of file"),
-            Tok::Import => write!(f, "import"),
+            Tok::Use => write!(f, "use"),
             Tok::Def => write!(f, "def"),
             Tok::Extern => write!(f, "extern"),
             Tok::Return => write!(f, "return"),
@@ -373,7 +373,7 @@ impl<'input> Iterator for Lexer<'input> {
                         return Some(Ok((idx0, Tok::CapitalIdentifier { value: string }, idx0)));
                     }
                     let value = match string.as_str() {
-                        "import" => Tok::Import,
+                        "use" => Tok::Use,
                         "def" => Tok::Def,
                         "extern" => Tok::Extern,
                         "return" => Tok::Return,

@@ -1,3 +1,4 @@
+use crate::ast;
 use crate::ast::pp_visitor::PreprocessVisitor;
 use crate::codegen::backend;
 use crate::codegen::settings::Settings;
@@ -49,26 +50,22 @@ const SSA_PASSES: &[fn(&mut passes::ContextLocalData, &mut ssa::isa::Context) ->
 pub fn parse_file_to_ssa(sources: &mut Sources) -> Result<ssa::isa::Program, compiler::Error> {
     let tokenizer = lexer::Lexer::new(sources.main_file().unwrap(), 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    PreprocessVisitor::postprocess(&ast, 0)?;
-    let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(sources))?;
-    process_ssa(sources, &mut program)?;
-    Ok(program)
+    process_program(sources, ast)
 }
 
 pub fn parse_source_to_ssa(source: &str) -> Result<ssa::isa::Program, compiler::Error> {
     let mut sources = Sources::new();
     let tokenizer = lexer::Lexer::new(source, 0);
     let ast = parser::TopParser::new().parse(tokenizer)?;
-    PreprocessVisitor::postprocess(&ast, 0)?;
-    let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(&mut sources))?;
-    process_ssa(&mut sources, &mut program)?;
-    Ok(program)
+    process_program(&mut sources, ast)
 }
 
-fn process_ssa(
+fn process_program(
     sources: &mut Sources,
-    program: &mut ssa::isa::Program,
-) -> Result<(), compiler::Error> {
+    ast: ast::Program,
+) -> Result<ssa::isa::Program, compiler::Error> {
+    PreprocessVisitor::postprocess(&ast, 0)?;
+    let mut program = ssa::visitor::SSAVisitor::generate(&ast, &RefCell::new(sources))?;
     for context in program.contexts.values_mut() {
         let mut data = passes::ContextLocalData::new();
         for pass in SSA_PASSES {
@@ -88,7 +85,7 @@ fn process_ssa(
             }
         }
     }
-    Ok(())
+    Ok(program)
 }
 
 pub struct Compiler {

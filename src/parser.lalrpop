@@ -154,7 +154,7 @@ AttributeValue: AttributeValue = {
 
 // Imports
 ImportStatement: NodeBox = {
-    <start:@L> "import" <path:String> <end:@L> => {
+    <start:@L> "use" <path:String> <end:@L> => {
         NodeBox::new(ImportStatement {
             path
         }, (start, end))
@@ -510,7 +510,7 @@ extern {
     type Error = compiler::Error;
 
     enum lexer::Tok {
-        "import" => lexer::Tok::Import,
+        "use" => lexer::Tok::Use,
         "def" => lexer::Tok::Def,
         "extern" => lexer::Tok::Extern,
         "return" => lexer::Tok::Return,

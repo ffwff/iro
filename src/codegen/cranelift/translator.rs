@@ -24,21 +24,3 @@ pub fn const_to_type(c: &isa::Constant) -> types::Type {
         isa::Constant::F64(_) => types::F64,
     }
 }
-
-pub fn regconst_to_type(
-    builder: &mut FunctionBuilder,
-    rc: &isa::RegConst,
-) -> (Value, Value, types::Type) {
-    match rc {
-        isa::RegConst::RegLeft((reg, value)) => (
-            builder.use_var(to_var(*reg)),
-            const_to_value(builder, value),
-            const_to_type(value),
-        ),
-        isa::RegConst::RegRight((value, reg)) => (
-            const_to_value(builder, value),
-            builder.use_var(to_var(*reg)),
-            const_to_type(value),
-        ),
-    }
-}
