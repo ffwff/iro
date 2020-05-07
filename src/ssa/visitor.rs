@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 pub struct AstTopLevelInfo {
     pub defstmts: FnvHashMap<PathVec, Vec<NodeBox>>,
-    pub class_stmts: FnvHashMap<Rc<str>, NodeBox>,
+    pub class_stmts: FnvHashMap<PathVec, NodeBox>,
 }
 
 impl AstTopLevelInfo {
@@ -31,7 +31,7 @@ impl AstTopLevelInfo {
 
 pub struct TopLevelInfo {
     pub func_contexts: FnvHashMap<Rc<FunctionName>, Option<Context>>,
-    pub types: FnvHashMap<Rc<str>, Type>,
+    pub types: FnvHashMap<PathVec, Type>,
     pub builtins: Builtins,
 }
 
@@ -43,13 +43,13 @@ impl TopLevelInfo {
         TopLevelInfo {
             func_contexts: fnv_hashmap![],
             types: fnv_hashmap![
-                Rc::from("Nil") => Type::Nil,
-                Rc::from("I8") => Type::I8,
-                Rc::from("I32") => Type::I32,
-                Rc::from("I64") => Type::I64,
-                Rc::from("ISize") => Type::ISize,
-                Rc::from("F64") => Type::F64,
-                Rc::from("Substring") => Type::I8.dyn_slice(),
+                smallvec![Rc::from("Nil")] => Type::Nil,
+                smallvec![Rc::from("I8")] => Type::I8,
+                smallvec![Rc::from("I32")] => Type::I32,
+                smallvec![Rc::from("I64")] => Type::I64,
+                smallvec![Rc::from("ISize")] => Type::ISize,
+                smallvec![Rc::from("F64")] => Type::F64,
+                smallvec![Rc::from("Substring")] => Type::I8.dyn_slice(),
             ],
             builtins: Builtins {
                 structs: fnv_hashmap![],
@@ -328,10 +328,11 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
 
     fn forward_decl_class(
         &mut self,
-        name: &Rc<str>,
+        name: &PathVec,
     ) -> Result<Option<UniqueRc<StructType>>, compiler::Error> {
         if let Some(boxed) = self.ast_top_level.borrow().class_stmts.get(name).cloned() {
             let class_stmt = boxed.borrow().downcast_ref::<ClassStatement>().unwrap();
+            class_stmt.actual_path.replace(name.clone());
             self.visit_class(class_stmt, &boxed)?;
             let top_level = self.top_level.borrow().unwrap();
             Ok(top_level.builtins.structs.get(name).cloned())
@@ -551,7 +552,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 let mut ast_top_level = self.ast_top_level.borrow_mut();
                 ast_top_level
                     .class_stmts
-                    .insert(class_stmt.id.clone(), expr.clone());
+                    .insert(smallvec![class_stmt.id.clone()], expr.clone());
             } else if expr.borrow().downcast_ref::<ImportStatement>().is_some() {
                 top_level_stmts.push(expr);
             } else if let Some(stmt) = expr.borrow().downcast_ref::<ModStatement>() {
@@ -661,10 +662,10 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             top_level
                 .builtins
                 .structs
-                .insert(n.id.clone(), struct_rc.clone());
+                .insert(n.actual_path.borrow().clone(), struct_rc.clone());
             top_level
                 .types
-                .insert(n.id.clone(), Type::Struct(struct_rc));
+                .insert(n.actual_path.borrow().clone(), Type::Struct(struct_rc));
         }
         Ok(())
     }
@@ -673,14 +674,14 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         let struct_data = if let Some(struct_data) = self
             .top_level
             .borrow()
-            .map(|top_level| top_level.builtins.structs.get(&n.id).cloned())
+            .map(|top_level| top_level.builtins.structs.get(&n.path).cloned())
             .flatten()
         {
             struct_data
-        } else if let Some(struct_data) = self.forward_decl_class(&n.id)? {
+        } else if let Some(struct_data) = self.forward_decl_class(&n.path)? {
             struct_data
         } else {
-            return Err(Error::UnknownType(n.id.clone()).into_compiler_error(b));
+            return Err(Error::UnknownType(n.path.last().cloned().unwrap()).into_compiler_error(b));
         };
         let location = self.location_for(b);
         let retvar = self.context.insert_var(Type::Struct(struct_data.clone()));
@@ -729,7 +730,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         Ok(())
     }
 
-    fn visit_modstmt(&mut self, n: &ModStatement, b: &NodeBox) -> VisitorResult {
+    fn visit_modstmt(&mut self, n: &ModStatement, _b: &NodeBox) -> VisitorResult {
         self.current_path.push(n.id.clone());
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
@@ -740,6 +741,13 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                 } else {
                     ast_top_level.defstmts.insert(path, vec![expr.clone()]);
                 }
+            } else if let Some(stmt) = expr.borrow().downcast_ref::<ClassStatement>() {
+                let path = self.with_current_path(stmt.id.clone());
+                dbg_println!("{:?}", path);
+                let mut ast_top_level = self.ast_top_level.borrow_mut();
+                ast_top_level.class_stmts.insert(path, expr.clone());
+            } else {
+                unreachable!()
             }
         }
         self.current_path.pop();
@@ -1779,22 +1787,22 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
 
     fn visit_typeid(&mut self, n: &TypeId, b: &NodeBox) -> VisitorResult {
         match &n.data {
-            TypeIdData::Identifier(id) => {
+            TypeIdData::Path(path) => {
                 if n.typed.borrow().is_some() {
                     Ok(())
                 } else if let Some(typed) = self
                     .top_level
                     .borrow()
-                    .map(|top_level| top_level.types.get(id).cloned())
+                    .map(|top_level| top_level.types.get(path).cloned())
                     .flatten()
                 {
                     n.typed.replace(Some(typed));
                     Ok(())
-                } else if let Some(struct_data) = self.forward_decl_class(id)? {
+                } else if let Some(struct_data) = self.forward_decl_class(path)? {
                     n.typed.replace(Some(Type::Struct(struct_data)));
                     Ok(())
                 } else {
-                    Err(Error::UnknownType(id.clone()).into_compiler_error(b))
+                    Err(Error::UnknownType(path.last().cloned().unwrap()).into_compiler_error(b))
                 }
             }
             TypeIdData::Pointer {
@@ -1920,7 +1928,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         Ok(())
     }
 
-    fn visit_path(&mut self, n: &PathExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_path(&mut self, _n: &PathExpr, _b: &NodeBox) -> VisitorResult {
         unimplemented!()
     }
 }

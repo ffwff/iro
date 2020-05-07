@@ -171,7 +171,7 @@ ClassStatement: NodeBox = {
         <id:CapitalIdentifier>
         <inners:ClassBlock>
     <end:@L> => {
-        NodeBox::new(ClassStatement { id: Rc::from(id), inners }, (start, end))
+        NodeBox::new(ClassStatement::new(Rc::from(id), inners), (start, end))
     }
 };
 
@@ -422,22 +422,19 @@ MemberExprOrTerm: NodeBox = {
 // Path expressions
 PathExpr: NodeBox = {
     <start:@L>
-        <left:CapitalIdentifier>
-        <right: ("::" <CapitalOrIdentifier>)+>
+        <first:CapitalIdentifier>
+        <mid:("::" <CapitalIdentifier>)*>
+        <last:("::" <Identifier>)>
     <end:@L> => {
-        let mut path = right;
-        path.insert(0, left);
+        let mut path = mid;
+        path.insert(0, first);
+        path.push(last);
         NodeBox::new(PathExpr {
             path: path.into_iter()
                 .map(|x| Rc::from(x))
                 .collect(),
         }, (start, end))
     }
-};
-
-CapitalOrIdentifier: String = {
-    <CapitalIdentifier>,
-    <Identifier>,
 };
 
 // Member expressions
@@ -474,11 +471,18 @@ Term: NodeBox = {
 // Class Expression
 ClassInitExpr: NodeBox = {
     <start:@L> 
+        <path:TypePathExpr> "{" NL?
+            <inits: (<ClassInitInner> "," NL?)*>
+        Dedent? "}"
+    <end:@L> => {
+        NodeBox::new(ClassInitExpr { path, inits, }, (start, end))
+    },
+    <start:@L> 
         <id:CapitalIdentifier> "{" NL?
             <inits: (<ClassInitInner> "," NL?)*>
         Dedent? "}"
     <end:@L> => {
-        NodeBox::new(ClassInitExpr { id: Rc::from(id), inits, }, (start, end))
+        NodeBox::new(ClassInitExpr { path: smallvec![Rc::from(id)], inits, }, (start, end))
     }
 };
 
@@ -537,7 +541,18 @@ TypeSlice: TypeIdData = {
 };
 
 TypeIdentifier: TypeIdData = {
-    <CapitalIdentifier> => TypeIdData::Identifier(Rc::from(<>)),
+    <CapitalIdentifier> => TypeIdData::Path(smallvec![Rc::from(<>)]),
+    <TypePathExpr> => TypeIdData::Path(<>),
+};
+TypePathExpr: PathVec = {
+    <left:CapitalIdentifier>
+    <right: ("::" <CapitalIdentifier>)+> => {
+        let mut path = right;
+        path.insert(0, left);
+        path.into_iter()
+            .map(|x| Rc::from(x))
+            .collect()
+    }
 };
 
 TypeSpecifier: TypeId = {

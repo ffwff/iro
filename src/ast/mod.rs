@@ -245,7 +245,7 @@ impl TypeId {
 
 #[derive(Debug, Clone)]
 pub enum TypeIdData {
-    Identifier(Rc<str>),
+    Path(PathVec),
     Pointer {
         typed: Box<TypeId>,
         borrow_mod: BorrowModifier,
@@ -496,7 +496,18 @@ impl Node for BreakExpr {
 #[derive(Debug)]
 pub struct ClassStatement {
     pub id: Rc<str>,
+    pub actual_path: RefCell<PathVec>,
     pub inners: Vec<ClassInner>,
+}
+
+impl ClassStatement {
+    pub fn new(id: Rc<str>, inners: Vec<ClassInner>) -> Self {
+        Self {
+            id,
+            actual_path: RefCell::new(PathVec::new()),
+            inners,
+        }
+    }
 }
 
 impl Node for ClassStatement {
@@ -511,7 +522,7 @@ pub enum ClassInner {
 
 #[derive(Debug)]
 pub struct ClassInitExpr {
-    pub id: Rc<str>,
+    pub path: PathVec,
     pub inits: Vec<(Rc<str>, NodeBox)>,
 }
 

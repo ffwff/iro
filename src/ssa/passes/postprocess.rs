@@ -26,13 +26,13 @@ pub fn cleanup_high_level_instructions(_: &mut ContextLocalData, context: &mut C
                                     ));
                                 }
                             }
-                            Type::Struct(data) => {
+                            Type::Struct(_data) => {
                                 // TODO
                             }
-                            Type::Slice(data) => {
+                            Type::Slice(_data) => {
                                 // TODO
                             }
-                            Type::Union(data) => {
+                            Type::Union(_data) => {
                                 // TODO
                             }
                             _ => (),

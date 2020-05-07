@@ -280,7 +280,7 @@ impl<'a> Visitor for PreprocessVisitor<'a> {
         Ok(())
     }
 
-    fn visit_path(&mut self, n: &PathExpr, b: &NodeBox) -> VisitorResult {
+    fn visit_path(&mut self, _n: &PathExpr, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         Ok(())
     }

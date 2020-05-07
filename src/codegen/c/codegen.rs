@@ -77,7 +77,7 @@ impl<'a> Codegen<'a> {
         rc
     }
 
-    fn build_struct_data_for_union(&self, typed: &isa::UnionType) -> Rc<StructData> {
+    fn build_struct_data_for_union(&self, _typed: &isa::UnionType) -> Rc<StructData> {
         unimplemented!()
     }
 
@@ -239,7 +239,7 @@ struct {{
                 }
                 s
             }
-            isa::Type::Union(x) => {
+            isa::Type::Union(_x) => {
                 unimplemented!();
             }
             _ => "void".to_string(),
@@ -277,7 +277,6 @@ struct {{
             match &index.var {
                 isa::MemberExprIndexVar::StructIndex(idx) => {
                     let struct_data = self.get_struct_data(&last_typed).unwrap();
-                    let field = &struct_data.fields()[*idx];
                     if let Some(name) = &struct_data.names()[*idx] {
                         write!(f, "->{}", name)?;
                     } else {
@@ -558,7 +557,7 @@ struct {{
                     let left_type = self.c_type(left);
                     writeln!(f, "\tv{} = ({})v{};", ins.retvar().unwrap(), left_type, var)?;
                 }
-                (left, right) if left.is_union() => {
+                (left, _right) if left.is_union() => {
                     unimplemented!();
                 }
                 _ => unreachable!(),

@@ -1,3 +1,4 @@
+use crate::ast::PathVec;
 use crate::utils::uniquerc::UniqueRc;
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
@@ -896,12 +897,12 @@ impl InsType {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FunctionName {
-    pub path: SmallVec<[Rc<str>; 1]>,
+    pub path: PathVec,
     pub arg_types: Vec<Type>,
 }
 
 pub struct Builtins {
-    pub structs: FnvHashMap<Rc<str>, UniqueRc<StructType>>,
+    pub structs: FnvHashMap<PathVec, UniqueRc<StructType>>,
     pub generic_fat_pointer_struct: Rc<StructType>,
 }
 
