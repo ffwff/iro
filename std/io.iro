@@ -1,13 +1,16 @@
 extern def putchar(x: I32): I32
 
 def print(s: &Substring): ISize =>
+    mut printed := 0is
     mut i := 0is
     while i < s.len =>
-        putchar(s[i])
+        printed += putchar(s[i])
         i += 1is
-    i
+    printed
 
 def print(mut n: I32): ISize =>
+    if n == 0 =>
+        return putchar(48) as ISize
     mut i := 0is
     mut slice : [I8; 128] = uninitialized
     while n > 0 =>
@@ -16,8 +19,9 @@ def print(mut n: I32): ISize =>
         n /= 10
         i += 1is
     i -= 1is
+    mut printed := 0is
     while true =>
-        putchar(slice[i])
+        printed += putchar(slice[i]) as ISize
         if i == 0 => break
         i -= 1is
-    i
+    printed
