@@ -2,11 +2,11 @@ use crate::compiler;
 use crate::compiler::sources::SourceSpan;
 use crate::ssa::isa::{BorrowModifier, IntrinsicType, Type};
 use downcast_rs::Downcast;
+use smallvec::SmallVec;
 use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
-
 pub mod pp_visitor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +82,8 @@ pub trait Visitor {
     visit_func!(visit_borrow, BorrowExpr);
     visit_func!(visit_deref, DerefExpr);
     visit_func!(visit_unary, UnaryExpr);
+    visit_func!(visit_modstmt, ModStatement);
+    visit_func!(visit_path, PathExpr);
 }
 
 pub trait Node: Downcast {
@@ -156,6 +158,8 @@ impl NodeBox {
         if borrow.downcast_ref::<DefStatement>().is_some() {
             true
         } else if borrow.downcast_ref::<ClassStatement>().is_some() {
+            true
+        } else if borrow.downcast_ref::<ModStatement>().is_some() {
             true
         } else {
             false
@@ -369,6 +373,17 @@ impl FuncAttributes {
 }
 
 #[derive(Debug)]
+pub struct ModStatement {
+    pub id: Rc<str>,
+    pub exprs: Vec<NodeBox>,
+}
+
+impl Node for ModStatement {
+    debuggable!();
+    visitable!(visit_modstmt);
+}
+
+#[derive(Debug)]
 pub struct DefStatement {
     pub id: Rc<str>,
     pub args: Vec<DefArgument>,
@@ -541,3 +556,15 @@ impl Node for UnaryExpr {
     debuggable!();
     visitable!(visit_unary);
 }
+
+#[derive(Debug)]
+pub struct PathExpr {
+    pub path: PathVec,
+}
+
+impl Node for PathExpr {
+    debuggable!();
+    visitable!(visit_path);
+}
+
+pub type PathVec = SmallVec<[Rc<str>; 1]>;

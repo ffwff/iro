@@ -56,8 +56,17 @@ pub fn mangle_type(typed: &isa::Type, dest: &mut String) {
 
 pub fn mangle(unmangled: &Rc<isa::FunctionName>) -> String {
     let mut name = "_I".to_string();
-    write!(name, "{}", unmangled.name.len()).unwrap();
-    mangle_string(&unmangled.name, &mut name);
+    let id = unmangled
+        .path
+        .iter()
+        .map(|path| {
+            let mut id = String::new();
+            mangle_string(&path, &mut id);
+            id
+        })
+        .collect::<Vec<String>>()
+        .join("$$");
+    write!(name, "{}{}", id.len(), id).unwrap();
     for typed in &unmangled.arg_types {
         mangle_type(typed, &mut name);
     }

@@ -177,11 +177,7 @@ pub struct ContextPrinter<'a>(pub Option<&'a Rc<FunctionName>>, pub &'a Context)
 
 impl<'a> std::fmt::Display for ContextPrinter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(name) = &self.0 {
-            writeln!(f, "function {} -> {} =>", name.to_string(), self.1.rettype)?;
-        } else {
-            writeln!(f, "-> {} =>", self.1.rettype)?;
-        }
+        writeln!(f, "-> {} =>", self.1.rettype)?;
         for (idx, typed) in self.1.variables.iter().enumerate() {
             if typed != &Type::NeverUsed {
                 writeln!(f, "\tv{}: {}", idx, typed)?;

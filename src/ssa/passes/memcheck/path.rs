@@ -44,11 +44,7 @@ pub enum MemoryState {
     FullyBorrowedMut(SpanIndex),
 }
 
-#[derive(Debug, Clone)]
-pub enum LastUsed {
-    One(SpanIndex),
-    Many(Vec<SpanIndex>),
-}
+pub type LastUsed = Vec<SpanIndex>;
 
 impl MemoryState {
     pub fn into_opt(self) -> Option<Self> {
@@ -75,10 +71,10 @@ impl MemoryState {
     pub fn last_used(&self) -> LastUsed {
         match self {
             MemoryState::None => unreachable!(),
-            MemoryState::PartiallyMoved(dict) => LastUsed::One(dict.last_used),
-            MemoryState::FullyMoved(last_used) => LastUsed::One(*last_used),
-            MemoryState::FullyBorrowed(map) => LastUsed::Many(map.values().cloned().collect()),
-            MemoryState::FullyBorrowedMut(last_used) => LastUsed::One(*last_used),
+            MemoryState::PartiallyMoved(dict) => vec![dict.last_used],
+            MemoryState::FullyMoved(last_used) => vec![*last_used],
+            MemoryState::FullyBorrowed(map) => map.values().cloned().collect(),
+            MemoryState::FullyBorrowedMut(last_used) => vec![*last_used],
         }
     }
 

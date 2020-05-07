@@ -1,5 +1,5 @@
 use crate::codegen::backend;
-use crate::codegen::c::mangler;
+use crate::codegen::mangler;
 use crate::codegen::settings::*;
 use crate::codegen::structs::*;
 use crate::compiler;
@@ -151,6 +151,14 @@ impl<'a> Codegen<'a> {
     }
 
     fn mangle(&mut self, unmangled: &Rc<isa::FunctionName>) -> &str {
+        if unmangled.path.len() == 1 {
+            match &**unmangled.path.first().unwrap() {
+                runtime::MAIN_NAME => return runtime::INTERNAL_MAIN_NAME,
+                runtime::MALLOC_NAME => return runtime::MALLOC_NAME,
+                runtime::DEALLOC_NAME => return runtime::DEALLOC_NAME,
+                _ => (),
+            }
+        }
         self.mangled_cache
             .entry(unmangled.clone())
             .or_insert_with(|| mangler::mangle(unmangled))
@@ -346,7 +354,7 @@ struct {{
         let context = ins_context.context;
         match &ins.typed {
             isa::InsType::DeallocHeap(arg) => {
-                writeln!(f, "\t{}(v{});", runtime::DEALLOC_NAME_MANGLED, arg)?;
+                writeln!(f, "\t{}(v{});", runtime::DEALLOC_NAME, arg)?;
             }
             isa::InsType::Copy(arg) | isa::InsType::Move(arg) => {
                 writeln!(f, "\tv{} = v{};", ins.retvar().unwrap(), arg)?;
@@ -357,7 +365,7 @@ struct {{
                     f,
                     "\tv{} = (void*)({}(sizeof(*v{}), alignof(*v{})));",
                     retvar,
-                    runtime::MALLOC_NAME_MANGLED,
+                    runtime::MALLOC_NAME,
                     retvar,
                     retvar
                 )?;

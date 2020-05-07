@@ -1,6 +1,7 @@
 use crate::codegen::backend;
 use crate::codegen::cranelift::abi;
 use crate::codegen::cranelift::translator::*;
+use crate::codegen::mangler;
 use crate::codegen::settings::*;
 use crate::codegen::structs::*;
 use crate::compiler;
@@ -53,7 +54,7 @@ struct InsContext<'a> {
 /// Code generator
 pub struct Codegen<B: Backend> {
     pub(super) module: Module<B>,
-    extern_mapping: FnvHashMap<Rc<isa::FunctionName>, String>,
+    mangled_cache: FnvHashMap<Rc<isa::FunctionName>, String>,
     string_mapping: FnvHashMap<Rc<str>, DataId>,
 }
 
@@ -64,7 +65,7 @@ where
     pub fn from_builder(builder: B::Builder) -> Self {
         Codegen {
             module: Module::new(builder),
-            extern_mapping: fnv_hashmap![],
+            mangled_cache: fnv_hashmap![],
             string_mapping: fnv_hashmap![],
         }
     }
@@ -84,6 +85,20 @@ where
         }
     }
 
+    fn mangle(&mut self, unmangled: &Rc<isa::FunctionName>) -> &str {
+        if unmangled.path.len() == 1 {
+            match &**unmangled.path.first().unwrap() {
+                runtime::MAIN_NAME => return runtime::INTERNAL_MAIN_NAME,
+                runtime::MALLOC_NAME => return runtime::MALLOC_NAME,
+                runtime::DEALLOC_NAME => return runtime::DEALLOC_NAME,
+                _ => (),
+            }
+        }
+        self.mangled_cache
+            .entry(unmangled.clone())
+            .or_insert_with(|| mangler::mangle(unmangled))
+    }
+
     fn process(mut self, program: &isa::Program, build_standalone: bool) -> Module<B> {
         self.build_struct_data_for_struct(&program, &program.builtins.generic_fat_pointer_struct);
         for astruct in program.builtins.structs.values() {
@@ -93,7 +108,7 @@ where
         if build_standalone {
             for (func_name, context) in &program.contexts {
                 if let isa::IntrinsicType::Extern(external) = &context.intrinsic {
-                    self.extern_mapping
+                    self.mangled_cache
                         .insert(func_name.clone(), external.clone());
                 }
             }
@@ -104,10 +119,11 @@ where
             }
             let mut fctx = self.module.make_context();
             self.visit_context(&context, &program, &mut builder_context, &mut fctx);
-            dbg_println!("decl {:?}", func_name.to_string());
+            let name = String::from(self.mangle(func_name));
+            dbg_println!("define {:?}", name);
             let id = self
                 .module
-                .declare_function(&func_name.to_string(), Linkage::Local, &fctx.func.signature)
+                .declare_function(&name, Linkage::Local, &fctx.func.signature)
                 .unwrap();
             self.module
                 .define_function(id, &mut fctx, &mut NullTrapSink {})
@@ -270,7 +286,7 @@ where
         let sig = self.module.make_signature();
         let callee = self
             .module
-            .declare_function(runtime::MAIN_NAME, Linkage::Import, &sig)
+            .declare_function(runtime::INTERNAL_MAIN_NAME, Linkage::Import, &sig)
             .unwrap();
         let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
         builder.ins().call(local_callee, &[]);
@@ -784,7 +800,7 @@ where
                 let rettype = context.variable(ins.retvar().unwrap());
 
                 let mut arg_values = vec![];
-                let name: &isa::FunctionName = &ins_context.context.call_names[*name as usize];
+                let name: &Rc<isa::FunctionName> = &ins_context.context.call_names[*name as usize];
                 {
                     self.generate_function_signature(
                         ins_context.program,
@@ -819,20 +835,16 @@ where
                         },
                     );
                 }
-                dbg_println!("call {:?}", name.to_string());
 
-                let callee = if let Some(mapping) = self.extern_mapping.get(name) {
-                    if let Some(FuncOrDataId::Func(func_id)) = self.module.get_name(&mapping) {
+                let mangled = String::from(self.mangle(name));
+                let callee =
+                    if let Some(FuncOrDataId::Func(func_id)) = self.module.get_name(&mangled) {
                         Ok(func_id)
                     } else {
                         self.module
-                            .declare_function(&mapping, Linkage::Import, &sig)
+                            .declare_function(&mangled, Linkage::Import, &sig)
                     }
-                } else {
-                    self.module
-                        .declare_function(&name.to_string(), Linkage::Import, &sig)
-                }
-                .unwrap();
+                    .unwrap();
                 let local_callee = self.module.declare_func_in_func(callee, &mut builder.func);
 
                 let call = builder.ins().call(local_callee, &arg_values);
@@ -1185,14 +1197,14 @@ impl backend::JitBackend for CraneliftBackend {
         for (name, context) in &program.contexts {
             if let isa::IntrinsicType::Extern(symbol) = &context.intrinsic {
                 builder.symbol(
-                    name.to_string(),
+                    mangler::mangle(name),
                     runtime.funcs().get(symbol).unwrap().ptr() as _,
                 );
             }
         }
         let mut module: Module<SimpleJITBackend> =
             Codegen::from_builder(builder).process(program, false);
-        if let Some(main) = module.get_name(runtime::MAIN_NAME) {
+        if let Some(main) = module.get_name(runtime::INTERNAL_MAIN_NAME) {
             if let FuncOrDataId::Func(func_id) = main {
                 let function = module.get_finalized_function(func_id);
                 let main_fn = std::mem::transmute::<_, extern "C" fn()>(function);

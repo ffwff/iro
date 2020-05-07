@@ -181,7 +181,7 @@ fn while_expr_type() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -204,7 +204,7 @@ fn while_expr_nil() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -250,7 +250,7 @@ fn while_expr_cond_return() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -272,7 +272,7 @@ fn while_expr_body_return() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");

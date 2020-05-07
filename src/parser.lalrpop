@@ -29,17 +29,20 @@ StatementEndOrEOF: () = {
     EOF => (),
 };
 Expr = {
-    <ImportStatement> StatementEndOrEOF,
-    <ExternDefStatement> StatementEndOrEOF,
     <StandaloneExpr> StatementEndOrEOF,
-    <DefStatement>,
-    <ClassStatement>,
     <EmbeddableExpr>,
     <IEExpr>,
 };
 
-StandaloneExpr = ReturnOrBreakExpr;
+StandaloneExpr: NodeBox = {
+    <ReturnOrBreakExpr>,
+    <ExternDefStatement>,
+    <ImportStatement>,
+};
 EmbeddableExpr = {
+    <ModStatement>,
+    <DefStatement>,
+    <ClassStatement>,
     <WhileExpr>,
     <IfExpr>,
 };
@@ -179,6 +182,20 @@ ClassInner: ClassInner = {
         ClassInner::MemberDef { name: Rc::from(name), typed }
     },
 };
+
+// Modules
+ModStatement: NodeBox = {
+    <start:@L>
+        "mod"
+        <id:CapitalIdentifier>
+        <exprs:Block>
+    <end:@L> => {
+        NodeBox::new(ModStatement {
+            id: Rc::from(id),
+            exprs,
+        }, (start, end))
+    }
+}
 
 // Function definitions
 DefStatement: NodeBox = {
@@ -401,6 +418,27 @@ MemberExprOrTerm: NodeBox = {
     <Unary> => <>,
 };
 
+// Path expressions
+PathExpr: NodeBox = {
+    <start:@L>
+        <left:CapitalIdentifier>
+        <right: ("::" <CapitalOrIdentifier>)+>
+    <end:@L> => {
+        let mut path = right;
+        path.insert(0, left);
+        NodeBox::new(PathExpr {
+            path: path.into_iter()
+                .map(|x| Rc::from(x))
+                .collect(),
+        }, (start, end))
+    }
+};
+
+CapitalOrIdentifier: String = {
+    <CapitalIdentifier>,
+    <Identifier>,
+};
+
 // Member expressions
 MemberExpr: NodeBox = {
     <start:@L> <left:Term> <right: MemberExprArm+> <end:@L> => {
@@ -426,6 +464,7 @@ Unary: NodeBox = {
 
 // Terms
 Term: NodeBox = {
+    <PathExpr> => <>,
     <ClassInitExpr> => <>,
     <start:@L> <lit:Literal> <end:@L> => NodeBox::new(lit, (start, end)),
     "(" <StandaloneEmbeddableExprWithDedent> ")" => <>,
@@ -529,6 +568,7 @@ extern {
         "false" => lexer::Tok::False,
         "uninitialized" => lexer::Tok::Uninitialized,
         "class" => lexer::Tok::Class,
+        "mod" => lexer::Tok::Module,
         "==" => lexer::Tok::Equ,
         "!=" => lexer::Tok::Neq,
         "+" => lexer::Tok::Add,
@@ -553,6 +593,7 @@ extern {
         "," => lexer::Tok::Comma,
         "." => lexer::Tok::Dot,
         ":" => lexer::Tok::Colon,
+        "::" => lexer::Tok::DoubleColon,
         ";" => lexer::Tok::Semicolon,
         "&" => lexer::Tok::Amp,
         "@" => lexer::Tok::At,

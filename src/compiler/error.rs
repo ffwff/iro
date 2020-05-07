@@ -53,13 +53,10 @@ pub enum Code {
 impl Code {
     pub fn diagnostics(&self) -> Vec<(SpanIndex, &'static str)> {
         match self {
-            Code::MemoryError { last_used, .. } => match last_used {
-                LastUsed::One(index) => vec![(*index, "last used here")],
-                LastUsed::Many(indices) => indices
-                    .iter()
-                    .map(|index| (*index, "last used here"))
-                    .collect(),
-            },
+            Code::MemoryError { last_used, .. } => last_used
+                .iter()
+                .map(|index| (*index, "last used here"))
+                .collect(),
             _ => vec![],
         }
     }

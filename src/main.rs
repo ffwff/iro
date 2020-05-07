@@ -195,7 +195,7 @@ fn usage(program: &str, commands: &BTreeMap<&str, (&str, CommandFn)>) {
         ("-O", "optimize for size and speed"),
         ("-Onone", "don't optimize at all"),
         ("-Ospeed", "optimize for speed"),
-        ("-prelude", "insert a prelude file")
+        ("-prelude", "insert a prelude file"),
     ];
     options.sort_by_key(|k| k.0);
     for (name, desc) in &options {

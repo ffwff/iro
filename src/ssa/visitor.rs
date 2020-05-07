@@ -2,6 +2,7 @@ use crate::ast;
 use crate::ast::*;
 use crate::compiler;
 use crate::compiler::sources::Sources;
+use crate::runtime;
 use crate::ssa::env;
 use crate::ssa::env::Env;
 use crate::ssa::isa;
@@ -9,12 +10,13 @@ use crate::ssa::isa::*;
 use crate::utils::optcell::OptCell;
 use crate::utils::uniquerc::UniqueRc;
 use fnv::FnvHashMap;
+use smallvec::SmallVec;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct AstTopLevelInfo {
-    pub defstmts: FnvHashMap<Rc<str>, Vec<NodeBox>>,
+    pub defstmts: FnvHashMap<PathVec, Vec<NodeBox>>,
     pub class_stmts: FnvHashMap<Rc<str>, NodeBox>,
 }
 
@@ -66,6 +68,7 @@ pub struct SSAVisitor<'a, 'b> {
     has_break: bool,
     last_retvar: Option<Variable>,
     sources: &'a RefCell<&'b mut Sources>,
+    current_path: Vec<Rc<str>>,
 }
 
 macro_rules! check_cf_state {
@@ -109,7 +112,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
         sources: &'a RefCell<&'b mut Sources>,
     ) -> Self {
         Self {
-            context: Context::new(Rc::from("main")),
+            context: Context::new(Rc::from(runtime::MAIN_NAME)),
             envs: Vec::with_capacity(4),
             top_level,
             ast_top_level,
@@ -117,6 +120,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
             has_break: false,
             last_retvar: None,
             sources,
+            current_path: vec![],
         }
     }
 
@@ -130,6 +134,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
             has_break: false,
             last_retvar: None,
             sources: self.sources,
+            current_path: vec![],
         }
     }
 
@@ -142,7 +147,7 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
         let context = self.context;
         let mut func_contexts = top_level.func_contexts;
         let entry = Rc::new(FunctionName {
-            name: context.name.clone(),
+            path: smallvec![context.name.clone()],
             arg_types: vec![],
         });
         func_contexts.insert(entry.clone(), Some(context));
@@ -372,6 +377,157 @@ impl<'a, 'b> SSAVisitor<'a, 'b> {
             block.ins.push(Ins::empty_ret(InsType::Drop(var), 0));
         });
     }
+
+    fn with_current_path(&self, name: Rc<str>) -> PathVec {
+        let mut path: SmallVec<_> = self.current_path.clone().into();
+        path.push(name);
+        path
+    }
+
+    fn generate_call(
+        &mut self,
+        mut func_name: FunctionName,
+        mut args: Vec<Variable>,
+        mut arg_types: Vec<Type>,
+        b: &NodeBox,
+    ) -> Result<Variable, compiler::Error> {
+        let location = self.location_for(b);
+        let mut func_name_rc = None;
+        let rettype = {
+            let top_level = self.top_level.borrow_mut().unwrap();
+            if let Some((key, maybe_context)) = top_level.func_contexts.get_key_value(&func_name) {
+                if let Some(context) = maybe_context {
+                    func_name_rc = Some(key.clone());
+                    Some(context.rettype.clone())
+                } else {
+                    None
+                }
+            } else if self
+                .ast_top_level
+                .borrow()
+                .defstmts
+                .contains_key(&func_name.path)
+            {
+                None
+            } else {
+                return Err(
+                    Error::UnknownIdentifier(func_name.path.last().cloned().unwrap())
+                        .into_compiler_error(b),
+                );
+            }
+        };
+
+        let rettype = if let Some(rettype) = rettype {
+            rettype
+        } else {
+            let (defstmt, func_insert) = {
+                let mut top_level = self.top_level.borrow_mut().unwrap();
+                let mut usable_defstmt = None;
+                if let Some(vec) = self.ast_top_level.borrow().defstmts.get(&func_name.path) {
+                    for boxed in vec {
+                        let defstmt = boxed.rc().downcast_rc::<DefStatement>().unwrap();
+                        match defstmt.compatibility_with_args(&arg_types) {
+                            ArgCompatibility::None => (),
+                            ArgCompatibility::WithCast(casts) => {
+                                for (idx, typed) in casts {
+                                    let var = args[idx];
+                                    let retvar = self.insert_cast(var, typed.clone(), location);
+
+                                    args[idx] = retvar;
+                                    arg_types[idx] = typed.clone();
+                                    func_name.arg_types[idx] = typed.clone();
+                                }
+                                usable_defstmt = Some(defstmt.clone());
+                                break;
+                            }
+                            ArgCompatibility::Full => {
+                                usable_defstmt = Some(defstmt.clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+                let func_insert = if let Some((func_name_rc_old, _)) =
+                    top_level.func_contexts.get_key_value(&func_name)
+                {
+                    func_name_rc = Some(func_name_rc_old.clone());
+                    true
+                } else {
+                    func_name_rc = Some(Rc::new(func_name));
+                    top_level
+                        .func_contexts
+                        .insert(func_name_rc.clone().unwrap(), None);
+                    false
+                };
+                (usable_defstmt, func_insert)
+            };
+            if defstmt.is_none() {
+                return Err(Error::InvalidArguments.into_compiler_error(b));
+            }
+            let defstmt = defstmt.unwrap();
+            if func_insert {
+                // The function by this name has already been declared
+                if let Some(declared_typed) = defstmt.return_type.as_ref() {
+                    declared_typed.typed.borrow().clone().unwrap()
+                } else {
+                    return Err(Error::CannotInfer.into_compiler_error(b));
+                }
+            } else {
+                // Properly compute the return type
+                if !defstmt.func_attrs.intrinsic.borrow().is_none() {
+                    if let Some(rettype) = SSAVisitor::intrinsic_return_type(&defstmt) {
+                        let rc = func_name_rc.clone().unwrap();
+                        let context = Context::with_intrinsics(
+                            rc.path.last().cloned().unwrap(),
+                            arg_types,
+                            rettype.clone(),
+                            defstmt.func_attrs.intrinsic.clone().into_inner(),
+                        );
+                        let mut top_level = self.top_level.borrow_mut().unwrap();
+                        top_level.func_contexts.insert(rc, Some(context));
+                        rettype
+                    } else {
+                        unimplemented!()
+                    }
+                } else {
+                    let rc = func_name_rc.clone().unwrap();
+                    let context = {
+                        let func_context =
+                            Context::with_args(rc.path.last().cloned().unwrap(), arg_types);
+                        let mut visitor = self.derive_with_context(func_context);
+                        visitor.visit_defstmt(defstmt.borrow(), b)?;
+                        visitor.into_context()
+                    };
+                    let mut top_level = self.top_level.borrow_mut().unwrap();
+                    let rettype = context.rettype.clone();
+                    top_level.func_contexts.insert(rc, Some(context));
+                    rettype
+                }
+            }
+        };
+        let retvar = self.context.insert_var(rettype);
+        {
+            let name = self.context.call_name(func_name_rc.clone().unwrap());
+            let block = self.context.block_mut();
+            block.ins.push(Ins::new(
+                retvar,
+                InsType::Call {
+                    name,
+                    args: args.clone().into_boxed_slice(),
+                },
+                location,
+            ));
+            for arg in &args {
+                if !self.context.variable(*arg).is_copyable() {
+                    let block = self.context.block_mut();
+                    block
+                        .ins
+                        .push(Ins::empty_ret(InsType::MarkMoved(*arg), location));
+                }
+            }
+        }
+        Ok(retvar)
+    }
 }
 
 impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
@@ -381,12 +537,15 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         for expr in &n.exprs {
             if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
                 let mut ast_top_level = self.ast_top_level.borrow_mut();
-                if let Some(vec) = ast_top_level.defstmts.get_mut(&defstmt.id) {
+                if let Some(vec) = ast_top_level
+                    .defstmts
+                    .get_mut(&smallvec![defstmt.id.clone()])
+                {
                     vec.push(expr.clone());
                 } else {
                     ast_top_level
                         .defstmts
-                        .insert(defstmt.id.clone(), vec![expr.clone()]);
+                        .insert(smallvec![defstmt.id.clone()], vec![expr.clone()]);
                 }
             } else if let Some(class_stmt) = expr.borrow().downcast_ref::<ClassStatement>() {
                 let mut ast_top_level = self.ast_top_level.borrow_mut();
@@ -395,6 +554,8 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                     .insert(class_stmt.id.clone(), expr.clone());
             } else if expr.borrow().downcast_ref::<ImportStatement>().is_some() {
                 top_level_stmts.push(expr);
+            } else if let Some(stmt) = expr.borrow().downcast_ref::<ModStatement>() {
+                self.visit_modstmt(stmt, expr)?;
             } else {
                 outerstmts.push(expr);
             }
@@ -451,7 +612,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                         );
                     }
                     let id = FunctionName {
-                        name: defstmt.id.clone(),
+                        path: smallvec![defstmt.id.clone()],
                         arg_types: arg_types.clone(),
                     };
                     if top_level
@@ -565,6 +726,23 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             }
         }
         self.last_retvar = Some(retvar);
+        Ok(())
+    }
+
+    fn visit_modstmt(&mut self, n: &ModStatement, b: &NodeBox) -> VisitorResult {
+        self.current_path.push(n.id.clone());
+        for expr in &n.exprs {
+            if let Some(defstmt) = expr.borrow().downcast_ref::<DefStatement>() {
+                let path = self.with_current_path(defstmt.id.clone());
+                let mut ast_top_level = self.ast_top_level.borrow_mut();
+                if let Some(vec) = ast_top_level.defstmts.get_mut(&path) {
+                    vec.push(expr.clone());
+                } else {
+                    ast_top_level.defstmts.insert(path, vec![expr.clone()]);
+                }
+            }
+        }
+        self.current_path.pop();
         Ok(())
     }
 
@@ -971,164 +1149,47 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
     }
 
     fn visit_callexpr(&mut self, n: &CallExpr, b: &NodeBox) -> VisitorResult {
-        let location = self.location_for(b);
-        if let Some(id) = n
-            .callee
-            .borrow()
+        let mut args = Vec::with_capacity(n.args.len());
+        let mut arg_types = Vec::with_capacity(n.args.len());
+        for arg in &n.args {
+            arg.visit(self)?;
+            let retvar = self.last_retvar.take().unwrap();
+            args.push(retvar);
+            arg_types.push(self.context.variable(retvar).clone());
+        }
+        
+        let borrowed = n.callee.borrow();
+        if let Some(id) = borrowed
             .downcast_ref::<Value>()
             .map(|val| val.as_identifier())
             .flatten()
         {
-            let mut args = Vec::with_capacity(n.args.len());
-            let mut arg_types = Vec::with_capacity(n.args.len());
-            for arg in &n.args {
-                arg.visit(self)?;
-                let retvar = self.last_retvar.take().unwrap();
-                args.push(retvar);
-                arg_types.push(self.context.variable(retvar).clone());
-            }
-            let mut func_name = FunctionName {
-                name: id.clone(),
+            let func_name = FunctionName {
+                path: self.with_current_path(id.clone()),
                 arg_types: arg_types.clone(),
             };
-            let mut func_name_rc = None;
-
-            let rettype = {
-                let top_level = self.top_level.borrow_mut().unwrap();
-                if let Some((key, maybe_context)) =
-                    top_level.func_contexts.get_key_value(&func_name)
-                {
-                    if let Some(context) = maybe_context {
-                        func_name_rc = Some(key.clone());
-                        Some(context.rettype.clone())
-                    } else {
-                        None
-                    }
-                } else if self.ast_top_level.borrow().defstmts.contains_key(id) {
-                    None
-                } else {
-                    return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
-                }
-            };
-
-            let rettype = if let Some(rettype) = rettype {
-                rettype
-            } else {
-                let (defstmt, func_insert) = {
-                    let mut top_level = self.top_level.borrow_mut().unwrap();
-                    let mut usable_defstmt = None;
-                    if let Some(vec) = self.ast_top_level.borrow().defstmts.get(id) {
-                        for boxed in vec {
-                            let defstmt = boxed.rc().downcast_rc::<DefStatement>().unwrap();
-                            match defstmt.compatibility_with_args(&arg_types) {
-                                ArgCompatibility::None => (),
-                                ArgCompatibility::WithCast(casts) => {
-                                    for (idx, typed) in casts {
-                                        let var = args[idx];
-                                        let retvar = self.insert_cast(var, typed.clone(), location);
-
-                                        args[idx] = retvar;
-                                        arg_types[idx] = typed.clone();
-                                        func_name.arg_types[idx] = typed.clone();
-                                    }
-                                    usable_defstmt = Some(defstmt.clone());
-                                    break;
-                                }
-                                ArgCompatibility::Full => {
-                                    usable_defstmt = Some(defstmt.clone());
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    let func_insert = if let Some((func_name_rc_old, _)) =
-                        top_level.func_contexts.get_key_value(&func_name)
-                    {
-                        func_name_rc = Some(func_name_rc_old.clone());
-                        true
-                    } else {
-                        func_name_rc = Some(Rc::new(func_name));
-                        top_level
-                            .func_contexts
-                            .insert(func_name_rc.clone().unwrap(), None);
-                        false
-                    };
-                    (usable_defstmt, func_insert)
-                };
-                if defstmt.is_none() {
-                    return Err(Error::InvalidArguments.into_compiler_error(b));
-                }
-                let defstmt = defstmt.unwrap();
-                if func_insert {
-                    // The function by this name has already been declared
-                    if let Some(declared_typed) = defstmt.return_type.as_ref() {
-                        declared_typed.typed.borrow().clone().unwrap()
-                    } else {
-                        return Err(Error::CannotInfer.into_compiler_error(b));
-                    }
-                } else {
-                    // Properly compute the return type
-                    if !defstmt.func_attrs.intrinsic.borrow().is_none() {
-                        if let Some(rettype) = SSAVisitor::intrinsic_return_type(&defstmt) {
-                            let context = Context::with_intrinsics(
-                                id.clone(),
-                                arg_types,
-                                rettype.clone(),
-                                defstmt.func_attrs.intrinsic.clone().into_inner(),
-                            );
-                            let mut top_level = self.top_level.borrow_mut().unwrap();
-                            top_level
-                                .func_contexts
-                                .insert(func_name_rc.clone().unwrap(), Some(context));
-                            rettype
-                        } else {
-                            unimplemented!()
-                        }
-                    } else {
-                        let context = {
-                            let func_context = Context::with_args(id.clone(), arg_types);
-                            let mut visitor = self.derive_with_context(func_context);
-                            visitor.visit_defstmt(defstmt.borrow(), b)?;
-                            visitor.into_context()
-                        };
-                        let mut top_level = self.top_level.borrow_mut().unwrap();
-                        let rettype = context.rettype.clone();
-                        top_level
-                            .func_contexts
-                            .insert(func_name_rc.clone().unwrap(), Some(context));
-                        rettype
-                    }
-                }
-            };
-            let retvar = self.context.insert_var(rettype);
-            {
-                let name = self.context.call_name(func_name_rc.clone().unwrap());
-                let block = self.context.block_mut();
-                block.ins.push(Ins::new(
-                    retvar,
-                    InsType::Call {
-                        name,
-                        args: args.clone().into_boxed_slice(),
-                    },
-                    location,
-                ));
-                for arg in &args {
-                    if !self.context.variable(*arg).is_copyable() {
-                        let block = self.context.block_mut();
-                        block
-                            .ins
-                            .push(Ins::empty_ret(InsType::MarkMoved(*arg), location));
-                    }
-                }
-            }
+            let retvar = self.generate_call(func_name, args, arg_types, b)?;
             if b.generate_retvar.get() {
                 self.last_retvar = Some(retvar);
             } else {
                 self.insert_drop(retvar);
             }
-            return Ok(());
+            Ok(())
+        } else if let Some(n) = borrowed.downcast_ref::<PathExpr>() {
+            let func_name = FunctionName {
+                path: n.path.clone(),
+                arg_types: arg_types.clone(),
+            };
+            let retvar = self.generate_call(func_name, args, arg_types, b)?;
+            if b.generate_retvar.get() {
+                self.last_retvar = Some(retvar);
+            } else {
+                self.insert_drop(retvar);
+            }
+            Ok(())
+        } else {
+            Err(Error::InvalidLHS.into_compiler_error(b))
         }
-        Err(Error::InvalidLHS.into_compiler_error(b))
     }
 
     fn visit_letexpr(&mut self, n: &LetExpr, b: &NodeBox) -> VisitorResult {
@@ -1809,5 +1870,9 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             }
         }
         Ok(())
+    }
+
+    fn visit_path(&mut self, n: &PathExpr, b: &NodeBox) -> VisitorResult {
+        unimplemented!()
     }
 }

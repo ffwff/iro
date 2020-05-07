@@ -132,7 +132,7 @@ pub fn check(_: &mut ContextLocalData, context: &mut Context) -> Flow {
                                 position: ins.source_location(),
                                 var: Variable::from(*left),
                                 typed: MemoryErrorType::Move,
-                                last_used: LastUsed::One(sub_path.last_used),
+                                last_used: vec![sub_path.last_used],
                             });
                         }
                         match modifier {

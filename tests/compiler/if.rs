@@ -85,7 +85,7 @@ fn if_expr_nil() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -108,7 +108,7 @@ fn if_expr_unify() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -131,7 +131,7 @@ fn if_expr_unify_true_branch() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -156,7 +156,7 @@ fn if_expr_unify_false_branch() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -180,7 +180,7 @@ fn if_expr_cond_return() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -204,7 +204,7 @@ fn if_expr_both_branch_return() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -226,7 +226,7 @@ fn if_expr_true_branch_return() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");
@@ -252,7 +252,7 @@ fn if_expr_false_branch_return() {
     let function = program
         .contexts
         .get(&FunctionName {
-            name: Rc::from("f"),
+            path: smallvec![Rc::from("f")],
             arg_types: vec![Type::I32],
         })
         .expect("f(I32) exists");

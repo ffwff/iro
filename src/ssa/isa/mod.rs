@@ -3,7 +3,6 @@ use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
 use std::convert::TryInto;
-use std::fmt::Write;
 use std::hash::Hash;
 use std::rc::Rc;
 
@@ -897,26 +896,8 @@ impl InsType {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FunctionName {
-    pub name: Rc<str>,
+    pub path: SmallVec<[Rc<str>; 1]>,
     pub arg_types: Vec<Type>,
-}
-
-impl ToString for FunctionName {
-    fn to_string(&self) -> String {
-        let mut string = self.name.clone().to_string() + "(";
-        string += &self
-            .arg_types
-            .iter()
-            .map(|typed| {
-                let mut string = String::new();
-                write!(&mut string, "{}", typed).unwrap();
-                string
-            })
-            .collect::<Vec<String>>()
-            .join(",");
-        string += ")";
-        string
-    }
 }
 
 pub struct Builtins {

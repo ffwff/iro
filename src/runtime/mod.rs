@@ -3,14 +3,10 @@ use std::borrow::Borrow;
 use std::hash::Hash;
 
 pub const LIBC_MAIN_NAME: &str = "main";
-
-pub const MAIN_NAME: &str = "main()";
-pub const MALLOC_NAME: &str = "__iro_malloc__(I32,I32)";
-pub const DEALLOC_NAME: &str = "__iro_dealloc__(ISize)";
-
-pub const MAIN_NAME_MANGLED: &str = "_I4main";
-pub const MALLOC_NAME_MANGLED: &str = "_I14__iro_malloc__WW";
-pub const DEALLOC_NAME_MANGLED: &str = "_I15__iro_dealloc__S";
+pub const MAIN_NAME: &str = "main";
+pub const INTERNAL_MAIN_NAME: &str = "__iro_main__";
+pub const MALLOC_NAME: &str = "__iro_malloc__";
+pub const DEALLOC_NAME: &str = "__iro_dealloc__";
 
 pub mod pointer;
 

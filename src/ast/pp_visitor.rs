@@ -79,8 +79,9 @@ impl<'a> PreprocessVisitor<'a> {
                     err
                 })?;
                 let mut state = self.state.as_ref().unwrap().borrow_mut();
-                state.total_imported_statements.extend(ast.exprs.into_iter()
-                    .filter(|ast| ast.can_import()));
+                state
+                    .total_imported_statements
+                    .extend(ast.exprs.into_iter().filter(|ast| ast.can_import()));
             }
         }
         Ok(())
@@ -139,6 +140,14 @@ impl<'a> Visitor for PreprocessVisitor<'a> {
         self.fill_box(b);
         for (_, boxed) in &n.inits {
             boxed.visit(self)?;
+        }
+        Ok(())
+    }
+
+    fn visit_modstmt(&mut self, n: &ModStatement, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
+        for expr in &n.exprs {
+            expr.visit(self)?;
         }
         Ok(())
     }
@@ -268,6 +277,11 @@ impl<'a> Visitor for PreprocessVisitor<'a> {
     fn visit_unary(&mut self, n: &UnaryExpr, b: &NodeBox) -> VisitorResult {
         self.fill_box(b);
         n.expr.visit(self)?;
+        Ok(())
+    }
+
+    fn visit_path(&mut self, n: &PathExpr, b: &NodeBox) -> VisitorResult {
+        self.fill_box(b);
         Ok(())
     }
 }

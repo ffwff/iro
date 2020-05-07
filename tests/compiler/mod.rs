@@ -11,3 +11,4 @@ pub mod string;
 pub mod typing;
 pub mod r#union;
 pub mod r#while;
+pub mod modules;
