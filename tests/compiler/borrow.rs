@@ -95,3 +95,24 @@ fn uni_alloc() {
     .expect("able to parse_and_run");
     assert!(RUN_FLAG.load(Ordering::Relaxed));
 }
+
+#[test]
+fn borrow_asg() {
+    extern "C" fn record_i32(i: i32) {
+        assert_eq!(i, 1000);
+    }
+    let mut runtime = Runtime::new();
+    runtime.insert_func("record_i32", record_i32 as extern "C" fn(i32));
+    utils::parse_and_run(
+        "\
+    extern def record=\"record_i32\"(i: I32): Nil
+
+    mut i := 10
+    y := &mut i
+    *y = 1000
+    record(i)
+    ",
+        runtime,
+    )
+    .expect("able to parse_and_run");
+}

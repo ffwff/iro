@@ -1157,7 +1157,7 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
             args.push(retvar);
             arg_types.push(self.context.variable(retvar).clone());
         }
-        
+
         let borrowed = n.callee.borrow();
         if let Some(id) = borrowed
             .downcast_ref::<Value>()
@@ -1271,100 +1271,84 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
         match &n.op {
             BinOp::Asg | BinOp::Adds | BinOp::Subs | BinOp::Muls | BinOp::Divs | BinOp::Mods => {
                 let n_left = n.left.borrow();
-                if let Some(id) = n_left.downcast_ref::<ast::Value>() {
-                    if let Value::Identifier(id) = &id {
-                        let var = if let Some(env_var) = self.get_var(&id) {
-                            if !env_var.is_mut {
-                                return Err(
-                                    Error::MutatingImmutable(id.clone()).into_compiler_error(b)
-                                );
-                            }
-                            env_var.var
-                        } else {
-                            return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
-                        };
-                        n.right.visit(self)?;
-                        let right = self.last_retvar.take().unwrap();
-                        if self.context.variable(var) != self.context.variable(right) {
-                            return Err(Error::IncompatibleType {
-                                got: self.context.variable(right).clone(),
-                                expected: self.context.variable(var).clone(),
-                            }
-                            .into_compiler_error(b));
+                if let Some(id) = n_left
+                    .downcast_ref::<ast::Value>()
+                    .map(|v| v.as_identifier())
+                    .flatten()
+                {
+                    let var = if let Some(env_var) = self.get_var(&id) {
+                        if !env_var.is_mut {
+                            return Err(Error::MutatingImmutable(id.clone()).into_compiler_error(b));
                         }
-                        match &n.op {
-                            BinOp::Asg => {
-                                let copyable = self.context.variable(var).is_copyable();
-                                self.with_block_mut(|block| {
-                                    if copyable {
-                                        block.ins.push(Ins::new(
-                                            var,
-                                            InsType::Copy(right),
-                                            location,
-                                        ));
-                                    } else {
-                                        block.ins.push(Ins::new(
-                                            var,
-                                            InsType::Move(right),
-                                            location,
-                                        ));
-                                    }
-                                });
-                            }
-                            BinOp::Adds => {
-                                self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        var,
-                                        InsType::Add((var, right)),
-                                        location,
-                                    ));
-                                });
-                            }
-                            BinOp::Subs => {
-                                self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        var,
-                                        InsType::Sub((var, right)),
-                                        location,
-                                    ));
-                                });
-                            }
-                            BinOp::Muls => {
-                                self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        var,
-                                        InsType::Mul((var, right)),
-                                        location,
-                                    ));
-                                });
-                            }
-                            BinOp::Divs => {
-                                self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        var,
-                                        InsType::Div((var, right)),
-                                        location,
-                                    ));
-                                });
-                            }
-                            BinOp::Mods => {
-                                self.with_block_mut(|block| {
-                                    block.ins.push(Ins::new(
-                                        var,
-                                        InsType::Mod((var, right)),
-                                        location,
-                                    ));
-                                });
-                            }
-                            _ => unreachable!(),
-                        }
-                        if b.generate_retvar.get() {
-                            self.last_retvar = Some(var);
-                        }
-                        Ok(())
+                        env_var.var
                     } else {
-                        Err(Error::InvalidLHS.into_compiler_error(b))
+                        return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
+                    };
+                    n.right.visit(self)?;
+                    let right = self.last_retvar.take().unwrap();
+                    if self.context.variable(var) != self.context.variable(right) {
+                        return Err(Error::IncompatibleType {
+                            got: self.context.variable(right).clone(),
+                            expected: self.context.variable(var).clone(),
+                        }
+                        .into_compiler_error(b));
                     }
+                    match &n.op {
+                        BinOp::Asg => {
+                            let copyable = self.context.variable(var).is_copyable();
+                            self.with_block_mut(|block| {
+                                if copyable {
+                                    block
+                                        .ins
+                                        .push(Ins::new(var, InsType::Copy(right), location));
+                                } else {
+                                    block
+                                        .ins
+                                        .push(Ins::new(var, InsType::Move(right), location));
+                                }
+                            });
+                        }
+                        BinOp::Adds => {
+                            self.with_block_mut(|block| {
+                                block
+                                    .ins
+                                    .push(Ins::new(var, InsType::Add((var, right)), location));
+                            });
+                        }
+                        BinOp::Subs => {
+                            self.with_block_mut(|block| {
+                                block
+                                    .ins
+                                    .push(Ins::new(var, InsType::Sub((var, right)), location));
+                            });
+                        }
+                        BinOp::Muls => {
+                            self.with_block_mut(|block| {
+                                block
+                                    .ins
+                                    .push(Ins::new(var, InsType::Mul((var, right)), location));
+                            });
+                        }
+                        BinOp::Divs => {
+                            self.with_block_mut(|block| {
+                                block
+                                    .ins
+                                    .push(Ins::new(var, InsType::Div((var, right)), location));
+                            });
+                        }
+                        BinOp::Mods => {
+                            self.with_block_mut(|block| {
+                                block
+                                    .ins
+                                    .push(Ins::new(var, InsType::Mod((var, right)), location));
+                            });
+                        }
+                        _ => unreachable!(),
+                    }
+                    if b.generate_retvar.get() {
+                        self.last_retvar = Some(var);
+                    }
+                    Ok(())
                 } else if let Some(member_expr) = n_left.downcast_ref::<ast::MemberExpr>() {
                     if let InsType::MemberReference {
                         left,
@@ -1399,6 +1383,70 @@ impl<'a, 'b> Visitor for SSAVisitor<'a, 'b> {
                         Ok(())
                     } else {
                         unreachable!()
+                    }
+                } else if let Some(deref_expr) = n_left.downcast_ref::<ast::DerefExpr>() {
+                    let inner_expr = deref_expr.expr.borrow();
+                    n.right.visit(self)?;
+                    let right = self.last_retvar.take().unwrap();
+                    if let Some(id) = inner_expr
+                        .downcast_ref::<ast::Value>()
+                        .map(|v| v.as_identifier())
+                        .flatten()
+                    {
+                        let var = if let Some(env_var) = self.get_var(&id) {
+                            if !self.context.variable(env_var.var).is_mut_pointer() {
+                                return Err(
+                                    Error::MutatingImmutable(id.clone()).into_compiler_error(b)
+                                );
+                            }
+                            env_var.var
+                        } else {
+                            return Err(Error::UnknownIdentifier(id.clone()).into_compiler_error(b));
+                        };
+                        match &n.op {
+                            BinOp::Asg => {
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::empty_ret(
+                                        InsType::Store {
+                                            source: right,
+                                            dest: var,
+                                        },
+                                        location,
+                                    ));
+                                });
+                            }
+                            _ => {
+                                let typed = self.context.variable(var).clone();
+                                let old = self.context.insert_var(typed);
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(old, InsType::Load(var), location));
+                                });
+                                self.with_block_mut(|block| {
+                                    block.ins.push(Ins::new(
+                                        old,
+                                        match &n.op {
+                                            BinOp::Adds => InsType::Add((old, right)),
+                                            BinOp::Subs => InsType::Sub((old, right)),
+                                            BinOp::Muls => InsType::Mul((old, right)),
+                                            BinOp::Divs => InsType::Div((old, right)),
+                                            BinOp::Mods => InsType::Mod((old, right)),
+                                            _ => unreachable!(),
+                                        },
+                                        location,
+                                    ));
+                                    block.ins.push(Ins::empty_ret(
+                                        InsType::Store {
+                                            source: right,
+                                            dest: var,
+                                        },
+                                        location,
+                                    ));
+                                });
+                            }
+                        }
+                        Ok(())
+                    } else {
+                        Err(Error::InvalidLHS.into_compiler_error(&n.left))
                     }
                 } else {
                     Err(Error::InvalidLHS.into_compiler_error(b))

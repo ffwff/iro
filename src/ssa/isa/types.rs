@@ -227,6 +227,14 @@ impl Type {
             _ => None,
         }
     }
+
+    #[inline]
+    pub fn is_mut_pointer(&self) -> bool {
+        match self {
+            Type::Pointer(ptr_typed) => ptr_typed.is_mutable(),
+            _ => false,
+        }
+    }
 }
 
 impl std::fmt::Display for Type {
@@ -363,6 +371,14 @@ pub struct PointerType {
 impl PointerType {
     pub fn new(typed: Type, tag: BorrowModifier) -> Self {
         Self { typed, tag }
+    }
+
+    #[inline]
+    pub fn is_mutable(&self) -> bool {
+        match self.tag {
+            BorrowModifier::Mutable | BorrowModifier::Unique => true,
+            _ => false,
+        }
     }
 }
 

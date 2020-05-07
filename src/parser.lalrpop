@@ -270,6 +270,9 @@ LHSAssign: NodeBox = {
     <start:@L>
         <id:Identifier>
     <end:@L> => NodeBox::new(Value::Identifier(Rc::from(id)), (start, end)),
+    <start:@L> "*" <expr:LHSAssign> <end:@L> => {
+        NodeBox::new(DerefExpr { expr }, (start, end))
+    }
 };
 
 // inline embeddable let expression
@@ -393,9 +396,7 @@ DerefExpr: NodeBox = {
     <start:@L> 
         "*" <expr:BorrowExpr>
     <end:@L> => {
-        NodeBox::new(DerefExpr {
-            expr,
-        }, (start, end))
+        NodeBox::new(DerefExpr { expr }, (start, end))
     },
     BorrowExpr,
 };
