@@ -27,7 +27,7 @@ fn module_function() {
 }
 
 #[test]
-fn module_class() {
+fn module_struct() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_i32(n: i32) {
         assert_eq!(n, 1);
@@ -40,7 +40,7 @@ fn module_class() {
     extern def record=\"record_i32\"(n: I32): Nil
 
     mod Thing => 
-        class Thing =>
+        struct Thing =>
             n: I32
 
     thing := Thing::Thing {

@@ -167,7 +167,7 @@ ImportStatement: NodeBox = {
 // Class definitions
 ClassStatement: NodeBox = {
     <start:@L>
-        "class"
+        "struct"
         <id:CapitalIdentifier>
         <inners:ClassBlock>
     <end:@L> => {
@@ -583,7 +583,7 @@ extern {
         "true" => lexer::Tok::True,
         "false" => lexer::Tok::False,
         "uninitialized" => lexer::Tok::Uninitialized,
-        "class" => lexer::Tok::Class,
+        "struct" => lexer::Tok::Struct,
         "mod" => lexer::Tok::Module,
         "==" => lexer::Tok::Equ,
         "!=" => lexer::Tok::Neq,

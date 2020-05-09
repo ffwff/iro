@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 #[test]
-fn class_init() {
+fn struct_init() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_substr(substring: FatPointer<u8>, age: i32) {
         assert_eq!(substring.len(), 3);
@@ -24,7 +24,7 @@ fn class_init() {
         "\
     extern def record=\"record_substr\"(name: &Substring, age: I32): Nil
 
-    class Person =>
+    struct Person =>
         name: &Substring
         age: I32
 
@@ -41,7 +41,7 @@ fn class_init() {
 }
 
 #[test]
-fn nested_class_init() {
+fn nested_struct_init() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_substr(first_name: FatPointer<u8>, last_name: FatPointer<u8>, age: i32) {
         unsafe {
@@ -60,11 +60,11 @@ fn nested_class_init() {
         "\
     extern def record=\"record_substr\"(first_name: &Substring, last_name: &Substring, age: I32): Nil
 
-    class Name =>
+    struct Name =>
         first: &Substring
         last: &Substring
 
-    class Person =>
+    struct Person =>
         name: Name
         age: I32
 
@@ -84,7 +84,7 @@ fn nested_class_init() {
 }
 
 #[test]
-fn nested_slice_class_init() {
+fn nested_slice_struct_init() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record(n: i32, slice: [i32; 2]) {
         assert_eq!(n, 1337);
@@ -98,7 +98,7 @@ fn nested_slice_class_init() {
         "\
     extern def record(n: I32, slice: [I32; 2]): Nil
 
-    class Thing =>
+    struct Thing =>
         a_int: I32
         a_slice: [I32; 2]
     
@@ -115,7 +115,7 @@ fn nested_slice_class_init() {
 }
 
 #[test]
-fn nested_class_init_with_forward_decl() {
+fn nested_struct_init_with_forward_decl() {
     static RUN_FLAG: AtomicBool = AtomicBool::new(false);
     extern "C" fn record_substr(first_name: FatPointer<u8>, last_name: FatPointer<u8>, age: i32) {
         unsafe {
@@ -134,11 +134,11 @@ fn nested_class_init_with_forward_decl() {
         "\
     extern def record=\"record_substr\"(first_name: &Substring, last_name: &Substring, age: I32): Nil
 
-    class Person =>
+    struct Person =>
         name: Name
         age: I32
 
-    class Name =>
+    struct Name =>
         first: &Substring
         last: &Substring
 

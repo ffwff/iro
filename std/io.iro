@@ -1,16 +1,17 @@
-extern def putchar(x: I32): I32
+mod C =>
+    extern def putchar(x: I32): I32
 
 def print(s: &Substring): ISize =>
     mut printed := 0is
     mut i := 0is
     while i < s.len =>
-        printed += putchar(s[i])
+        printed += C::putchar(s[i])
         i += 1is
     printed
 
 def print(mut n: I32): ISize =>
     if n == 0 =>
-        return putchar(48) as ISize
+        return C::putchar(48) as ISize
     mut i := 0is
     mut slice : [I8; 128] = uninitialized
     while n > 0 =>
@@ -21,7 +22,7 @@ def print(mut n: I32): ISize =>
     i -= 1is
     mut printed := 0is
     while true =>
-        printed += putchar(slice[i]) as ISize
+        printed += C::putchar(slice[i]) as ISize
         if i == 0 => break
         i -= 1is
     printed
